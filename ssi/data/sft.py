@@ -1,13 +1,6 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-# All rights reserved.
-#
-# This source code is licensed under the BSD-style license found in the
-# LICENSE file in the root directory of this source tree.
-
 from typing import Any, Callable, Dict, Mapping, Optional
 
 import numpy as np
-
 from datasets import load_dataset
 from torch.utils.data import Dataset
 from torchtune.data._common import CROSS_ENTROPY_IGNORE_IDX
@@ -127,8 +120,7 @@ class SFTDataset(Dataset):
         if not ("tokens" in tokenized_dict and "mask" in tokenized_dict):
             keys_str = ", ".join(tokenized_dict.keys())
             error_message = (
-                "model_transform returned the following keys: "
-                f"{keys_str}. Must return 'tokens' and 'mask' as keys."
+                "model_transform returned the following keys: " f"{keys_str}. Must return 'tokens' and 'mask' as keys."
             )
             raise ValueError(error_message)
 
