@@ -10,12 +10,19 @@ from torchtune.data._common import CROSS_ENTROPY_IGNORE_IDX
 from torchtune.data._messages import validate_messages
 from torchtune.data._utils import load_image
 from torchtune.models.llama3 import Llama3Tokenizer
-from torchtune.modules.transforms import Transform
 
 
 class SFTDataset(Dataset):
     """
-    Creating SFT dataset from Hugging Face Hub, local files, or remote files.
+    Supervised Finetuning Dataset class based on torchtune.datasets._sft.SFTDataset (torchtune v0.5.0)
+
+    Modifications:
+    - The ``message_transform``  parameter is constrained to be the InputOutputToMessages class,
+      defined in the same module. ``InputOutputToMessages.__call__``  supports a ``inference`` parameter
+    - The model_transform parameter is replaced with the model_tokenizer parameter, which is constrained
+      to be the Llama3Tokenizer class
+
+    Creates SFT dataset from Hugging Face Hub, local files, or remote files.
     Supports instruct, chat, tool or multimodal data for fine-tuning.
     This class loads the data from source and applies these pre-processing steps:
 
@@ -93,13 +100,21 @@ class SFTDataset(Dataset):
         self,
         *,
         source: str,
-        message_transform: Transform,
         model_tokenizer: Llama3Tokenizer,
         inference: bool = False,
         filter_fn: Optional[Callable] = None,
+        train_on_input: bool,
+        column_map: Optional[dict[str, str]] = None,
+        new_system_prompt: Optional[str] = None,
+        image_dir: Optional[Path] = None,
         **load_dataset_kwargs: dict[str, Any],
     ) -> None:
-        self._message_transform = message_transform
+        self._message_transform = InputOutputToMessages(
+            train_on_input=train_on_input,
+            column_map=column_map,
+            new_system_prompt=new_system_prompt,
+            image_dir=image_dir,
+        )
         self._model_tokenizer = model_tokenizer
         self._data = load_dataset(source, **load_dataset_kwargs)
         if filter_fn is not None:
@@ -124,11 +139,11 @@ class SFTDataset(Dataset):
         return self._prepare_sample(sample), sample
 
     def _prepare_sample(self, sample: Mapping[str, Any]) -> dict[str, Any]:
-        transformed_sample = self._message_transform(sample)
+        transformed_sample = self._message_transform(sample, self._inference)
         if "messages" in transformed_sample:
             validate_messages(transformed_sample["messages"])
 
-        tokenized_dict = self._model_tokenizer(transformed_sample)
+        tokenized_dict = self._model_tokenizer(transformed_sample, inference=self._inference)
 
         if not ("tokens" in tokenized_dict and "mask" in tokenized_dict):
             keys_str = ", ".join(tokenized_dict.keys())
@@ -150,7 +165,7 @@ class SFTDataset(Dataset):
         return tokenized_dict
 
 
-class InputOutputToMessages(Transform):
+class InputOutputToMessages:
     """
     Message transform class that converts a single sample with "input" and "output" fields,
     (or equivalent fields specified in column_map) to user and assistant messages,
