@@ -3,7 +3,7 @@ requires = ["setuptools>=64", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "speech-integration"
+name = "ssi"
 authors = [
 { name = "Anil Keshwani", email = "anil.keshwani.academic@gmail.com" },
 ]
