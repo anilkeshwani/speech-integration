@@ -1,12 +1,14 @@
+from pathlib import Path
 from typing import Any, Callable, Mapping, Optional
 
 import numpy as np
 from datasets import load_dataset
 from sardalign.utils import dsu2pua
 from torch.utils.data import Dataset
-from torchtune.data import Message, PromptTemplate, Role
+from torchtune.data import Message
 from torchtune.data._common import CROSS_ENTROPY_IGNORE_IDX
 from torchtune.data._messages import validate_messages
+from torchtune.data._utils import load_image
 from torchtune.models.llama3 import Llama3Tokenizer
 from torchtune.modules.transforms import Transform
 
@@ -148,7 +150,7 @@ class SFTDataset(Dataset):
         return tokenized_dict
 
 
-class ASRInputOutputToMessages(Transform):
+class InputOutputToMessages(Transform):
     """
     Message transform class that converts a single sample with "input" and "output" fields,
     (or equivalent fields specified in column_map) to user and assistant messages,
@@ -168,10 +170,16 @@ class ASRInputOutputToMessages(Transform):
             keeping the default "input" and "output" column names.
         new_system_prompt (Optional[str]): if specified, prepend a system message. This can
             serve as instructions to guide the model response. Default is None.
+        image_dir (Optional[Path]): path to the directory containing the images that is prepended to all image
+            paths in the dataset. For example, if ``image_dir="/home/user/dataset/"` and the sample image path
+            was ``"images/1.jpg"``, the final image path that will be loaded is ``"/home/user/dataset/images/1.jpg"``.
+            If None, assume images are available in current working directory or are located
+            on a remote url. For text-only, leave as None. Default is None.
 
     Raises:
         ValueError: If ``column_map`` is provided and ``input`` not in ``column_map``, or
             ``output`` not in ``column_map``.
+        ValueError: If ``image_dir`` is provided but ``image`` not in ``column_map``.
     """
 
     def __init__(
@@ -179,30 +187,60 @@ class ASRInputOutputToMessages(Transform):
         train_on_input: bool,
         column_map: Optional[dict[str, str]] = None,
         new_system_prompt: Optional[str] = None,
+        image_dir: Optional[Path] = None,
     ):
         self.train_on_input = train_on_input
         self.new_system_prompt = new_system_prompt
-        if column_map:
+        if column_map is not None:
             if "input" not in column_map:
                 raise ValueError(f"Expected a key of 'input' in column_map but found {column_map.keys()}.")
             if "output" not in column_map:
                 raise ValueError(f"Expected a key of 'output' in column_map but found {column_map.keys()}.")
-            self._column_map = column_map
+            self.column_map = column_map
         else:
-            self._column_map = {"input": "input", "output": "output"}
+            self.column_map = {"input": "input", "output": "output", "image": "image"}
+        # Ensure that if a user seems to want to construct a multimodal transform, they provide a proper column_mapping
+        if "image" not in self.column_map.keys() and image_dir is not None:
+            raise ValueError(
+                f"image_dir is specified as {image_dir} but 'image' is not in column_map. "
+                "Please specify an 'image' key in column_map."
+            )
+        self.image_dir = image_dir
 
     def __call__(self, sample: Mapping[str, Any], inference: bool) -> Mapping[str, Any]:
+        is_multimodal = "image" in sample or ("image" in self.column_map and self.column_map["image"] in sample)
+        if is_multimodal:
+            image_path = sample[self.column_map["image"]]
+            if isinstance(image_path, str):
+                # Convert image_path to Path obj
+                image_path = Path(image_path)
+                # If image_dir is not None, prepend image_dir to image_path
+                if self.image_dir is not None:
+                    image_path = self.image_dir / image_path
+                # Load if not loaded
+                pil_image = load_image(image_path)
+            else:
+                pil_image = image_path
+            content = [
+                {"type": "image", "content": pil_image},
+                {"type": "text", "content": sample[self.column_map["input"]]},
+            ]
+        else:
+            content = [{"type": "text", "content": "".join(map(dsu2pua, sample[self.column_map["input"]]))}]
+        if inference:
+            output_content = [{"type": "text", "content": ""}]  # NOTE return empty output for inference i.e. generation
+        else:
+            output_content = [{"type": "text", "content": sample[self.column_map["output"]]}]
         messages = [
             Message(
                 role="user",
-                content="".join(map(dsu2pua, sample[self._column_map["input"]])),
+                content=content,
                 masked=not self.train_on_input,
                 eot=True,
             ),
             Message(
                 role="assistant",
-                # NOTE at inference, no output return empty string for output
-                content=sample[self._column_map["output"]] if not inference else "",
+                content=output_content,
                 masked=False,
                 eot=True,
             ),
