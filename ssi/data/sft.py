@@ -93,15 +93,26 @@ class SFTDataset(Dataset):
         source: str,
         message_transform: Transform,
         model_transform: Transform,
+        inference: bool = False,
         filter_fn: Optional[Callable] = None,
         **load_dataset_kwargs: Dict[str, Any],
     ) -> None:
         self._message_transform = message_transform
         self._model_transform = model_transform
-
         self._data = load_dataset(source, **load_dataset_kwargs)
         if filter_fn is not None:
             self._data = self._data.filter(filter_fn)
+        self._inference = inference
+
+    @property
+    def inference(self) -> bool:
+        return self._inference
+
+    @inference.setter
+    def inference(self, value: bool) -> None:
+        if not isinstance(value, bool):
+            raise ValueError("inference must be a boolean.")
+        self._inference = value
 
     def __len__(self):
         return len(self._data)
