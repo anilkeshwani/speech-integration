@@ -41,7 +41,6 @@ data:
 
 # Optimization
 optimizer:
-  _component_: torch.optim.AdamW
   lr: 2e-5 # used 3e-5 for TinyLlama decaying to min LR of 3e-6
   fused: True
 epochs: 5
