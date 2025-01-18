@@ -24,7 +24,8 @@ Install the package including development dependencies:
 ```bash
 conda create -n ssi python=3.10.6 -y &&
     conda activate ssi &&
-    pip install -e .["dev"]
+    pip install -e .["dev"] &&
+    pip install --no-dependencies git+https://github.com/anilkeshwani/speech-text-alignment.git
 ```
 
 If you want to use pre-commit remember to install hooks:
