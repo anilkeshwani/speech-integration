@@ -40,15 +40,15 @@ data:
     packed: False
 
 # Optimization
+optimizer:
+  _component_: torch.optim.AdamW
+  lr: 2e-5 # used 3e-5 for TinyLlama decaying to min LR of 3e-6
+  fused: True
 epochs: 5
 max_steps: null # if unset, set according to the number of epochs and the number of steps per epoch
 batch_size: 4 # effective batch size was 144 via bs=12 and grad. accum. 12 for TinyLlama
 gradient_accumulation_steps: 16
 clip_grad_norm: null
-optimizer:
-  _component_: torch.optim.AdamW
-  lr: 2e-5 # used 3e-5 for TinyLlama decaying to min LR of 3e-6
-  fused: True
 
 # Learning rate scheduler
 lr_scheduler:
