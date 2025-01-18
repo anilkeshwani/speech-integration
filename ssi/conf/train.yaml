@@ -1,0 +1,151 @@
+# Experiment management
+model_name: Llama-3.2-1B-5000-dsus
+output_dir: ${experiments_root_dir}/${model_name}
+extended_models_dir: /mnt/scratch-artemis/anilkeshwani/models/extended/torchtune/
+experiments_root_dir: /mnt/scratch-artemis/anilkeshwani/experiments
+experiment_name: null # if null, set to W&B run name
+
+# Model Arguments
+model:
+  _component_: torchtune.models.llama3_2.llama3_2 # replaced llama3_2_1b with generic Llama 3.2 function
+  vocab_size: null # (int) # NOTE DO NOT SET -> set dynamically as base_vocab_size + n_special_tokens + n_dsus
+  # Llama 3.2 1B model architecture spec.
+  num_layers: 16 # (int)
+  num_heads: 32 # (int)
+  num_kv_heads: 8 # (int)
+  embed_dim: 2048 # (int)
+  max_seq_len: 131072 # (int)
+  attn_dropout: 0.0 # (float)
+  rope_base: 500000 # (int)
+  intermediate_dim: 8192 # (Optional[int])
+  norm_eps: 1e-5 # (float)
+  scale_factor: 32 # (int)
+
+base_vocab_size: 128000 # base vocabulary size Llama 3: 100k (tiktoken) + 28k (targeting multilingual support)
+n_special_tokens: 256 # (int) # hard-coded in the torchtune Llama 3 impl.
+n_dsus: 5000 # (int)
+
+# Tokenizer
+# NOTE no _component_ specified; recipe calls setup_llama3_tokenizer -> Llama3Tokenizer
+# NOTE special_tokens removed - necessarily set dynamically based on tokenizer vocab size (i.e. when extended)
+tokenizer:
+  path: ${extended_models_dir}/${model_name}/original/tokenizer.model
+  max_seq_len: null # set to 128000000 when packing? (max seq. length per `llama model describe -m Llama3.2-1B`)
+  prompt_template: null
+
+# Data
+data:
+  train:
+    _component_: torchtune.datasets.text_completion_dataset
+    source: anilkeshwani/MLS_english_train_strat_sample_aligned_hubert_interleaved # specified as a HF dataset
+    column: text
+    split: train
+    add_eos: True
+    shuffle: True
+    packed: False # packing performed a priori at training time and leads to CPU RAM overflow for e.g. MLS interleaved
+    # split_across_pack: True # set to True for CPT; set to False for SFT
+    # tokenizer: # set above
+    # NOTE Following arguments copied across from text_completion_dataset docstring for reference
+    # filter_fn: Optional[Callable] = None
+    # **load_dataset_kwargs: Dict[str, Any]
+  dev:
+    _component_: torchtune.datasets.text_completion_dataset
+    source: anilkeshwani/MLS_english_train_strat_sample_aligned_hubert_interleaved # specified as a HF dataset
+    column: text
+    split: dev
+    add_eos: True
+    shuffle: False
+    packed: False
+
+# Evaluation
+eval_steps: ${save_steps}
+
+seed: null
+
+# Optimization
+epochs: 5
+max_steps: null # if unset, set according to the number of epochs and the number of steps per epoch
+batch_size: 4 # effective batch size was 144 via bs=12 and grad. accum. 12 for TinyLlama
+gradient_accumulation_steps: 16
+optimizer:
+  _component_: torch.optim.AdamW
+  lr: 2e-5 # used 3e-5 for TinyLlama decaying to min LR of 3e-6
+  fused: True
+
+# Learning rate scheduler
+lr_scheduler:
+  _component_: torchtune.modules.lr_schedulers.get_cosine_schedule_with_warmup
+  num_warmup_steps: 0 # The number of steps for the warmup phase.
+  num_cycles: 0.5 # The number of waves in the cosine schedule. Defaults to 0.5. (decrease from the max value to 0 following a half-cosine).
+  last_epoch: -1 # The index of the last epoch when resuming training. Defaults to -1. Set to self.global_step - 1 in recipe.
+  # optimizer: # set dynamically in recipe
+  # num_training_steps: # set to total_epochs * _steps_per_epoch (:= len(self._dataloader) // self._gradient_accumulation_steps)
+
+# Loss
+loss:
+  _component_: torchtune.modules.loss.CEWithChunkedOutputLoss
+
+clip_grad_norm: null
+
+# Performance optimizations
+optimizer_in_bwd: False # https://pytorch.org/tutorials/intermediate/optimizer_step_in_backward_tutorial.html
+compile: False # set it to True for better memory and performance
+
+# Training environment
+device: cuda
+
+# Memory management
+enable_activation_checkpointing: False
+
+# Reduced precision
+dtype: bf16
+
+# Checkpointing
+checkpointer:
+  _component_: torchtune.training.FullModelHFCheckpointer
+  checkpoint_dir: ${extended_models_dir}/${model_name}
+  checkpoint_files: [hf_model_0001_0.pt]
+  model_type: LLAMA3_2
+  output_dir: null # if null, set to ${experiments_root_dir}/${model_name}/${experiment_name}/${checkpoints}
+  adapter_checkpoint: null
+  recipe_checkpoint: null
+  resume_from_checkpoint: False
+  safe_serialization: False
+
+save_steps: 2 # 382 is approx. every hour given 1.7 iters/sec and 16 grad. accum. steps
+
+# Logging
+metric_logger:
+  _component_: torchtune.training.metric_logging.WandBLogger
+  log_dir: ${output_dir}
+  project: speech-integration
+  entity: null # automatically set to username based on API key
+  group: null
+
+log_every_n_steps: 1
+log_peak_memory_stats: False
+
+# Profiler
+profiler:
+  _component_: torchtune.training.setup_torch_profiler
+  enabled: False
+
+  #Output directory of trace artifacts
+  output_dir: ${output_dir}/profiling_outputs
+
+  #`torch.profiler.ProfilerActivity` types to trace
+  cpu: True
+  cuda: True
+
+  #trace options passed to `torch.profiler.profile`
+  profile_memory: True
+  with_stack: False
+  record_shapes: True
+  with_flops: True
+
+  # `torch.profiler.schedule` options:
+  # wait_steps -> wait, warmup_steps -> warmup, active_steps -> active, num_cycles -> repeat
+  wait_steps: 1
+  warmup_steps: 2
+  active_steps: 1
+  num_cycles: 1
