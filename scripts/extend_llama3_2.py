@@ -1,28 +1,25 @@
 #!/usr/bin/env python
 
 import base64
-import hashlib
 import json
 import logging
 import os
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
-from pprint import pformat, pp
+from pprint import pp
 from typing import Any
 
 import torch
 import torchtune.training
 from sardalign.utils import dsu2pua, multivariate_normal_from_weights, seed_everything
-from tiktoken.load import load_tiktoken_bpe
 from torch import nn
 from torchtune import utils
-from torchtune.data import PromptTemplate
-from torchtune.models.llama3 import Llama3Tokenizer
 from torchtune.models.llama3._tokenizer import LLAMA3_SPECIAL_TOKENS
 from torchtune.models.llama3_2 import llama3_2_1b
 from torchtune.modules import TiedLinear, TransformerDecoder
-from torchtune.training import ModelType  # noqa: F401
 from torchtune.training.checkpointing import FullModelHFCheckpointer  # NOTE also exported by torchtune.training
+
+from ssi.tokenizer import setup_llama3_tokenizer
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
@@ -118,44 +115,13 @@ def add_dsus_to_tiktoken(n_new_dsus: int, tokenizer_model: Path, output_path: Pa
     print(f"Extended tokenizer.model saved to {output_path}")
 
 
-def setup_model(model_state_dict: dict[str, Any], device: str = "cpu") -> nn.Module:
+def simple_setup_model(model_state_dict: dict[str, Any], device: str = "cpu") -> TransformerDecoder:
     """Set up and load a model with the given state_dict"""
     with torchtune.training.set_default_dtype(torch.float32), utils.get_device(device=device):
         model = llama3_2_1b()
     model.load_state_dict(model_state_dict)
     torchtune.training.validate_expected_param_dtype(model.named_parameters(), dtype=torch.float32)  # check fp32
     return model
-
-
-def setup_llama3_tokenizer(
-    tokenizer_model: Path,
-    max_seq_len: int | None = None,
-    prompt_template: PromptTemplate | None = None,
-    verbose: bool = True,
-) -> tuple[Llama3Tokenizer, dict[str, int]]:
-    with open(tokenizer_model, "rb") as f:
-        expected_hash = hashlib.sha256(f.read()).hexdigest()
-    mergeable_ranks = load_tiktoken_bpe(str(tokenizer_model), expected_hash)  # load BPE merges from tokenizer.model
-    base_vocab_size = len(mergeable_ranks)
-    assert base_vocab_size == max(mergeable_ranks.values()) + 1, "Requirement: base vocab to contiguous and 0-indexed"
-    special_tokens_dynamic = {
-        k: v
-        for k, v in zip(LLAMA3_SPECIAL_TOKENS, range(base_vocab_size, base_vocab_size + len(LLAMA3_SPECIAL_TOKENS)))
-    }
-    tokenizer = Llama3Tokenizer(
-        path=str(tokenizer_model),
-        special_tokens=special_tokens_dynamic,
-        max_seq_len=max_seq_len,
-        prompt_template=prompt_template,
-    )
-    if verbose:
-        print(f"Loaded Llama 3 tiktoken tokenizer from: {tokenizer_model}")
-    pretty_special_tokens = pformat(special_tokens_dynamic, sort_dicts=False, underscore_numbers=True)
-    if verbose:
-        print(f"Llama3 special tokens (dynamic) added to tokenizer: {pretty_special_tokens}")
-        print(f"Tokenizer base vocabulary size (BPE merges file): {base_vocab_size}")
-        print(f"Llama 3 tiktoken tokenizer vocabulary size: {tokenizer.vocab_size}")
-    return tokenizer, special_tokens_dynamic
 
 
 def extend_model(
@@ -220,7 +186,7 @@ def main(args: Namespace) -> None:
         safe_serialization=False,
     )
     ckpt_dict: dict[str, Any] = checkpointer.load_checkpoint()
-    model = setup_model(model_state_dict=ckpt_dict[torchtune.training.MODEL_KEY])
+    model = simple_setup_model(model_state_dict=ckpt_dict[torchtune.training.MODEL_KEY])
     print(f"Model loaded successfully: {model}")
     tokenizer_extended, special_tokens = setup_llama3_tokenizer(args.output_dir / LLAMA_3_2_TOKENIZER_RELPATH)
     # NOTE FullModelHFCheckpointer writes the input config.json to the output_dir on __init__ -> forced to overwrite
