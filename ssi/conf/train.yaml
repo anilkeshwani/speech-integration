@@ -58,10 +58,6 @@ lr_scheduler:
   # optimizer: # set dynamically in recipe
   # num_training_steps: # set to total_epochs * _steps_per_epoch (:= len(self._dataloader) // self._gradient_accumulation_steps)
 
-# Loss
-loss:
-  _component_: torchtune.modules.loss.CEWithChunkedOutputLoss
-
 # Performance optimizations
 optimizer_in_bwd: False # https://pytorch.org/tutorials/intermediate/optimizer_step_in_backward_tutorial.html
 compile: False # set it to True for better memory and performance
