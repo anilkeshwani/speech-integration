@@ -9,14 +9,14 @@ from torchtune.models.llama3._tokenizer import LLAMA3_SPECIAL_TOKENS
 
 
 def setup_llama3_tokenizer(
-    tokenizer_model: Path,
+    path: Path,
     max_seq_len: int | None = None,
     prompt_template: PromptTemplate | None = None,
     verbose: bool = True,
 ) -> tuple[Llama3Tokenizer, dict[str, int]]:
-    with open(tokenizer_model, "rb") as f:
+    with open(path, "rb") as f:
         expected_hash = hashlib.sha256(f.read()).hexdigest()
-    mergeable_ranks = load_tiktoken_bpe(str(tokenizer_model), expected_hash)  # load BPE merges from tokenizer.model
+    mergeable_ranks = load_tiktoken_bpe(str(path), expected_hash)  # load BPE merges from tokenizer.model
     base_vocab_size = len(mergeable_ranks)
     assert base_vocab_size == max(mergeable_ranks.values()) + 1, "Requirement: base vocab to contiguous and 0-indexed"
     special_tokens_dynamic = {
@@ -24,13 +24,13 @@ def setup_llama3_tokenizer(
         for k, v in zip(LLAMA3_SPECIAL_TOKENS, range(base_vocab_size, base_vocab_size + len(LLAMA3_SPECIAL_TOKENS)))
     }
     tokenizer = Llama3Tokenizer(
-        path=str(tokenizer_model),
+        path=str(path),
         special_tokens=special_tokens_dynamic,
         max_seq_len=max_seq_len,
         prompt_template=prompt_template,
     )
     if verbose:
-        print(f"Loaded Llama 3 tiktoken tokenizer from: {tokenizer_model}")
+        print(f"Loaded Llama 3 tiktoken tokenizer from: {path}")
     pretty_special_tokens = pformat(special_tokens_dynamic, sort_dicts=False, underscore_numbers=True)
     if verbose:
         print(f"Llama3 special tokens (dynamic) added to tokenizer: {pretty_special_tokens}")
