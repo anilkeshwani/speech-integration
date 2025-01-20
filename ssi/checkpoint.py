@@ -14,9 +14,7 @@ from torchtune.training.checkpointing._utils import (
     ADAPTER_MODEL_FNAME,
     check_outdir_not_in_ckptdir,
     copy_files,
-    get_adapter_checkpoint_path,
     get_model_checkpoint_path,
-    get_recipe_checkpoint_path,
     ModelType,
     RECIPE_STATE_DIRNAME,
     REPO_ID_FNAME,
@@ -61,42 +59,42 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         recipe_checkpoint (Optional[str]): Path to the recipe state checkpoint file. If None,
             and `resume_from_checkpoint=True`, then look for recipe_state.pt in output_dir/RECIPE_STATE_DIRNAME.
             Default is None.
-        resume_from_checkpoint (bool): If True, the checkpointer will load the additional checkpoint files to
-            resume training from a previous run. Default is False
         safe_serialization (bool): If True, the checkpointer will save the checkpoint file using `safetensors`.
             Default is True.
     """
 
     def __init__(
         self,
-        checkpoint_dir: str,
-        checkpoint_files: Union[List[str], Dict[str, str]],
-        model_type: str,
+        checkpoint_dir: Path,
+        checkpoint_files: list[str] | dict[str, str],
+        config_json: Path,
         output_dir: Path,
-        adapter_checkpoint: Optional[str] = None,
-        recipe_checkpoint: Optional[str] = None,
-        resume_from_checkpoint: bool = False,
+        recipe_checkpoint: Path | None = None,
+        adapter_checkpoint: Path | None = None,
+        model_type: ModelType = ModelType("llama3_2"),
         safe_serialization: bool = True,
     ) -> None:
-
-        self._resume_from_checkpoint = resume_from_checkpoint
+        self._checkpoint_dir = checkpoint_dir
+        self._resume_from_checkpoint: bool = recipe_checkpoint is not None
         self._safe_serialization = safe_serialization
-        self._checkpoint_dir = Path(checkpoint_dir)
-        self._model_type = ModelType[model_type]
+        self._model_type = model_type
         self._output_dir = output_dir
+        self._recipe_checkpoint = recipe_checkpoint
+        self._adapter_checkpoint = adapter_checkpoint
+
         check_outdir_not_in_ckptdir(ckpt_dir=self._checkpoint_dir, out_dir=self._output_dir)
-        self._output_dir.mkdir(parents=True, exist_ok=True)
 
-        # weight_map contains the state_dict key -> checkpoint file mapping so we can correctly
-        # parition the state dict into output checkpoint files. This is updated during checkpoint
-        # load
-        self._weight_map: Dict[str, str] = None
+        if self._recipe_checkpoint is not None and not self._recipe_checkpoint.is_file():
+            raise FileNotFoundError(f"Recipe checkpoint file {recipe_checkpoint} not found.")
 
-        # the config.json file contains model params needed for state dict conversion
-        self._config = json.loads(Path.joinpath(self._checkpoint_dir, "config.json").read_text())
+        self._output_dir.mkdir(parents=True, exist_ok=True)  # TODO
 
-        # repo_id is necessary for when saving an adapter config, so its compatible with HF.
-        # This json file is produced and saved in the download step.
+        # weight_map: state_dict key -> checkpoint mapping to partition state dict into output checkpoint files
+        self._weight_map: dict[str, str] | None = None  # NOTE initialised to None; updated during checkpoint loading
+
+        self._config = json.loads(config_json.read_text())  # contains model params needed for state dict conversion
+
+        # repo_id necessary to save adapter config for HF compatibility. JSON produced and saved at download step.
         # contents are {"repo_id": "some_model/some_model_version"}
         repo_id_path = Path.joinpath(self._checkpoint_dir, REPO_ID_FNAME).with_suffix(".json")
         self.repo_id = None
@@ -104,21 +102,6 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             with open(repo_id_path, "r") as json_file:
                 data = json.load(json_file)
                 self.repo_id = data.get("repo_id")
-
-        #  resume from adapter_model ckpt
-        self._adapter_checkpoint = get_adapter_checkpoint_path(
-            output_dir=self._output_dir,
-            adapter_checkpoint=adapter_checkpoint,
-            resume_from_checkpoint=self._resume_from_checkpoint,
-            pattern=r"^epoch_(\d+)",
-        )
-
-        # resume recipe_state ckpt
-        self._recipe_checkpoint = get_recipe_checkpoint_path(
-            output_dir=self._output_dir,
-            recipe_checkpoint=recipe_checkpoint,
-            resume_from_checkpoint=self._resume_from_checkpoint,
-        )
 
         # get ckpt paths
         self._checkpoint_paths = get_model_checkpoint_path(
