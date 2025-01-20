@@ -64,18 +64,15 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         model implementations.
 
     Args:
-        checkpoint_dir (str): Directory containing the checkpoint files
-        checkpoint_files (Union[List[str], Dict[str, str]]): List of checkpoint files to load or a dictionary
+        checkpoint_dir (Path): Directory containing the checkpoint files
+        checkpoint_files (list[str] | dict[str, str]): List of checkpoint files to load or a dictionary
             containing the keys keys ["filename_format", "max_filename"]. Since the checkpointer takes care
             of sorting by file ID, the order in this list does not matter.
-        model_type (str): Model type of the model for which the checkpointer is being loaded, e.g. LLAMA3.
+        config_json (Path): Path to the model config JSON file. Required for state dict conversion.
         output_dir (str): Directory to save the checkpoint files
-        adapter_checkpoint (Optional[str]): Path to the adapter weights. If None,
-            and `resume_from_checkpoint=True`, then look for adapter_model.pt in output_dir/epoch_{largest_epoch}.
-            Default is None.
-        recipe_checkpoint (Optional[str]): Path to the recipe state checkpoint file. If None,
-            and `resume_from_checkpoint=True`, then look for recipe_state.pt in output_dir/RECIPE_STATE_DIRNAME.
-            Default is None.
+        adapter_checkpoint (Path | None): Path to the adapter weights. Default is None.
+        recipe_checkpoint (Path | None): Path to the recipe state checkpoint file. Default is None.
+        model_type (ModelType): Model type. Default is ModelType.LLAMA3_2
         safe_serialization (bool): If True, the checkpointer will save the checkpoint file using `safetensors`.
             Default is True.
     """
@@ -88,7 +85,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         output_dir: Path,
         recipe_checkpoint: Path | None = None,
         adapter_checkpoint: Path | None = None,
-        model_type: ModelType = ModelType("llama3_2"),
+        model_type: ModelType = ModelType.LLAMA3_2,
         safe_serialization: bool = True,
     ) -> None:
         self._checkpoint_dir = checkpoint_dir
@@ -124,9 +121,6 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         self._checkpoint_paths = get_model_checkpoint_paths(
             checkpoint_files=checkpoint_files,
             checkpoint_dir=self._checkpoint_dir,
-            output_dir=self._output_dir,
-            resume_from_checkpoint=self._resume_from_checkpoint,
-            has_adapter_checkpoint=self._adapter_checkpoint is not None,
         )
 
         if self._resume_from_checkpoint:
