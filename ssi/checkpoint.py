@@ -40,7 +40,7 @@ def validate_checkpoint_files(checkpoint_files: list[str], input_dir: Path, miss
     return sorted(checkpoint_paths)
 
 
-def get_model_checkpoint_path(checkpoint_files: list[str] | dict[str, str], checkpoint_dir: Path) -> list[Path]:
+def get_model_checkpoint_paths(checkpoint_files: list[str] | dict[str, str], checkpoint_dir: Path) -> list[Path]:
     if not isinstance(checkpoint_files, list):
         formatted_checkpoint_files = FormattedCheckpointFiles.from_dict(checkpoint_files)
         checkpoint_files = formatted_checkpoint_files.build_checkpoint_filenames()
@@ -121,7 +121,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                 self.repo_id = data.get("repo_id")
 
         # get ckpt paths
-        self._checkpoint_paths = get_model_checkpoint_path(
+        self._checkpoint_paths = get_model_checkpoint_paths(
             checkpoint_files=checkpoint_files,
             checkpoint_dir=self._checkpoint_dir,
             output_dir=self._output_dir,
