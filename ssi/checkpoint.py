@@ -14,7 +14,8 @@ from torchtune.training.checkpointing._utils import (
     ADAPTER_MODEL_FNAME,
     check_outdir_not_in_ckptdir,
     copy_files,
-    get_model_checkpoint_path,
+    FormattedCheckpointFiles,
+    get_path,
     ModelType,
     RECIPE_STATE_DIRNAME,
     REPO_ID_FNAME,
@@ -28,6 +29,103 @@ from torchtune.utils._logging import get_logger, log_rank_zero
 
 
 logger = get_logger("DEBUG")
+
+
+def get_model_checkpoint_path(
+    checkpoint_files: Union[List[str], Dict[str, str]],
+    checkpoint_dir: Union[str, Path],
+    output_dir: Union[str, Path],
+    resume_from_checkpoint: bool,
+    has_adapter_checkpoint: bool,
+) -> list[Path]:
+    """
+    Returns Paths to model checkpoint files, handling resuming from checkpoint, file formating and checking
+    if the files exists.
+
+    If resuming from checkpoint, the checkpoint files are loaded from the output directory. Otherwise,
+    they are loaded from the checkpoint directory.
+
+    If checkpoint_fiels is a dictionary, it is converted to a list of formatted checkpoint filenames.
+
+    Args:
+        checkpoint_files (Union[List[str], Dict[str, str]]): List or dictionary of checkpoint file names.
+            If a dictionary with keys ["filename_format", "max_filename"] is provided,
+            it is converted to a list of formatted checkpoint filenames.
+        checkpoint_dir (Union[str, Path]): Directory containing the checkpoint files.
+        output_dir (Union[str, Path]): Directory to use when resuming from a checkpoint.
+        resume_from_checkpoint (bool): Whether to resume from a checkpoint.
+        has_adapter_checkpoint (bool): Indicates if there is an adapter checkpoint.
+    Returns:
+        list[Path]: Sorted list of paths to the checkpoint files.
+    Example:
+        >>> checkpoint_files = ["model-00001-of-00002.safetensors", "model-00002-of-00002.safetensors"]
+        >>> checkpoint_dir = "/path/to/checkpoints"
+        >>> output_dir = "/path/to/output"
+        >>> resume_from_checkpoint = True
+        >>> has_adapter_checkpoint = False
+        >>> paths = get_model_checkpoint_path(
+        ...     checkpoint_files,
+        ...     checkpoint_dir,
+        ...     output_dir,
+        ...     resume_from_checkpoint,
+        ...     has_adapter_checkpoint
+        ... )
+        >>> print(paths)
+        [PosixPath('/path/to/output/{largest_epoch}/model-00001-of-00002.safetensors'),
+         PosixPath('/path/to/output/{largest_epoch}/model-00002-of-00002.safetensors')]
+    """
+
+    def validate_checkpoint_files(
+        checkpoint_files: Union[List[str]],
+        input_dir: Optional[Path],
+        missing_ok=False,
+    ) -> List[Path]:
+        """
+        Validates that the checkpoint files exist and sorts based on ID.
+        """
+
+        checkpoint_paths: List[Path] = []
+        for f in checkpoint_files:
+            checkpoint_path = get_path(input_dir, f, missing_ok)
+            checkpoint_paths.append(checkpoint_path)
+
+        return sorted(checkpoint_paths)
+
+    # load or resume from model weights
+
+    # e.g.
+    # checkpoint_files:
+    #   filename_format: model-{}-of-{}.safetensors
+    #   max_filename: 00191
+    # becomes checkpoint_files = [model-00001-of-00191.safetensors, model-00002-of-00191,..]
+    if not isinstance(checkpoint_files, List):
+        # TODO: this can be a function instead of a class
+        formatted_checkpoint_files = FormattedCheckpointFiles.from_dict(checkpoint_files)
+        checkpoint_files = formatted_checkpoint_files.build_checkpoint_filenames()
+
+    # Case 1: no resuming from ckpt
+    if not resume_from_checkpoint:
+        input_dir = checkpoint_dir
+
+    # Case 2: Resuming from ckpt, but its full finetuning (no adapter)
+    elif not has_adapter_checkpoint:
+        input_dir = output_dir
+
+    # Case 3: Resuming from ckpt and has an adapter.
+    else:
+        # FIXME
+        # TODO: if the model has lora + trained weights, e.g. embeddings,
+        # we will silently not load the trained model, because we load from checkpoint_dir.
+        # We cannot load from output_dir because we always merge the adapter weights into the model
+        input_dir = checkpoint_dir
+
+    checkpoint_paths = validate_checkpoint_files(
+        checkpoint_files,
+        input_dir=input_dir,
+        missing_ok=False,
+    )
+
+    return checkpoint_paths
 
 
 class FullModelHFCheckpointer(_CheckpointerInterface):
