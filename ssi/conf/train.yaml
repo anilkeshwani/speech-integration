@@ -7,12 +7,10 @@ experiment_name: null # if null, set to W&B run name
 
 n_dsus: 5000
 
-# Tokenizer
-# NOTE no _component_ specified; recipe calls setup_llama3_tokenizer -> Llama3Tokenizer
-# NOTE special_tokens removed - necessarily set dynamically based on tokenizer vocab size (i.e. when extended)
+# Tokenizer - config for setup_llama3_tokenizer -> Llama3Tokenizer
 tokenizer:
   path: ${extended_models_dir}/${model_name}/original/tokenizer.model
-  max_seq_len: null # set to 128000000 when packing? (max seq. length per `llama model describe -m Llama3.2-1B`)
+  max_seq_len: null # NOTE max seq. length 128_000_000 returned by `llama model describe -m Llama3.2-1B`
   prompt_template: null
   verbose: True
 
@@ -42,7 +40,7 @@ data:
 
 # Optimization
 optimizer:
-  lr: 2e-5 # used 3e-5 for TinyLlama decaying to min LR of 3e-6
+  lr: 2e-5
   fused: True
 epochs: 5
 max_steps: null # if unset, set according to the number of epochs and the number of steps per epoch
@@ -78,10 +76,10 @@ checkpointer:
   checkpoint_dir: ${extended_models_dir}/${model_name}
   checkpoint_files: [hf_model_0001_0.pt]
   model_type: LLAMA3_2
-  output_dir: null # if null, set to ${experiments_root_dir}/${model_name}/${experiment_name}/${checkpoints}
-  adapter_checkpoint: null
   recipe_checkpoint: null
+  output_dir: # if null: ${experiments_root_dir}/${model_name}/${experiment_name}/${checkpoints}; was ${output_dir}
   resume_from_checkpoint: False
+  adapter_checkpoint: null
   safe_serialization: False
 
 # Logging
