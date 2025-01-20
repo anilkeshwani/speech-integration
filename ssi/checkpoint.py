@@ -72,7 +72,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         checkpoint_dir: str,
         checkpoint_files: Union[List[str], Dict[str, str]],
         model_type: str,
-        output_dir: str,
+        output_dir: Path,
         adapter_checkpoint: Optional[str] = None,
         recipe_checkpoint: Optional[str] = None,
         resume_from_checkpoint: bool = False,
@@ -83,7 +83,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         self._safe_serialization = safe_serialization
         self._checkpoint_dir = Path(checkpoint_dir)
         self._model_type = ModelType[model_type]
-        self._output_dir = Path(output_dir)
+        self._output_dir = output_dir
         check_outdir_not_in_ckptdir(ckpt_dir=self._checkpoint_dir, out_dir=self._output_dir)
         self._output_dir.mkdir(parents=True, exist_ok=True)
 
