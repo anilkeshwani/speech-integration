@@ -31,36 +31,20 @@ from torchtune.utils._logging import get_logger, log_rank_zero
 logger = get_logger("DEBUG")
 
 
-def validate_checkpoint_files(
-    checkpoint_files: list[str],
-    input_dir: Path,
-    missing_ok=False,
-) -> list[Path]:
+def validate_checkpoint_files(checkpoint_files: list[str], input_dir: Path, missing_ok=False) -> list[Path]:
     """Validates that the checkpoint files exist and sorts based on ID"""
     checkpoint_paths: list[Path] = []
     for f in checkpoint_files:
         checkpoint_path = get_path(input_dir, f, missing_ok)
         checkpoint_paths.append(checkpoint_path)
-
     return sorted(checkpoint_paths)
 
 
-def get_model_checkpoint_path(
-    checkpoint_files: list[str] | dict[str, str],
-    checkpoint_dir: Path,
-) -> list[Path]:
-
-    if not isinstance(checkpoint_files, List):
+def get_model_checkpoint_path(checkpoint_files: list[str] | dict[str, str], checkpoint_dir: Path) -> list[Path]:
+    if not isinstance(checkpoint_files, list):
         formatted_checkpoint_files = FormattedCheckpointFiles.from_dict(checkpoint_files)
         checkpoint_files = formatted_checkpoint_files.build_checkpoint_filenames()
-
-    checkpoint_paths = validate_checkpoint_files(
-        checkpoint_files,
-        input_dir=checkpoint_dir,
-        missing_ok=False,
-    )
-
-    return checkpoint_paths
+    return validate_checkpoint_files(checkpoint_files, input_dir=checkpoint_dir, missing_ok=False)
 
 
 class FullModelHFCheckpointer(_CheckpointerInterface):
