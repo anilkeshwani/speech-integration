@@ -32,59 +32,29 @@ logger = get_logger("DEBUG")
 
 
 def get_model_checkpoint_path(
-    checkpoint_files: Union[List[str], Dict[str, str]],
-    checkpoint_dir: Union[str, Path],
-    output_dir: Union[str, Path],
-    resume_from_checkpoint: bool,
-    has_adapter_checkpoint: bool,
+    checkpoint_files: list[str] | dict[str, str],
+    checkpoint_dir: Path,
 ) -> list[Path]:
     def validate_checkpoint_files(
-        checkpoint_files: List[str],
+        checkpoint_files: list[str],
         input_dir: Path,
         missing_ok=False,
-    ) -> List[Path]:
-        """
-        Validates that the checkpoint files exist and sorts based on ID.
-        """
-
-        checkpoint_paths: List[Path] = []
+    ) -> list[Path]:
+        """Validates that the checkpoint files exist and sorts based on ID"""
+        checkpoint_paths: list[Path] = []
         for f in checkpoint_files:
             checkpoint_path = get_path(input_dir, f, missing_ok)
             checkpoint_paths.append(checkpoint_path)
 
         return sorted(checkpoint_paths)
 
-    # load or resume from model weights
-
-    # e.g.
-    # checkpoint_files:
-    #   filename_format: model-{}-of-{}.safetensors
-    #   max_filename: 00191
-    # becomes checkpoint_files = [model-00001-of-00191.safetensors, model-00002-of-00191,..]
     if not isinstance(checkpoint_files, List):
-        # TODO: this can be a function instead of a class
         formatted_checkpoint_files = FormattedCheckpointFiles.from_dict(checkpoint_files)
         checkpoint_files = formatted_checkpoint_files.build_checkpoint_filenames()
 
-    # Case 1: no resuming from ckpt
-    if not resume_from_checkpoint:
-        input_dir = checkpoint_dir
-
-    # Case 2: Resuming from ckpt, but its full finetuning (no adapter)
-    elif not has_adapter_checkpoint:
-        input_dir = output_dir
-
-    # Case 3: Resuming from ckpt and has an adapter.
-    else:
-        # FIXME
-        # TODO: if the model has lora + trained weights, e.g. embeddings,
-        # we will silently not load the trained model, because we load from checkpoint_dir.
-        # We cannot load from output_dir because we always merge the adapter weights into the model
-        input_dir = checkpoint_dir
-
     checkpoint_paths = validate_checkpoint_files(
         checkpoint_files,
-        input_dir=input_dir,
+        input_dir=checkpoint_dir,
         missing_ok=False,
     )
 
