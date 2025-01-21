@@ -65,7 +65,7 @@ def train(cfg: DictConfig) -> None:
     wandb_logger = WandBLogger(cfg.wandb)
 
     checkpointer = FullModelHFCheckpointer()
-    ckpt_dict = self._checkpointer.load_checkpoint()
+    ckpt_dict = checkpointer.load_checkpoint()
 
     if self._resume_from_checkpoint:
         raise NotImplementedError
