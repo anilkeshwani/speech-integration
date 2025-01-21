@@ -41,8 +41,8 @@ def setup_lr_scheduler(
     last_epoch: int,
     current_step: int,
     num_training_steps: int,
-    optimizer_in_bwd: bool,
-    optim_ckpt_wrapper=None,
+    optimizer_in_bwd: bool = False,  # for future impl.
+    optim_ckpt_wrapper=None,  # for future impl.
 ) -> LambdaLR | None:
     if cfg.lr_scheduler is None:
         LOGGER.info("No learning rate scheduler configured. Using constant learning rate.")
