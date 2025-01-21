@@ -101,15 +101,17 @@ checkpointer:
   adapter_checkpoint: null
   safe_serialization: False
 
+save_steps: 500 # checkpoint save frequency
+
+# Evaluation
+eval_steps: ${save_steps} # evaluation frequency
+
 # Logging
 metric_logger:
   _component_: torchtune.training.metric_logging.WandBLogger
-  log_dir: ${output_dir}
+  log_dir: ${output_dir}/wandb
   project: speech-integration
   entity: null # automatically set to username based on API key
   group: null
-
-log_every_n_steps: 1
+log_interval: 1
 log_peak_memory_stats: False
-save_steps: 500
-eval_steps: ${save_steps} # evaluation
