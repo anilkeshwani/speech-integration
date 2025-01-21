@@ -73,12 +73,8 @@ clip_grad_norm: null
 
 # Learning rate scheduler
 lr_scheduler:
-  _component_: torchtune.modules.lr_schedulers.get_cosine_schedule_with_warmup
-  num_warmup_steps: 0 # The number of steps for the warmup phase.
-  num_cycles: 0.5 # The number of waves in the cosine schedule. Defaults to 0.5. (decrease from the max value to 0 following a half-cosine).
-  last_epoch: -1 # The index of the last epoch when resuming training. Defaults to -1. Set to self.global_step - 1 in recipe.
-  # optimizer: # set dynamically in recipe
-  # num_training_steps: # set to total_epochs * _steps_per_epoch (:= len(self._dataloader) // self._gradient_accumulation_steps)
+  num_warmup_steps: 0
+  num_cycles: 0.5
 
 # Performance optimizations
 optimizer_in_bwd: False # https://pytorch.org/tutorials/intermediate/optimizer_step_in_backward_tutorial.html
@@ -117,10 +113,3 @@ log_every_n_steps: 1
 log_peak_memory_stats: False
 save_steps: 500
 eval_steps: ${save_steps} # evaluation
-
-# Debug mode
-# `None` -> don't set any PyTorch global values
-# "default" or 0 -> don't error or warn on nondeterministic operations and additionally enable PyTorch CuDNN benchmark
-# "warn" or 1 -> warn on nondeterministic operations and disable PyTorch CuDNN benchmark
-# "error" or 2 -> error on nondeterministic operations and disable PyTorch CuDNN benchmark
-debug_mode: null
