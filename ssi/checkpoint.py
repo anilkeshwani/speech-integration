@@ -116,19 +116,19 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                 data = json.load(json_file)
                 self.repo_id = data.get("repo_id")
 
-        # get ckpt paths
         self._checkpoint_paths = get_model_checkpoint_paths(
             checkpoint_files=checkpoint_files,
             checkpoint_dir=self._checkpoint_dir,
         )
 
-        if self._recipe_checkpoint is not None:
-            logger.info(
-                "Resuming from checkpoint using:"
-                f"\n\tcheckpoint_paths: {[str(path) for path in self._checkpoint_paths]}"
-                f"\n\trecipe_checkpoint: {self._recipe_checkpoint}"
-                f"\n\tadapter_checkpoint: {self._adapter_checkpoint}"
-            )
+        logger.info(f"Resuming from checkpoint(s): {[str(path) for path in self._checkpoint_paths]}")
+        logger.info(
+            f"Resuming optimizer and recipe state from: {self._recipe_checkpoint}"
+            if self._recipe_checkpoint
+            else "Initializing optimizer and recipe state from cold."
+        )
+        if self._adapter_checkpoint:
+            logger.info(f"Resuming adapter from checkpoint: {self._adapter_checkpoint}")
 
     def load_checkpoint(self) -> Dict[str, Any]:
         """
