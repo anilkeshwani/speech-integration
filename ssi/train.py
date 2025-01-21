@@ -1,3 +1,4 @@
+import time
 from typing import Callable
 
 import torch
@@ -10,18 +11,27 @@ from torchtune import config, modules, training
 from torchtune.models.llama3 import Llama3Tokenizer
 from torchtune.modules import TransformerDecoder
 from torchtune.modules.loss import CEWithChunkedOutputLoss
-from torchtune.training import get_dtype
+from torchtune.training import get_dtype, scale_grads
+from torchtune.training.lr_schedulers import get_lr
 from torchtune.training.precision import PRECISION_STR_TO_DTYPE
 from torchtune.utils import batch_to_device, get_device
 from tqdm import tqdm
 
-from ssi.constants import MODEL_KEY, OPTIMIZER_KEY, SEED
+from ssi.constants import EPOCHS_KEY, MODEL_KEY, OPTIMIZER_KEY, SEED, STEPS_KEY
 from ssi.data import setup_data
 from ssi.data.sft import SFTDataset
+from ssi.lr_schedule import setup_lr_scheduler
 from ssi.model import setup_llama3_2_1b
 from ssi.optimizer import setup_optimizer
 from ssi.tokenizer import setup_llama3_tokenizer
 
+
+# Debug mode
+# `None` -> don't set any PyTorch global values
+# "default" or 0 -> don't error or warn on nondeterministic operations and additionally enable PyTorch CuDNN benchmark
+# "warn" or 1 -> warn on nondeterministic operations and disable PyTorch CuDNN benchmark
+# "error" or 2 -> error on nondeterministic operations and disable PyTorch CuDNN benchmark
+DEBUG_MODE: str | None = None
 
 SUPPORTED_DTYPES = [torch.float32, torch.bfloat16]
 
@@ -34,7 +44,7 @@ def compute_loss(batch: dict[str, torch.Tensor], model: TransformerDecoder, loss
         labels = labels.reshape(-1)
         logits = logits.reshape(-1, logits.size(-1))
     loss = loss_fn(logits, labels)
-    del logits  # free logits otherwise it peaks backward memory
+    del logits  # free logits otherwise peaks backward memory
     return loss
 
 
@@ -47,40 +57,74 @@ def validate_cfg(cfg: DictConfig) -> None:
 
 
 def train(cfg: DictConfig) -> None:
-    training.set_seed(seed=cfg.seed, debug_mode=cfg.debug_mode)
-    device_default: torch.device = get_device(cfg.device)
-    dtype_default: torch.dtype = get_dtype(cfg.dtype)
+    training.set_seed(seed=SEED, debug_mode=DEBUG_MODE)
+    DEVICE: torch.device = get_device(cfg.device)
+    DTYPE: torch.dtype = get_dtype(cfg.dtype)
     model: TransformerDecoder = setup_llama3_2_1b(
         cfg=cfg,
         model_state_dict=ckpt_dict[MODEL_KEY],  # NOTE require model ckpt
-        dtype_default=dtype_default,
-        device_default=device_default,
+        dtype_default=DTYPE,
+        device_default=DEVICE,
     )
-    model.to(device=device_default)
+    model.to(device=DEVICE)
     model.train()
-
     tokenizer, special_tokens = setup_llama3_tokenizer(**cfg.tokenizer)
-
     optimizer: AdamW = setup_optimizer(cfg.optimizer, model, ckpt_dict.get(OPTIMIZER_KEY))  # NOTE optim. ckpt optional
-
+    lr_scheduler: LambdaLR | None = setup_lr_scheduler(
+        cfg=cfg,
+        optimizer=optimizer,
+        last_epoch=-1 if ckpt_dict.get(STEPS_KEY) is None else ckpt_dict["EPOCHS_KEY"],  # if STEPS, require EPOCHS
+        current_step=ckpt_dict.get(STEPS_KEY, 0),
+        num_training_steps=cfg.max_steps,
+    )
     loss_fn = CEWithChunkedOutputLoss()
-
     if cfg.compile:
         training.compile_loss(loss_fn)
-
     if isinstance(loss_fn, CEWithChunkedOutputLoss):
         model.set_num_output_chunks(loss_fn.num_output_chunks)
-
-    lr_lambda = lambda epoch: 1.0
-    lr_scheduler: LRScheduler
-    sampler: DistributedSampler
-
-    dataset_train = setup_data(cfg_dataset=cfg.data.train, model_tokenizer=tokenizer)
-    dataset_train = setup_data(cfg_dataset=cfg.data.dev, model_tokenizer=tokenizer)
-
+    data_train, sampler_train = setup_data(cfg_dataset=cfg.data.train, model_tokenizer=tokenizer, loss_fn=loss_fn)
+    data_dev, sampler_dev = setup_data(cfg_dataset=cfg.data.dev, model_tokenizer=tokenizer, loss_fn=loss_fn)
     optimizer.zero_grad()  # zero gradients before training # NOTE make conditional for optimizer_in_bwd
+    t0 = time.perf_counter()
+    loss_running = 0.0
+    num_tokens = 0
+    global_step = ckpt_dict.get(STEPS_KEY, 0)
+    for epoch in range(ckpt_dict.get(EPOCHS_KEY, 0), cfg.epochs):
+        sampler_train.set_epoch(epoch)  # distinct seed each epoch
+        for i, batch in tqdm(enumerate(data_train)):
+            # TODO time each iteration
+            batch_to_device(batch, DEVICE)  # in-place
+            # TODO calculate number of non-pad tokens
+            num_tokens_curr = (batch["labels"] != loss_fn.ignore_index).sum()
+            num_tokens += num_tokens_curr
+            # loss is normalized -> multiply by number of tokens for renormalization later for grad. accum.
+            loss_curr = compute_loss(batch, model, loss_fn) * num_tokens_curr
+            loss_running += loss_curr
+            loss_curr.backward()
+            if (i + 1) % cfg.gradient_accumulation_steps == 0:
+                scale_grads(model, 1 / num_tokens)
+                if cfg.clip_grad_norm is not None:
+                    grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=float(cfg.clip_grad_norm))
+                optimizer.step()
+                optimizer.zero_grad(set_to_none=True)
+                if lr_scheduler is not None:
+                    lr_scheduler.step()
+                global_step += 1
+                loss_to_log = loss_running.item() / num_tokens
 
-    for epoch in range(cfg.epochs):
-        sampler.set_epoch(epoch)  # distinct seed each epoch
-        for i, batch in tqdm(enumerate(data)):
-            pass
+                # log metrics
+                if global_step % cfg.log_interval == 0:
+                    dur_step = time.perf_counter() - t0
+                    log_dict = {
+                        "loss_train": loss_to_log,
+                        "lr": get_lr(optimizer),
+                        "duration_step": dur_step,
+                        "tokens_per_second_per_gpu": num_tokens / dur_step,
+                    }
+                    if cfg.clip_grad_norm is not None:
+                        log_dict.update({"grad_norm": grad_norm})
+
+                # reset step-level tracker variables
+                loss_running = 0.0
+                num_tokens = 0
+                t0 = time.perf_counter()
