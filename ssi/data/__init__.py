@@ -29,8 +29,8 @@ def setup_data(
     cfg_dataset: DictConfig,
     model_tokenizer: Llama3Tokenizer,
     loss_fn: CEWithChunkedOutputLoss,
-) -> tuple[DistributedSampler, DataLoader]:
-    world_size, rank = get_world_size_and_rank()
+) -> tuple[DataLoader, DistributedSampler]:
+    world_size, rank = get_world_size_and_rank()  # more general
     shuffle = cfg_dataset.pop("shuffle")
     batch_size = cfg_dataset.pop("batch_size")
     packed = cfg_dataset.pop("packed", False)
@@ -55,7 +55,7 @@ def setup_data(
             else padded_collate_packed
         ),
     )
-    return sampler, dataloader
+    return dataloader, sampler
 
 
 def pack_dataset(dataset: Dataset, tokenizer: Llama3Tokenizer) -> PackedDataset:
