@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader, Dataset, DistributedSampler
 from torchtune.data import padded_collate_packed, padded_collate_sft
 from torchtune.datasets import PackedDataset
 from torchtune.models.llama3 import Llama3Tokenizer
+from torchtune.modules.loss import CEWithChunkedOutputLoss
 from torchtune.training import get_world_size_and_rank
 
 from ssi.data.sft import SFTDataset
@@ -24,7 +25,11 @@ logging.basicConfig(
 LOGGER = logging.getLogger(__name__)
 
 
-def setup_data(cfg_dataset: DictConfig, model_tokenizer: Llama3Tokenizer) -> tuple[DistributedSampler, DataLoader]:
+def setup_data(
+    cfg_dataset: DictConfig,
+    model_tokenizer: Llama3Tokenizer,
+    loss_fn: CEWithChunkedOutputLoss,
+) -> tuple[DistributedSampler, DataLoader]:
     world_size, rank = get_world_size_and_rank()
     shuffle = cfg_dataset.pop("shuffle")
     batch_size = cfg_dataset.pop("batch_size")
@@ -45,7 +50,7 @@ def setup_data(cfg_dataset: DictConfig, model_tokenizer: Llama3Tokenizer) -> tup
         sampler=sampler,
         drop_last=True,  # dropping last avoids shape issues with compile + flex attention
         collate_fn=(
-            partial(padded_collate_sft, padding_idx=self._tokenizer.pad_id, ignore_idx=self._loss_fn.ignore_index)
+            partial(padded_collate_sft, padding_idx=model_tokenizer.pad_id, ignore_idx=loss_fn.ignore_index)
             if not packed
             else padded_collate_packed
         ),
