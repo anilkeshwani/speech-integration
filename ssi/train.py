@@ -1,5 +1,6 @@
 import torch
 from omegaconf import DictConfig, OmegaConf
+from torch import Tensor
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR, LRScheduler
 from torch.utils.data import DataLoader, Dataset, DistributedSampler
@@ -27,7 +28,7 @@ def validate_cfg(cfg: DictConfig) -> None:
     if PRECISION_STR_TO_DTYPE.get(cfg.dtype) not in SUPPORTED_DTYPES:
         raise ValueError(f"Unsupported dtype: {cfg.dtype}. Supported dtypes: {SUPPORTED_DTYPES}")
 
-    if cfg.optimizer_in_bwd:
+    if cfg.optimizer_in_bwd or cfg.enable_activation_checkpointing or cfg.enable_activation_offloading:
         raise NotImplementedError
 
 
