@@ -38,7 +38,7 @@ def setup_llama3_2_1b(
     if cfg.enable_activation_checkpointing:
         raise NotImplementedError
         training.set_activation_checkpointing(model, auto_wrap_policy={modules.TransformerSelfAttentionLayer})
-    model.load_state_dict(model_state_dict)
+    model.load_state_dict(model_state_dict)  # load model weights
     training.validate_expected_param_dtype(model.named_parameters(), dtype=dtype_default)
     if cfg.enable_activation_offloading:
         raise NotImplementedError
