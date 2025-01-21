@@ -107,8 +107,7 @@ save_steps: 500 # checkpoint save frequency
 eval_steps: ${save_steps} # evaluation frequency
 
 # Logging
-metric_logger:
-  _component_: torchtune.training.metric_logging.WandBLogger
+wandb:
   log_dir: ${output_dir}/wandb
   project: speech-integration
   entity: null # automatically set to username based on API key

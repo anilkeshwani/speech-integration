@@ -13,6 +13,7 @@ from torchtune.modules import TransformerDecoder
 from torchtune.modules.loss import CEWithChunkedOutputLoss
 from torchtune.training import get_dtype, scale_grads
 from torchtune.training.lr_schedulers import get_lr
+from torchtune.training.metric_logging import WandBLogger
 from torchtune.training.precision import PRECISION_STR_TO_DTYPE
 from torchtune.utils import batch_to_device, get_device
 from tqdm import tqdm
@@ -60,6 +61,7 @@ def train(cfg: DictConfig) -> None:
     training.set_seed(seed=SEED, debug_mode=DEBUG_MODE)
     DEVICE: torch.device = get_device(cfg.device)
     DTYPE: torch.dtype = get_dtype(cfg.dtype)
+    wandb_logger = WandBLogger(cfg.wandb)
     model: TransformerDecoder = setup_llama3_2_1b(
         cfg=cfg,
         model_state_dict=ckpt_dict[MODEL_KEY],  # NOTE require model ckpt
@@ -109,8 +111,8 @@ def train(cfg: DictConfig) -> None:
                 optimizer.zero_grad(set_to_none=True)
                 if lr_scheduler is not None:
                     lr_scheduler.step()
-                global_step += 1
                 loss_to_log = loss_running.item() / num_tokens
+                global_step += 1
 
                 # log metrics
                 if global_step % cfg.log_interval == 0:
@@ -123,6 +125,7 @@ def train(cfg: DictConfig) -> None:
                     }
                     if cfg.clip_grad_norm is not None:
                         log_dict.update({"grad_norm": grad_norm})
+                    wandb_logger.log_dict(log_dict, step=global_step)
 
                 # reset step-level tracker variables
                 loss_running = 0.0
