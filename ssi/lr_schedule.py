@@ -41,8 +41,6 @@ def setup_lr_scheduler(
     last_epoch: int,
     current_step: int,
     num_training_steps: int,
-    num_warmup_steps: int,
-    num_cycles: float,
     optimizer_in_bwd: bool,
     optim_ckpt_wrapper=None,
 ) -> LambdaLR | None:
@@ -63,8 +61,8 @@ def setup_lr_scheduler(
         lr_lambda,
         num_training_steps=num_training_steps,
         current_step=current_step,
-        num_warmup_steps=num_warmup_steps,
-        num_cycles=num_cycles,
+        num_warmup_steps=cfg.lr_scheduler.num_warmup_steps,
+        num_cycles=cfg.lr_scheduler.num_cycles,
     )
 
     lr_scheduler = LambdaLR(optimizer, lr_lambda_partial, last_epoch)
