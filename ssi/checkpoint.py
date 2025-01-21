@@ -174,69 +174,20 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             # delete the state_dict to free up memory; TODO check if this del is needed
             del state_dict
             gc.collect()
+
         if self._model_type == ModelType.PHI3_MINI:
-            log_rank_zero(
-                logger=logger,
-                msg="Converting Phi-3 Mini weights from HF format."
-                "Note that conversion of adapter weights into PEFT format is not supported.",
-            )
-            from torchtune.models.phi3._convert_weights import phi3_hf_to_tune
-
-            converted_state_dict[training.MODEL_KEY] = phi3_hf_to_tune(merged_state_dict)
+            self.phi3_hf_to_tune(merged_state_dict, converted_state_dict)
         elif self._model_type == ModelType.REWARD:
-            from torchtune.rlhf.utils import reward_hf_to_tune
-
-            converted_state_dict[training.MODEL_KEY] = reward_hf_to_tune(
-                merged_state_dict,
-                num_heads=self._config["num_attention_heads"],
-                num_kv_heads=self._config["num_key_value_heads"],
-                dim=self._config["hidden_size"],
-            )
+            self.reward_hf_to_tune(merged_state_dict, converted_state_dict)
         elif self._model_type == ModelType.QWEN2:
-            from torchtune.models.qwen2._convert_weights import qwen2_hf_to_tune
-
-            converted_state_dict[training.MODEL_KEY] = qwen2_hf_to_tune(
-                merged_state_dict,
-                num_heads=self._config["num_attention_heads"],
-                num_kv_heads=self._config["num_key_value_heads"],
-                dim=self._config["hidden_size"],
-                tie_word_embeddings=self._config["tie_word_embeddings"],
-            )
+            self.qwen2_hf_to_tune(merged_state_dict, converted_state_dict)
         elif self._model_type == ModelType.LLAMA3_VISION:
-            from torchtune.models.llama3_2_vision._convert_weights import llama3_vision_hf_to_tune
-
-            text_config = self._config.get("text_config", {})
-            vision_config = self._config.get("vision_config", {})
-            converted_state_dict[training.MODEL_KEY] = llama3_vision_hf_to_tune(
-                merged_state_dict,
-                num_heads=text_config["num_attention_heads"],
-                num_kv_heads=text_config["num_key_value_heads"],
-                dim=text_config["hidden_size"],
-                head_dim=text_config.get("head_dim", None),
-                vocab_size=text_config["vocab_size"],
-                cross_attention_layers=text_config.get("cross_attention_layers", None),
-                encoder_dim=vision_config["hidden_size"],
-                tile_size=vision_config["image_size"],
-                num_tiles=vision_config["max_num_tiles"],
-                supported_aspect_ratios=vision_config.get("supported_aspect_ratios", None),
-            )
+            self.llama3_vision_hf_to_tune(merged_state_dict, converted_state_dict)
         elif self._model_type == ModelType.CLIP_TEXT:
-            from torchtune.models.clip._convert_weights import clip_text_hf_to_tune
-
-            converted_state_dict[training.MODEL_KEY] = clip_text_hf_to_tune(
-                merged_state_dict,
-            )
+            self.clip_text_hf_to_tune(merged_state_dict, converted_state_dict)
         elif self._model_type == ModelType.GEMMA2:
-            from torchtune.models.gemma2._convert_weights import gemma2_hf_to_tune
-
-            converted_state_dict[training.MODEL_KEY] = gemma2_hf_to_tune(
-                merged_state_dict,
-                num_heads=self._config["num_attention_heads"],
-                num_kv_heads=self._config["num_key_value_heads"],
-                dim=self._config["hidden_size"],
-                head_dim=self._config.get("head_dim", None),
-            )
-        else:
+            self.gemma2_hf_to_tune(merged_state_dict, converted_state_dict)
+        elif self._model_type in (ModelType.LLAMA2, ModelType.LLAMA3, ModelType.LLAMA3_2):
             converted_state_dict[training.MODEL_KEY] = convert_weights.hf_to_tune(
                 merged_state_dict,
                 num_heads=self._config["num_attention_heads"],
@@ -244,6 +195,8 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                 dim=self._config["hidden_size"],
                 head_dim=self._config.get("head_dim", None),
             )
+        else:
+            raise ValueError(f"Unsupported model type: {self._model_type}")
 
         if self._adapter_checkpoint:
             adapter_state_dict = safe_torch_load(self._adapter_checkpoint)
@@ -253,6 +206,80 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             recipe_state = safe_torch_load(self._recipe_checkpoint, mmap=False)
             converted_state_dict.update(recipe_state)
 
+        return converted_state_dict
+
+    def phi3_hf_to_tune(self, merged_state_dict, converted_state_dict):
+        log_rank_zero(
+            logger=logger,
+            msg="Converting Phi-3 Mini weights from HF format."
+            "Note that conversion of adapter weights into PEFT format is not supported.",
+        )
+        from torchtune.models.phi3._convert_weights import phi3_hf_to_tune
+
+        converted_state_dict[training.MODEL_KEY] = phi3_hf_to_tune(merged_state_dict)
+        return converted_state_dict
+
+    def reward_hf_to_tune(self, merged_state_dict, converted_state_dict):
+        from torchtune.rlhf.utils import reward_hf_to_tune
+
+        converted_state_dict[training.MODEL_KEY] = reward_hf_to_tune(
+            merged_state_dict,
+            num_heads=self._config["num_attention_heads"],
+            num_kv_heads=self._config["num_key_value_heads"],
+            dim=self._config["hidden_size"],
+        )
+        return converted_state_dict
+
+    def qwen2_hf_to_tune(self, merged_state_dict, converted_state_dict):
+        from torchtune.models.qwen2._convert_weights import qwen2_hf_to_tune
+
+        converted_state_dict[training.MODEL_KEY] = qwen2_hf_to_tune(
+            merged_state_dict,
+            num_heads=self._config["num_attention_heads"],
+            num_kv_heads=self._config["num_key_value_heads"],
+            dim=self._config["hidden_size"],
+            tie_word_embeddings=self._config["tie_word_embeddings"],
+        )
+        return converted_state_dict
+
+    def llama3_vision_hf_to_tune(self, merged_state_dict, converted_state_dict):
+        from torchtune.models.llama3_2_vision._convert_weights import llama3_vision_hf_to_tune
+
+        text_config = self._config.get("text_config", {})
+        vision_config = self._config.get("vision_config", {})
+        converted_state_dict[training.MODEL_KEY] = llama3_vision_hf_to_tune(
+            merged_state_dict,
+            num_heads=text_config["num_attention_heads"],
+            num_kv_heads=text_config["num_key_value_heads"],
+            dim=text_config["hidden_size"],
+            head_dim=text_config.get("head_dim", None),
+            vocab_size=text_config["vocab_size"],
+            cross_attention_layers=text_config.get("cross_attention_layers", None),
+            encoder_dim=vision_config["hidden_size"],
+            tile_size=vision_config["image_size"],
+            num_tiles=vision_config["max_num_tiles"],
+            supported_aspect_ratios=vision_config.get("supported_aspect_ratios", None),
+        )
+        return converted_state_dict
+
+    def clip_text_hf_to_tune(self, merged_state_dict, converted_state_dict):
+        from torchtune.models.clip._convert_weights import clip_text_hf_to_tune
+
+        converted_state_dict[training.MODEL_KEY] = clip_text_hf_to_tune(
+            merged_state_dict,
+        )
+        return converted_state_dict
+
+    def gemma2_hf_to_tune(self, merged_state_dict, converted_state_dict):
+        from torchtune.models.gemma2._convert_weights import gemma2_hf_to_tune
+
+        converted_state_dict[training.MODEL_KEY] = gemma2_hf_to_tune(
+            merged_state_dict,
+            num_heads=self._config["num_attention_heads"],
+            num_kv_heads=self._config["num_key_value_heads"],
+            dim=self._config["hidden_size"],
+            head_dim=self._config.get("head_dim", None),
+        )
         return converted_state_dict
 
     def save_checkpoint(
