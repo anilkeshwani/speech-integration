@@ -21,9 +21,9 @@ LOGGER = logging.getLogger(__name__)
 
 
 def lr_lambda(
+    num_training_steps: int,
     current_step: int,
     num_warmup_steps: int,
-    num_training_steps: int,
     num_cycles: float,
 ) -> float:
     # linear warmup phase
@@ -40,8 +40,8 @@ def setup_lr_scheduler(
     optimizer: Optimizer,
     last_epoch: int,
     current_step: int,
-    num_warmup_steps: int,
     num_training_steps: int,
+    num_warmup_steps: int,
     num_cycles: float,
     optimizer_in_bwd: bool,
     optim_ckpt_wrapper=None,
@@ -61,9 +61,9 @@ def setup_lr_scheduler(
     # Instantiate the learning rate scheduler
     lr_lambda_partial = partial(
         lr_lambda,
+        num_training_steps=num_training_steps,
         current_step=current_step,
         num_warmup_steps=num_warmup_steps,
-        num_training_steps=num_training_steps,
         num_cycles=num_cycles,
     )
 
