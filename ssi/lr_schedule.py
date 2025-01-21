@@ -59,7 +59,7 @@ def setup_lr_scheduler(
         optimizer = optimizer
 
     # Instantiate the learning rate scheduler
-    _lr_lambda = partial(
+    lr_lambda_partial = partial(
         lr_lambda,
         current_step=current_step,
         num_warmup_steps=num_warmup_steps,
@@ -67,7 +67,7 @@ def setup_lr_scheduler(
         num_cycles=num_cycles,
     )
 
-    lr_scheduler = LambdaLR(optimizer, _lr_lambda, last_epoch)
+    lr_scheduler = LambdaLR(optimizer, lr_lambda_partial, last_epoch)
 
     if optimizer_in_bwd:
         # Modify the scheduler for optimizer_in_bwd case
