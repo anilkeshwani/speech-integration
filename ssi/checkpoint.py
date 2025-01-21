@@ -400,9 +400,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                 save_file(model_state_dict, output_path, metadata={"format": "pt"})
 
             logger.info(
-                "Model checkpoint of size "
-                f"{os.path.getsize(output_path) / 1024**3:.2f} GiB "
-                f"saved to {output_path}"
+                f"Model checkpoint of size {os.path.getsize(output_path) / 1024**3:.2f} GiB saved to {output_path}"
             )
 
         # Save the appropriate index file based on serialization format
@@ -455,7 +453,6 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             self.save_full_model(state_dict, epoch)
 
         if training.ADAPTER_KEY in state_dict:
-
             # TODO: saving it "as is" is a requirement because, if we only save with
             # convert_weights.tune_to_peft_adapter_weights, we do NOT have a fn
             # convert_weights.peft_to_tune. The .pt format is not needed, but
@@ -464,9 +461,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             output_path.parent.mkdir(parents=True, exist_ok=True)
             torch.save(state_dict[training.ADAPTER_KEY], output_path)
             logger.info(
-                "Adapter checkpoint of size "
-                f"{os.path.getsize(output_path) / 1024**3:.2f} GiB "
-                f"saved to {output_path}"
+                f"Adapter checkpoint of size {os.path.getsize(output_path) / 1024**3:.2f} GiB saved to {output_path}"
             )
 
             if self._model_type == ModelType.PHI3_MINI:
@@ -492,19 +487,13 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                     torch.save(state_dict[training.ADAPTER_KEY], output_path)
                 else:
                     output_path = output_path.with_suffix(".safetensors")
-                    save_file(
-                        state_dict[training.ADAPTER_KEY],
-                        output_path,
-                        metadata={"format": "pt"},
-                    )
+                    save_file(state_dict[training.ADAPTER_KEY], output_path, metadata={"format": "pt"})
                 logger.info(
-                    "Adapter checkpoint of size "
-                    f"{os.path.getsize(output_path) / 1024**3:.2f} GiB "
-                    f"saved to {output_path}"
+                    f"Adapter checkpoint of size {os.path.getsize(output_path)/1024**3:.2f} GiB saved to {output_path}"
                 )
         elif adapter_only:
             raise ValueError(
-                "Adapter checkpoint not found in state_dict. Please ensure that the state_dict contains adapter weights."
+                "Adapter checkpoint not found in state_dict. Please ensure that the state_dict contains adapter weights"
             )
 
         if training.ADAPTER_CONFIG in state_dict:
