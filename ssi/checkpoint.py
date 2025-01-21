@@ -85,11 +85,10 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         output_dir: Path,
         recipe_checkpoint: Path | None = None,
         adapter_checkpoint: Path | None = None,
-        model_type: ModelType = ModelType.LLAMA3_2,
+        model_type: ModelType = ModelType.LLAMA3_2,  # type: ignore ; valid enum syntax
         safe_serialization: bool = True,
     ) -> None:
         self._checkpoint_dir = checkpoint_dir
-        self._resume_from_checkpoint: bool = recipe_checkpoint is not None
         self._safe_serialization = safe_serialization
         self._model_type = model_type
         self._output_dir = output_dir
@@ -123,7 +122,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             checkpoint_dir=self._checkpoint_dir,
         )
 
-        if self._resume_from_checkpoint:
+        if self._recipe_checkpoint is not None:
             logger.info(
                 "Resuming from checkpoint using:"
                 f"\n\tcheckpoint_paths: {[str(path) for path in self._checkpoint_paths]}"
@@ -250,7 +249,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             adapter_state_dict = safe_torch_load(self._adapter_checkpoint)
             converted_state_dict[training.ADAPTER_KEY] = adapter_state_dict
 
-        if self._resume_from_checkpoint:
+        if self._recipe_checkpoint is not None:
             recipe_state = safe_torch_load(self._recipe_checkpoint, mmap=False)
             converted_state_dict.update(recipe_state)
 
