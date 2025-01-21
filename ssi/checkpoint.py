@@ -85,12 +85,12 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         output_dir: Path,
         recipe_checkpoint: Path | None = None,
         adapter_checkpoint: Path | None = None,
-        model_type: ModelType = ModelType.LLAMA3_2,  # type: ignore ; valid enum syntax
+        model_type: str = "llama3_2",
         safe_serialization: bool = True,
     ) -> None:
         self._checkpoint_dir = checkpoint_dir
         self._safe_serialization = safe_serialization
-        self._model_type = model_type
+        self._model_type: ModelType = ModelType(model_type)
         self._output_dir = output_dir
         self._recipe_checkpoint = recipe_checkpoint
         self._adapter_checkpoint = adapter_checkpoint

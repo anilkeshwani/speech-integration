@@ -91,15 +91,14 @@ dtype: bf16
 
 # Checkpointing
 checkpointer:
-  _component_: torchtune.training.FullModelHFCheckpointer
-  checkpoint_dir: ${extended_models_dir}/${model_name}
-  checkpoint_files: [hf_model_0001_0.pt]
-  model_type: LLAMA3_2
+  checkpoint_dir: ???
+  checkpoint_files: ???
+  config_json: ???
+  output_dir: null # if null: ${experiments_root_dir}/${model_name}/${experiment_name}/${checkpoints}
   recipe_checkpoint: null
-  output_dir: # if null: ${experiments_root_dir}/${model_name}/${experiment_name}/${checkpoints}; was ${output_dir}
-  resume_from_checkpoint: False
   adapter_checkpoint: null
-  safe_serialization: False
+  model_type: "llama3_2"
+  safe_serialization: True
 
 save_steps: 500 # checkpoint save frequency
 

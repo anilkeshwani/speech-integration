@@ -18,6 +18,7 @@ from torchtune.training.precision import PRECISION_STR_TO_DTYPE
 from torchtune.utils import batch_to_device, get_device
 from tqdm import tqdm
 
+from ssi.checkpoint import FullModelHFCheckpointer
 from ssi.constants import EPOCHS_KEY, MODEL_KEY, OPTIMIZER_KEY, SEED, STEPS_KEY
 from ssi.data import setup_data
 from ssi.data.sft import SFTDataset
@@ -62,6 +63,14 @@ def train(cfg: DictConfig) -> None:
     DEVICE: torch.device = get_device(cfg.device)
     DTYPE: torch.dtype = get_dtype(cfg.dtype)
     wandb_logger = WandBLogger(cfg.wandb)
+
+    checkpointer = FullModelHFCheckpointer()
+    ckpt_dict = self._checkpointer.load_checkpoint()
+
+    if self._resume_from_checkpoint:
+        raise NotImplementedError
+        self._update_recipe_state(checkpoint_dict)  # TODO resolve all
+
     model: TransformerDecoder = setup_llama3_2_1b(
         cfg=cfg,
         model_state_dict=ckpt_dict[MODEL_KEY],  # NOTE require model ckpt
