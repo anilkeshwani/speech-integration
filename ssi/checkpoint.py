@@ -340,6 +340,91 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             head_dim=self._config.get("head_dim", None),
         )
 
+    def save_full_model(self, state_dict: dict[str, Any], epoch: int) -> None:
+        if self._weight_map is None:
+            raise ValueError("Weight map is not initialized. Please load a checkpoint before saving.")
+
+        match self._model_type:
+            case ModelType.PHI3_MINI:
+                self.phi3_tune_to_hf(state_dict)
+            case ModelType.REWARD:
+                self.reward_tune_to_hf(state_dict)
+            case ModelType.QWEN2:
+                self.qwen2_tune_to_hf(state_dict)
+            case ModelType.LLAMA3_VISION:
+                self.llama3_vision_tune_to_hf(state_dict)
+            case ModelType.GEMMA2:
+                self.gemma2_tune_to_hf(state_dict)
+            case ModelType.CLIP_TEXT:
+                raise NotImplementedError("Clip text conversion is not supported yet")  # strangely
+            case ModelType.LLAMA2 | ModelType.LLAMA3 | ModelType.LLAMA3_2:
+                state_dict[training.MODEL_KEY] = convert_weights.tune_to_hf(
+                    state_dict[training.MODEL_KEY],
+                    num_heads=self._config["num_attention_heads"],
+                    num_kv_heads=self._config["num_key_value_heads"],
+                    dim=self._config["hidden_size"],
+                    head_dim=self._config.get("head_dim", None),
+                )
+            case _:
+                raise ValueError(f"Unsupported model type: {self._model_type}")
+
+        # split the state_dict into separate dicts, one for each output checkpoint file, by _weight_map
+        split_state_dicts: Dict[str, Dict[str, torch.Tensor]] = {}
+        total_size = 0
+        for key, weight in state_dict[training.MODEL_KEY].items():
+            cpt_idx = self._weight_map[key]
+
+            # initialize dict
+            if cpt_idx not in split_state_dicts:
+                split_state_dicts[cpt_idx] = {}
+
+            split_state_dicts[cpt_idx].update({key: weight})
+            total_size += weight.numel() * weight.element_size()
+
+        # write the partitioned state dicts to the right checkpoint file
+        # e.g. model-00001-of-00004.safetensors, model-00002-of-00004.safetensors, etc
+        num_shards = len(split_state_dicts)
+        map_original_name_to_new_name = {}
+        for cpt_idx, model_state_dict in split_state_dicts.items():
+            # TODO: We should probably use the original shard name and just add a prefix
+            # however, having the SHARD_FNAME standardizes our checkpoints
+            shard_name = SHARD_FNAME.format(cpt_idx=f"{cpt_idx}".zfill(5), num_shards=f"{num_shards}".zfill(5))
+            map_original_name_to_new_name[cpt_idx] = shard_name
+            output_path = Path.joinpath(self._output_dir, f"epoch_{epoch}", shard_name)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            if not self._safe_serialization:
+                output_path = output_path.with_suffix(".bin")
+                torch.save(model_state_dict, output_path)
+            else:
+                output_path = output_path.with_suffix(".safetensors")
+                save_file(model_state_dict, output_path, metadata={"format": "pt"})
+
+            logger.info(
+                "Model checkpoint of size "
+                f"{os.path.getsize(output_path) / 1024**3:.2f} GiB "
+                f"saved to {output_path}"
+            )
+
+        # Save the appropriate index file based on serialization format
+        # e.g. {metadata: {total_size: 1234}, weight_map: {"key1": "model_0001.safetensors", "key2": "model_0002.safetensors"}}
+        if self._safe_serialization:
+            weight_map = {
+                k: map_original_name_to_new_name[cpt_idx] + ".safetensors" for k, cpt_idx in self._weight_map.items()
+            }
+            index_file_name = SAFETENSOR_INDEX_FNAME
+        else:
+            weight_map = {k: map_original_name_to_new_name[cpt_idx] + ".bin" for k, cpt_idx in self._weight_map.items()}
+            index_file_name = TORCH_INDEX_FNAME
+
+        index_path = Path.joinpath(self._output_dir, f"epoch_{epoch}", index_file_name)
+
+        index_data = {
+            "metadata": {"total_size": total_size},
+            "weight_map": weight_map,
+        }
+        with open(index_path, "w") as f:
+            json.dump(index_data, f, indent=2)
+
     def save_checkpoint(
         self,
         state_dict: dict[str, Any],
@@ -365,94 +450,9 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         Raises:
             ValueError: if ``adapter_only`` is True and adapter checkpoint not found in state_dict.
         """
-        if self._weight_map is None:
-            raise ValueError("Weight map is not initialized. Please load a checkpoint before saving.")
-
         # convert the state_dict back to hf format; do this inplace
         if not adapter_only:
-            match self._model_type:
-                case ModelType.PHI3_MINI:
-                    self.phi3_tune_to_hf(state_dict)
-                case ModelType.REWARD:
-                    self.reward_tune_to_hf(state_dict)
-                case ModelType.QWEN2:
-                    self.qwen2_tune_to_hf(state_dict)
-                case ModelType.LLAMA3_VISION:
-                    self.llama3_vision_tune_to_hf(state_dict)
-                case ModelType.GEMMA2:
-                    self.gemma2_tune_to_hf(state_dict)
-                case ModelType.CLIP_TEXT:
-                    raise NotImplementedError("Clip text conversion is not supported yet")  # strangely
-                case ModelType.LLAMA2 | ModelType.LLAMA3 | ModelType.LLAMA3_2:
-                    state_dict[training.MODEL_KEY] = convert_weights.tune_to_hf(
-                        state_dict[training.MODEL_KEY],
-                        num_heads=self._config["num_attention_heads"],
-                        num_kv_heads=self._config["num_key_value_heads"],
-                        dim=self._config["hidden_size"],
-                        head_dim=self._config.get("head_dim", None),
-                    )
-                case _:
-                    raise ValueError(f"Unsupported model type: {self._model_type}")
-
-            # split the state_dict into separate dicts, one for each output checkpoint file, by _weight_map
-            split_state_dicts: Dict[str, Dict[str, torch.Tensor]] = {}
-            total_size = 0
-            for key, weight in state_dict[training.MODEL_KEY].items():
-                cpt_idx = self._weight_map[key]
-
-                # initialize dict
-                if cpt_idx not in split_state_dicts:
-                    split_state_dicts[cpt_idx] = {}
-
-                split_state_dicts[cpt_idx].update({key: weight})
-                total_size += weight.numel() * weight.element_size()
-
-            # write the partitioned state dicts to the right checkpoint file
-            # e.g. model-00001-of-00004.safetensors, model-00002-of-00004.safetensors, etc
-            num_shards = len(split_state_dicts)
-            map_original_name_to_new_name = {}
-            for cpt_idx, model_state_dict in split_state_dicts.items():
-                # TODO: We should probably use the original shard name and just add a prefix
-                # however, having the SHARD_FNAME standardizes our checkpoints
-                shard_name = SHARD_FNAME.format(cpt_idx=f"{cpt_idx}".zfill(5), num_shards=f"{num_shards}".zfill(5))
-                map_original_name_to_new_name[cpt_idx] = shard_name
-                output_path = Path.joinpath(self._output_dir, f"epoch_{epoch}", shard_name)
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                if not self._safe_serialization:
-                    output_path = output_path.with_suffix(".bin")
-                    torch.save(model_state_dict, output_path)
-                else:
-                    output_path = output_path.with_suffix(".safetensors")
-                    save_file(model_state_dict, output_path, metadata={"format": "pt"})
-
-                logger.info(
-                    "Model checkpoint of size "
-                    f"{os.path.getsize(output_path) / 1024**3:.2f} GiB "
-                    f"saved to {output_path}"
-                )
-
-            # Save the appropriate index file based on serialization format
-            # e.g. {metadata: {total_size: 1234}, weight_map: {"key1": "model_0001.safetensors", "key2": "model_0002.safetensors"}}
-            if self._safe_serialization:
-                weight_map = {
-                    k: map_original_name_to_new_name[cpt_idx] + ".safetensors"
-                    for k, cpt_idx in self._weight_map.items()
-                }
-                index_file_name = SAFETENSOR_INDEX_FNAME
-            else:
-                weight_map = {
-                    k: map_original_name_to_new_name[cpt_idx] + ".bin" for k, cpt_idx in self._weight_map.items()
-                }
-                index_file_name = TORCH_INDEX_FNAME
-
-            index_path = Path.joinpath(self._output_dir, f"epoch_{epoch}", index_file_name)
-
-            index_data = {
-                "metadata": {"total_size": total_size},
-                "weight_map": weight_map,
-            }
-            with open(index_path, "w") as f:
-                json.dump(index_data, f, indent=2)
+            self.save_full_model(state_dict, epoch)
 
         if training.ADAPTER_KEY in state_dict:
 
