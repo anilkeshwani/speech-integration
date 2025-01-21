@@ -24,11 +24,7 @@ logging.basicConfig(
 LOGGER = logging.getLogger(__name__)
 
 
-def setup_data(
-    self,
-    cfg_dataset: DictConfig,
-    model_tokenizer: Llama3Tokenizer,
-) -> tuple[DistributedSampler, DataLoader]:
+def setup_data(cfg_dataset: DictConfig, model_tokenizer: Llama3Tokenizer) -> tuple[DistributedSampler, DataLoader]:
     world_size, rank = get_world_size_and_rank()
     shuffle = cfg_dataset.pop("shuffle")
     batch_size = cfg_dataset.pop("batch_size")
