@@ -175,28 +175,29 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             del state_dict
             gc.collect()
 
-        if self._model_type == ModelType.PHI3_MINI:
-            self.phi3_hf_to_tune(merged_state_dict, converted_state_dict)
-        elif self._model_type == ModelType.REWARD:
-            self.reward_hf_to_tune(merged_state_dict, converted_state_dict)
-        elif self._model_type == ModelType.QWEN2:
-            self.qwen2_hf_to_tune(merged_state_dict, converted_state_dict)
-        elif self._model_type == ModelType.LLAMA3_VISION:
-            self.llama3_vision_hf_to_tune(merged_state_dict, converted_state_dict)
-        elif self._model_type == ModelType.CLIP_TEXT:
-            self.clip_text_hf_to_tune(merged_state_dict, converted_state_dict)
-        elif self._model_type == ModelType.GEMMA2:
-            self.gemma2_hf_to_tune(merged_state_dict, converted_state_dict)
-        elif self._model_type in (ModelType.LLAMA2, ModelType.LLAMA3, ModelType.LLAMA3_2):
-            converted_state_dict[training.MODEL_KEY] = convert_weights.hf_to_tune(
-                merged_state_dict,
-                num_heads=self._config["num_attention_heads"],
-                num_kv_heads=self._config["num_key_value_heads"],
-                dim=self._config["hidden_size"],
-                head_dim=self._config.get("head_dim", None),
-            )
-        else:
-            raise ValueError(f"Unsupported model type: {self._model_type}")
+        match self._model_type:
+            case ModelType.PHI3_MINI:
+                self.phi3_hf_to_tune(merged_state_dict, converted_state_dict)
+            case ModelType.REWARD:
+                self.reward_hf_to_tune(merged_state_dict, converted_state_dict)
+            case ModelType.QWEN2:
+                self.qwen2_hf_to_tune(merged_state_dict, converted_state_dict)
+            case ModelType.LLAMA3_VISION:
+                self.llama3_vision_hf_to_tune(merged_state_dict, converted_state_dict)
+            case ModelType.CLIP_TEXT:
+                self.clip_text_hf_to_tune(merged_state_dict, converted_state_dict)
+            case ModelType.GEMMA2:
+                self.gemma2_hf_to_tune(merged_state_dict, converted_state_dict)
+            case ModelType.LLAMA2 | ModelType.LLAMA3 | ModelType.LLAMA3_2:
+                converted_state_dict[training.MODEL_KEY] = convert_weights.hf_to_tune(
+                    merged_state_dict,
+                    num_heads=self._config["num_attention_heads"],
+                    num_kv_heads=self._config["num_key_value_heads"],
+                    dim=self._config["hidden_size"],
+                    head_dim=self._config.get("head_dim", None),
+                )
+            case _:
+                raise ValueError(f"Unsupported model type: {self._model_type}")
 
         if self._adapter_checkpoint:
             adapter_state_dict = safe_torch_load(self._adapter_checkpoint)
