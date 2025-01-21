@@ -36,11 +36,11 @@ data:
     batch_size: 4 # passed to DataLoader
     shuffle: True # passed to DistributedSampler
     packed: False # passed to pack_dataset to create a PackedDataset
-
   dev:
+    # SFTDataset
     source: anilkeshwani/MLS_english_train_strat_sample_aligned_hubert
     # model_tokenizer taken from code
-    # inference: False for training, False for validation loss, True for validation inference
+    inference: False # False for training, False for validation loss, toggled to True in code for validation inference
     filter_fn: null
     train_on_input: True # set to true to prevent forgetting; will hyperparam. search over this
     column_map:
@@ -48,10 +48,14 @@ data:
       output: transcript
     new_system_prompt: "You will act as an automatic speech recognition (ASR) system. Transcribe the speech tokens into English text."
     image_dir: null
-    split: dev
-    shuffle: False
 
-    packed: False # not an argument to SFT dataset; popped off in script before creating dataset but kept with data cfg
+    # SFTDataset kwargs passed to datasets.load_dataset
+    split: dev # <- NOTE different from train
+
+    # not arguments to SFT dataset:
+    batch_size: 4 # passed to DataLoader
+    shuffle: False # passed to DistributedSampler # <- NOTE different from train
+    packed: False # passed to pack_dataset to create a PackedDataset
 
 # Optimization
 optimizer:

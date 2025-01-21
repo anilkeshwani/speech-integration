@@ -4,7 +4,6 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR, LRScheduler
 from torch.utils.data import DataLoader, Dataset, DistributedSampler
 from torchtune import config, modules, training
-from torchtune.datasets import PackedDataset
 from torchtune.models.llama3 import Llama3Tokenizer
 from torchtune.modules import TransformerDecoder
 from torchtune.modules.loss import CEWithChunkedOutputLoss
@@ -14,6 +13,7 @@ from torchtune.utils import batch_to_device, get_device
 from tqdm import tqdm
 
 from ssi.constants import MODEL_KEY, OPTIMIZER_KEY, SEED
+from ssi.data import setup_data
 from ssi.data.sft import SFTDataset
 from ssi.model import setup_llama3_2_1b
 from ssi.optimizer import setup_optimizer
@@ -60,28 +60,10 @@ def train(cfg: DictConfig) -> None:
     lr_scheduler: LRScheduler
     sampler: DistributedSampler
 
-    dataset_train = SFTDataset(
-        source=cfg.data.source,
-        model_tokenizer=cfg.data.source,
-        inference=cfg.data.source,
-        filter_fn=cfg.data.source,
-        train_on_input=cfg.data.source,
-        column_map=cfg.data.source,
-        new_system_prompt=cfg.data.source,
-        image_dir=cfg.data.source,
-        split=cfg.data.split,
-    )
-    dataset_dev: SFTDataset
+    dataset_train = setup_data(cfg_dataset=cfg.data.train, model_tokenizer=tokenizer)
+    dataset_train = setup_data(cfg_dataset=cfg.data.dev, model_tokenizer=tokenizer)
 
-    if cfg.data.packed:
-        if tokenizer.max_seq_len is None:
-            raise ValueError("PackedDataset requires a max_seq_len to be set on the tokenizer.")
-        return PackedDataset(ds, max_seq_len=tokenizer.max_seq_len)
-
-    if cfg.optimizer_in_bwd:
-        raise NotImplementedError
-    else:
-        optimizer.zero_grad()  # zero gradients before training
+    optimizer.zero_grad()  # zero gradients before training # NOTE make conditional for optimizer_in_bwd
 
     for epoch in range(cfg.epochs):
         sampler.set_epoch(epoch)  # distinct seed each epoch
