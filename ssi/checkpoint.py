@@ -370,28 +370,29 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
 
         # convert the state_dict back to hf format; do this inplace
         if not adapter_only:
-            if self._model_type == ModelType.PHI3_MINI:
-                self.phi3_tune_to_hf(state_dict)
-            elif self._model_type == ModelType.REWARD:
-                self.reward_tune_to_hf(state_dict)
-            elif self._model_type == ModelType.QWEN2:
-                self.qwen2_tune_to_hf(state_dict)
-            elif self._model_type == ModelType.LLAMA3_VISION:
-                self.llama3_vision_tune_to_hf(state_dict)
-            elif self._model_type == ModelType.GEMMA2:
-                self.gemma2_tune_to_hf(state_dict)
-            elif self._model_type == ModelType.CLIP_TEXT:
-                raise NotImplementedError("Clip text conversion is not supported yet")  # strangely
-            elif self._model_type in {ModelType.LLAMA2, ModelType.LLAMA3, ModelType.LLAMA3_2}:
-                state_dict[training.MODEL_KEY] = convert_weights.tune_to_hf(
-                    state_dict[training.MODEL_KEY],
-                    num_heads=self._config["num_attention_heads"],
-                    num_kv_heads=self._config["num_key_value_heads"],
-                    dim=self._config["hidden_size"],
-                    head_dim=self._config.get("head_dim", None),
-                )
-            else:
-                raise ValueError(f"Unsupported model type: {self._model_type}")
+            match self._model_type:
+                case ModelType.PHI3_MINI:
+                    self.phi3_tune_to_hf(state_dict)
+                case ModelType.REWARD:
+                    self.reward_tune_to_hf(state_dict)
+                case ModelType.QWEN2:
+                    self.qwen2_tune_to_hf(state_dict)
+                case ModelType.LLAMA3_VISION:
+                    self.llama3_vision_tune_to_hf(state_dict)
+                case ModelType.GEMMA2:
+                    self.gemma2_tune_to_hf(state_dict)
+                case ModelType.CLIP_TEXT:
+                    raise NotImplementedError("Clip text conversion is not supported yet")  # strangely
+                case ModelType.LLAMA2 | ModelType.LLAMA3 | ModelType.LLAMA3_2:
+                    state_dict[training.MODEL_KEY] = convert_weights.tune_to_hf(
+                        state_dict[training.MODEL_KEY],
+                        num_heads=self._config["num_attention_heads"],
+                        num_kv_heads=self._config["num_key_value_heads"],
+                        dim=self._config["hidden_size"],
+                        head_dim=self._config.get("head_dim", None),
+                    )
+                case _:
+                    raise ValueError(f"Unsupported model type: {self._model_type}")
 
             # split the state_dict into separate dicts, one for each output checkpoint file, by _weight_map
             split_state_dicts: Dict[str, Dict[str, torch.Tensor]] = {}
