@@ -27,9 +27,12 @@ def validate_cfg(cfg: DictConfig) -> None:
     if PRECISION_STR_TO_DTYPE.get(cfg.dtype) not in SUPPORTED_DTYPES:
         raise ValueError(f"Unsupported dtype: {cfg.dtype}. Supported dtypes: {SUPPORTED_DTYPES}")
 
+    if cfg.optimizer_in_bwd:
+        raise NotImplementedError
+
 
 def train(cfg: DictConfig) -> None:
-    training.set_seed(seed=cfg.seed)
+    training.set_seed(seed=cfg.seed, debug_mode=cfg.debug_mode)
     device_default: torch.device = get_device(cfg.device)
     dtype_default: torch.dtype = get_dtype(cfg.dtype)
     model: TransformerDecoder = setup_llama3_2_1b(

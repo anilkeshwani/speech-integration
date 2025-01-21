@@ -94,3 +94,10 @@ log_every_n_steps: 1
 log_peak_memory_stats: False
 save_steps: 500
 eval_steps: ${save_steps} # evaluation
+
+# Debug mode
+# `None` -> don't set any PyTorch global values
+# "default" or 0 -> don't error or warn on nondeterministic operations and additionally enable PyTorch CuDNN benchmark
+# "warn" or 1 -> warn on nondeterministic operations and disable PyTorch CuDNN benchmark
+# "error" or 2 -> error on nondeterministic operations and disable PyTorch CuDNN benchmark
+debug_mode: null
