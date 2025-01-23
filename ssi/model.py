@@ -33,7 +33,7 @@ def setup_llama3_2_1b(
         device_default: torch.device = get_device(cfg.device)
     with training.set_default_dtype(dtype_default), device_default:
         model = llama3_2(**configllama3_2_1b.parameters)
-    if cfg.compile_model:
+    if cfg.compile:
         training.compile_model(model)
     if cfg.enable_activation_checkpointing:
         raise NotImplementedError
