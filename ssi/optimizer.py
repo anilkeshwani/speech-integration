@@ -12,7 +12,7 @@ def setup_optimizer(
 ) -> AdamW:
     if cfg.optimizer_in_bwd:
         raise NotImplementedError
-    else:
+    else: # if...else... retained for skeleton when adding optimizer_in_bwd support
         optimizer = AdamW(model.parameters(), **cfg.optimizer)
         if optimzer_state_dict is not None:
             optimizer.load_state_dict(optimzer_state_dict)
