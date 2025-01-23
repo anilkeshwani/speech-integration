@@ -25,12 +25,11 @@ class ConfigLlama3_2:
         if not isinstance(n_dsus, int) or (n_dsus < 0):
             raise ValueError("n_dsus must be a non-negative integer")
         self._n_dsus = n_dsus
-    
 
     @property
     def parameters(self) -> dict:
         _dict = asdict(self)
-        _dict.pop("n_dsus")
+        _dict.pop("_n_dsus")
         return _dict
 
 
