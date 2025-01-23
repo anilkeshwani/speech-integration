@@ -1,16 +1,17 @@
+import logging
+import os
+import sys
 import time
 from typing import Any, Callable
 
 import hydra
 import torch
 from omegaconf import DictConfig, OmegaConf
-from torch import Tensor
+from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import LambdaLR, LRScheduler
+from torch.optim.lr_scheduler import LambdaLR
 from torch.optim.optimizer import StateDict
-from torch.utils.data import DataLoader, Dataset, DistributedSampler
-from torchtune import config, modules, training
-from torchtune.models.llama3 import Llama3Tokenizer
+from torchtune import training
 from torchtune.modules import TransformerDecoder
 from torchtune.modules.loss import CEWithChunkedOutputLoss
 from torchtune.training import get_dtype, scale_grads
@@ -21,14 +22,22 @@ from torchtune.utils import batch_to_device, get_device
 from tqdm import tqdm
 
 from ssi.checkpoint import FullModelHFCheckpointer
-from ssi.constants import EPOCHS_KEY, MODEL_KEY, OPTIMIZER_KEY, SEED, SEED_KEY, STEPS_KEY, TOTAL_EPOCHS_KEY
+from ssi.constants import EPOCHS_KEY, MODEL_KEY, OPTIMIZER_KEY, SEED, SEED_KEY, STEPS_KEY
 from ssi.data import setup_data
-from ssi.data.sft import SFTDataset
 from ssi.lr_schedule import setup_lr_scheduler
 from ssi.model import setup_llama3_2_1b
 from ssi.optimizer import setup_optimizer
 from ssi.tokenizer import setup_llama3_tokenizer
 
+
+logging.basicConfig(
+    format=LOG_FORMAT,
+    datefmt=LOG_DATEFMT,
+    level=os.environ.get("LOGLEVEL", LOG_LEVEL).upper(),
+    stream=sys.stdout,
+)
+
+LOGGER = logging.getLogger(__name__)
 
 # Debug mode
 # `None` -> don't set any PyTorch global values
@@ -59,6 +68,10 @@ def validate_cfg(cfg: DictConfig) -> None:
     if cfg.optimizer_in_bwd or cfg.enable_activation_checkpointing or cfg.enable_activation_offloading:
         raise NotImplementedError
 
+    missing_keys = OmegaConf.missing_keys(cfg)
+    if missing_keys:
+        raise ValueError(f"Missing keys in config: {missing_keys}")
+
 
 def resume_training_state(ckpt_dict: dict[str, Any]) -> tuple[int, int, StateDict]:
     if SEED != ckpt_dict[SEED_KEY]:
@@ -69,10 +82,11 @@ def resume_training_state(ckpt_dict: dict[str, Any]) -> tuple[int, int, StateDic
 @hydra.main(config_path="conf", config_name="sft.yaml", version_base=None)
 def train(cfg: DictConfig) -> None:
     validate_cfg(cfg)
+    LOGGER.info(OmegaConf.to_yaml(cfg, resolve=True, sort_keys=False))
     training.set_seed(seed=SEED, debug_mode=DEBUG_MODE)
     DEVICE: torch.device = get_device(cfg.device)
     DTYPE: torch.dtype = get_dtype(cfg.dtype)
-    wandb_logger = WandBLogger(cfg.wandb)
+    wandb_logger = WandBLogger(**cfg.wandb)
     checkpointer = FullModelHFCheckpointer(**cfg.checkpointer)
     ckpt_dict = checkpointer.load_checkpoint()
     model: TransformerDecoder = setup_llama3_2_1b(
