@@ -88,19 +88,19 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         model_type: str = "llama3_2",
         safe_serialization: bool = True,
     ) -> None:
-        self._checkpoint_dir = checkpoint_dir
-        self._safe_serialization = safe_serialization
-        self._model_type: ModelType = ModelType(model_type)
-        self._output_dir = output_dir
-        self._recipe_checkpoint = recipe_checkpoint
-        self._adapter_checkpoint = adapter_checkpoint
+        self.checkpoint_dir = checkpoint_dir
+        self.safe_serialization = safe_serialization
+        self.model_type: ModelType = ModelType(model_type)
+        self.output_dir = output_dir
+        self.recipe_checkpoint = recipe_checkpoint
+        self.adapter_checkpoint = adapter_checkpoint
 
-        check_outdir_not_in_ckptdir(ckpt_dir=self._checkpoint_dir, out_dir=self._output_dir)
+        check_outdir_not_in_ckptdir(ckpt_dir=self.checkpoint_dir, out_dir=self.output_dir)
 
-        if self._recipe_checkpoint is not None and not self._recipe_checkpoint.is_file():
-            raise FileNotFoundError(f"Recipe checkpoint file {recipe_checkpoint} not found.")
+        if self.recipe_checkpoint is not None and not self.recipe_checkpoint.is_file():
+            raise FileNotFoundError(f"Recipe checkpoint file {self.recipe_checkpoint} not found.")
 
-        self._output_dir.mkdir(parents=True, exist_ok=True)  # TODO
+        self.output_dir.mkdir(parents=True, exist_ok=True)  # TODO
 
         # weight_map: state_dict key -> checkpoint mapping to partition state dict into output checkpoint files
         self._weight_map: dict[str, str] | None = None  # NOTE initialised to None; updated during checkpoint loading
@@ -109,7 +109,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
 
         # repo_id necessary to save adapter config for HF compatibility. JSON produced and saved at download step.
         # contents are {"repo_id": "some_model/some_model_version"}
-        repo_id_path = Path.joinpath(self._checkpoint_dir, REPO_ID_FNAME).with_suffix(".json")
+        repo_id_path = Path.joinpath(self.checkpoint_dir, REPO_ID_FNAME).with_suffix(".json")
         self.repo_id = None
         if repo_id_path.exists():
             with open(repo_id_path, "r") as json_file:
@@ -118,17 +118,17 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
 
         self._checkpoint_paths = get_model_checkpoint_paths(
             checkpoint_files=checkpoint_files,
-            checkpoint_dir=self._checkpoint_dir,
+            checkpoint_dir=self.checkpoint_dir,
         )
 
         logger.info(f"Resuming from checkpoint(s): {[str(path) for path in self._checkpoint_paths]}")
         logger.info(
-            f"Resuming optimizer and recipe state from: {self._recipe_checkpoint}"
-            if self._recipe_checkpoint
+            f"Resuming optimizer and recipe state from: {self.recipe_checkpoint}"
+            if self.recipe_checkpoint
             else "Initializing optimizer and recipe state from cold."
         )
-        if self._adapter_checkpoint:
-            logger.info(f"Resuming adapter from checkpoint: {self._adapter_checkpoint}")
+        if self.adapter_checkpoint:
+            logger.info(f"Resuming adapter from checkpoint: {self.adapter_checkpoint}")
 
     def load_checkpoint(self) -> Dict[str, Any]:
         """
@@ -139,7 +139,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         write the state dict correctly in ``save_checkpoint``.
 
         Before returning, the model state dict is converted to a torchtune-compatible format using
-        the appropriate convert_weights function (depending on ``self._model_type``).
+        the appropriate convert_weights function (depending on ``self.model_type``).
 
         Returns:
             state_dict (Dict[str, Any]): torchtune checkpoint state dict
@@ -175,7 +175,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             del state_dict
             gc.collect()
 
-        match self._model_type:
+        match self.model_type:
             case ModelType.PHI3_MINI:
                 self.phi3_hf_to_tune(merged_state_dict, converted_state_dict)
             case ModelType.REWARD:
@@ -197,14 +197,14 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                     head_dim=self._config.get("head_dim", None),
                 )
             case _:
-                raise ValueError(f"Unsupported model type: {self._model_type}")
+                raise ValueError(f"Unsupported model type: {self.model_type}")
 
-        if self._adapter_checkpoint:
-            adapter_state_dict = safe_torch_load(self._adapter_checkpoint)
+        if self.adapter_checkpoint:
+            adapter_state_dict = safe_torch_load(self.adapter_checkpoint)
             converted_state_dict[training.ADAPTER_KEY] = adapter_state_dict
 
-        if self._recipe_checkpoint is not None:
-            recipe_state = safe_torch_load(self._recipe_checkpoint, mmap=False)
+        if self.recipe_checkpoint is not None:
+            recipe_state = safe_torch_load(self.recipe_checkpoint, mmap=False)
             converted_state_dict.update(recipe_state)
 
         return converted_state_dict
@@ -344,7 +344,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         if self._weight_map is None:
             raise ValueError("Weight map is not initialized. Please load a checkpoint before saving.")
 
-        match self._model_type:
+        match self.model_type:
             case ModelType.PHI3_MINI:
                 self.phi3_tune_to_hf(state_dict)
             case ModelType.REWARD:
@@ -366,7 +366,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                     head_dim=self._config.get("head_dim", None),
                 )
             case _:
-                raise ValueError(f"Unsupported model type: {self._model_type}")
+                raise ValueError(f"Unsupported model type: {self.model_type}")
 
         # split the state_dict into separate dicts, one for each output checkpoint file, by _weight_map
         split_state_dicts: Dict[str, Dict[str, torch.Tensor]] = {}
@@ -390,9 +390,9 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             # however, having the SHARD_FNAME standardizes our checkpoints
             shard_name = SHARD_FNAME.format(cpt_idx=f"{cpt_idx}".zfill(5), num_shards=f"{num_shards}".zfill(5))
             map_original_name_to_new_name[cpt_idx] = shard_name
-            output_path = Path.joinpath(self._output_dir, f"epoch_{epoch}", shard_name)
+            output_path = Path.joinpath(self.output_dir, f"epoch_{epoch}", shard_name)
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            if not self._safe_serialization:
+            if not self.safe_serialization:
                 output_path = output_path.with_suffix(".bin")
                 torch.save(model_state_dict, output_path)
             else:
@@ -405,7 +405,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
 
         # Save the appropriate index file based on serialization format
         # e.g. {metadata: {total_size: 1234}, weight_map: {"key1": "model_0001.safetensors", "key2": "model_0002.safetensors"}}
-        if self._safe_serialization:
+        if self.safe_serialization:
             weight_map = {
                 k: map_original_name_to_new_name[cpt_idx] + ".safetensors" for k, cpt_idx in self._weight_map.items()
             }
@@ -414,7 +414,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             weight_map = {k: map_original_name_to_new_name[cpt_idx] + ".bin" for k, cpt_idx in self._weight_map.items()}
             index_file_name = TORCH_INDEX_FNAME
 
-        index_path = Path.joinpath(self._output_dir, f"epoch_{epoch}", index_file_name)
+        index_path = Path.joinpath(self.output_dir, f"epoch_{epoch}", index_file_name)
 
         index_data = {
             "metadata": {"total_size": total_size},
@@ -457,18 +457,18 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             # convert_weights.tune_to_peft_adapter_weights, we do NOT have a fn
             # convert_weights.peft_to_tune. The .pt format is not needed, but
             # it is an easy way to distinguish the adapters. Ideally we should save only one.
-            output_path = Path.joinpath(self._output_dir, f"epoch_{epoch}", ADAPTER_MODEL_FNAME).with_suffix(".pt")
+            output_path = Path.joinpath(self.output_dir, f"epoch_{epoch}", ADAPTER_MODEL_FNAME).with_suffix(".pt")
             output_path.parent.mkdir(parents=True, exist_ok=True)
             torch.save(state_dict[training.ADAPTER_KEY], output_path)
             logger.info(
                 f"Adapter checkpoint of size {os.path.getsize(output_path) / 1024**3:.2f} GiB saved to {output_path}"
             )
 
-            if self._model_type == ModelType.PHI3_MINI:
+            if self.model_type == ModelType.PHI3_MINI:
                 logger.warning(
                     "Saving Phi-3 Mini adapter weights to PEFT format is not supported, saving to torchtune format instead"
                 )
-            elif self._model_type == ModelType.LLAMA3_VISION:
+            elif self.model_type == ModelType.LLAMA3_VISION:
                 logger.warning(
                     "Saving Llama3.2 Vision adapter weights to PEFT format is not supported, saving to torchtune format instead"
                 )
@@ -480,9 +480,9 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                     dim=self._config["hidden_size"],
                     head_dim=self._config.get("head_dim", None),
                 )
-                output_path = Path.joinpath(self._output_dir, f"epoch_{epoch}", ADAPTER_MODEL_FNAME)
+                output_path = Path.joinpath(self.output_dir, f"epoch_{epoch}", ADAPTER_MODEL_FNAME)
                 output_path.parent.mkdir(parents=True, exist_ok=True)
-                if not self._safe_serialization:
+                if not self.safe_serialization:
                     output_path = output_path.with_suffix(".bin")
                     torch.save(state_dict[training.ADAPTER_KEY], output_path)
                 else:
@@ -497,9 +497,9 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             )
 
         if training.ADAPTER_CONFIG in state_dict:
-            if self._model_type == ModelType.PHI3_MINI:
+            if self.model_type == ModelType.PHI3_MINI:
                 logger.warning("PEFT integration for Phi-3 Mini is not supported, skipping adapter config save")
-            elif self._model_type == ModelType.LLAMA3_VISION:
+            elif self.model_type == ModelType.LLAMA3_VISION:
                 logger.warning("PEFT integration for Llama3.2 Vision is not supported, skipping adapter config save")
             else:
                 state_dict[training.ADAPTER_CONFIG] = convert_weights.tune_to_peft_adapter_config(
@@ -507,7 +507,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                     base_model_name_or_path=self.repo_id,
                 )
 
-                output_path = Path.joinpath(self._output_dir, f"epoch_{epoch}", ADAPTER_CONFIG_FNAME).with_suffix(
+                output_path = Path.joinpath(self.output_dir, f"epoch_{epoch}", ADAPTER_CONFIG_FNAME).with_suffix(
                     ".json"
                 )
                 with open(output_path, "w") as f:
@@ -521,8 +521,8 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         # Save all files in ckpt_dir, except model weights and mapping, to output_dir/epoch_{epoch}
         # So its easy to run inference with the model using this epoch's checkpoint
         copy_files(
-            self._checkpoint_dir,
-            Path.joinpath(self._output_dir, f"epoch_{epoch}"),
+            self.checkpoint_dir,
+            Path.joinpath(self.output_dir, f"epoch_{epoch}"),
             ignore_suffixes=SUFFIXES_TO_NOT_COPY,
         )
 
@@ -532,7 +532,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             _ = state_dict.pop(training.MODEL_KEY, None)
             _ = state_dict.pop(training.ADAPTER_KEY, None)
             _ = state_dict.pop(training.ADAPTER_CONFIG, None)
-            output_path = Path.joinpath(self._output_dir, RECIPE_STATE_DIRNAME, "recipe_state.pt")
+            output_path = Path.joinpath(self.output_dir, RECIPE_STATE_DIRNAME, "recipe_state.pt")
             output_path.parent.mkdir(parents=True, exist_ok=True)
             torch.save(state_dict, output_path)
             logger.info(
