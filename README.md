@@ -28,8 +28,22 @@ conda create -n ssi python=3.10.6 -y &&
     pip install --no-dependencies git+https://github.com/anilkeshwani/speech-text-alignment.git
 ```
 
+Get shell completions for the configurations from Hydra for the duration of the Bash session by running:
+
+```bash
+eval "$(python ssi/train.py -sc install=bash)"
+```
+
 If you want to use pre-commit remember to install hooks:
 
 ```bash
 pre-commit install --install-hooks
+```
+
+## Supervised Fine-tuning
+
+Run supervised fine-tuning for ASR with:
+
+```bash
+python ssi/train.py
 ```
