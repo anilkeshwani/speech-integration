@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Protocol, Union
 
 import torch
+from omegaconf import ListConfig, OmegaConf
 from safetensors.torch import save_file
 from torchtune import training
 from torchtune.models import convert_weights
@@ -94,6 +95,8 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         self.output_dir = Path(output_dir)
         self.recipe_checkpoint = Path(recipe_checkpoint) if recipe_checkpoint is not None else None
         self.adapter_checkpoint = Path(adapter_checkpoint) if adapter_checkpoint else None
+        if isinstance(checkpoint_files, ListConfig):
+            checkpoint_files = OmegaConf.to_object(checkpoint_files)
 
         check_outdir_not_in_ckptdir(ckpt_dir=self.checkpoint_dir, out_dir=self.output_dir)
 
