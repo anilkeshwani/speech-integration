@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 import time
+from pathlib import Path
 from typing import Any, Callable
 
 import hydra
@@ -73,6 +74,14 @@ def validate_cfg(cfg: DictConfig) -> None:
         raise ValueError(f"Missing keys in config: {missing_keys}")
 
 
+def resolve_checkpointer_output_dir(cfg: DictConfig, wandb_logger: WandBLogger) -> Path:
+    if wandb_logger._wandb.run is None:
+        raise RuntimeError("wandb run not initialized")
+    run_name = wandb_logger._wandb.run.name
+    run_id = wandb_logger._wandb.run.id
+    return Path(cfg.experiments_root_dir, cfg.model_name, f"{run_name}-id_{run_id}", "checkpoints")
+
+
 def resume_training_state(ckpt_dict: dict[str, Any]) -> tuple[int, int, StateDict]:
     if SEED != ckpt_dict[SEED_KEY]:
         raise ValueError("Config value for seed does not match the checkpoint value")
@@ -82,11 +91,12 @@ def resume_training_state(ckpt_dict: dict[str, Any]) -> tuple[int, int, StateDic
 @hydra.main(config_path="conf", config_name="sft.yaml", version_base=None)
 def train(cfg: DictConfig) -> None:
     validate_cfg(cfg)
-    LOGGER.info(OmegaConf.to_yaml(cfg, resolve=True, sort_keys=False))
     training.set_seed(seed=SEED, debug_mode=DEBUG_MODE)
     DEVICE: torch.device = get_device(cfg.device)
     DTYPE: torch.dtype = get_dtype(cfg.dtype)
     wandb_logger = WandBLogger(**cfg.wandb)
+    if cfg.checkpointer.output_dir is None:
+        cfg.checkpointer.output_dir = resolve_checkpointer_output_dir(cfg, wandb_logger)
     checkpointer = FullModelHFCheckpointer(**cfg.checkpointer)
     ckpt_dict = checkpointer.load_checkpoint()
     model: TransformerDecoder = setup_llama3_2_1b(
@@ -105,8 +115,8 @@ def train(cfg: DictConfig) -> None:
     lr_scheduler: LambdaLR | None = setup_lr_scheduler(
         cfg=cfg,
         optimizer=optimizer,
-        last_epoch=-1 if ckpt_dict.get(STEPS_KEY) is None else ckpt_dict["EPOCHS_KEY"],  # if STEPS, require EPOCHS
-        current_step=ckpt_dict.get(STEPS_KEY, 0),
+        last_epoch=-1 if global_step == 0 else epochs_run,  # NOTE check with global_step stricter and correct
+        current_step=global_step,
         num_training_steps=cfg.max_steps,
     )
     loss_fn = CEWithChunkedOutputLoss()
@@ -120,6 +130,7 @@ def train(cfg: DictConfig) -> None:
     t0 = time.perf_counter()
     loss_running = 0.0
     num_tokens = 0
+    LOGGER.info(OmegaConf.to_yaml(cfg, resolve=True, sort_keys=False))
     for epoch in range(epochs_run, cfg.epochs):
         sampler_train.set_epoch(epoch)  # distinct seed each epoch
         for i, batch in tqdm(enumerate(data_train)):

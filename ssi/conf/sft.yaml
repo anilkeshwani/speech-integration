@@ -1,10 +1,10 @@
 # Experiment management
 extended_models_dir: /mnt/scratch-artemis/anilkeshwani/models/extended/torchtune/
-experiments_root_dir: /mnt/scratch-artemis/anilkeshwani/experiments
 model_name: Llama-3.2-1B-5000-dsus
+experiments_root_dir: /mnt/scratch-artemis/anilkeshwani/experiments
 output_dir: ${experiments_root_dir}/${model_name}
-experiment_name: null # if null, set to W&B run name
 
+# DSUs
 n_dsus: 5000
 
 # Tokenizer - config for setup_llama3_tokenizer -> Llama3Tokenizer
@@ -67,7 +67,7 @@ optimizer:
   fused: True
 epochs: 5
 max_steps: null # if unset, set according to the number of epochs and the number of steps per epoch
-batch_size: 4 # effective batch size was 144 via bs=12 and grad. accum. 12 for TinyLlama
+batch_size: 4
 gradient_accumulation_steps: 16
 clip_grad_norm: null
 
@@ -94,7 +94,7 @@ checkpointer:
   checkpoint_dir: ???
   checkpoint_files: ???
   config_json: ???
-  output_dir: null # if null: ${experiments_root_dir}/${model_name}/${experiment_name}/${checkpoints}
+  output_dir: null # if null, set in code to ${experiments_root_dir}/${model_name}/${experiment_name}/checkpoints
   recipe_checkpoint: null
   adapter_checkpoint: null
   model_type: "llama3_2"
