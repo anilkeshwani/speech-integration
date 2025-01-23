@@ -79,21 +79,21 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
 
     def __init__(
         self,
-        checkpoint_dir: Path,
+        checkpoint_dir: Path | str,
         checkpoint_files: list[str] | dict[str, str],
-        config_json: Path,
-        output_dir: Path,
-        recipe_checkpoint: Path | None = None,
-        adapter_checkpoint: Path | None = None,
+        config_json: Path | str,
+        output_dir: Path | str,
+        recipe_checkpoint: Path | str | None = None,
+        adapter_checkpoint: Path | str | None = None,
         model_type: str = "llama3_2",
         safe_serialization: bool = True,
     ) -> None:
-        self.checkpoint_dir = checkpoint_dir
+        self.checkpoint_dir = Path(checkpoint_dir)
         self.safe_serialization = safe_serialization
         self.model_type: ModelType = ModelType(model_type)
-        self.output_dir = output_dir
-        self.recipe_checkpoint = recipe_checkpoint
-        self.adapter_checkpoint = adapter_checkpoint
+        self.output_dir = Path(output_dir)
+        self.recipe_checkpoint = Path(recipe_checkpoint) if recipe_checkpoint is not None else None
+        self.adapter_checkpoint = Path(adapter_checkpoint) if adapter_checkpoint else None
 
         check_outdir_not_in_ckptdir(ckpt_dir=self.checkpoint_dir, out_dir=self.output_dir)
 
@@ -105,7 +105,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         # weight_map: state_dict key -> checkpoint mapping to partition state dict into output checkpoint files
         self._weight_map: dict[str, str] | None = None  # NOTE initialised to None; updated during checkpoint loading
 
-        self._config = json.loads(config_json.read_text())  # contains model params needed for state dict conversion
+        self._config = json.loads(Path(config_json).read_text())  # gives model params needed for state dict conversion
 
         # repo_id necessary to save adapter config for HF compatibility. JSON produced and saved at download step.
         # contents are {"repo_id": "some_model/some_model_version"}
