@@ -1,6 +1,7 @@
 import time
 from typing import Callable
 
+import hydra
 import torch
 from omegaconf import DictConfig, OmegaConf
 from torch import Tensor
@@ -58,6 +59,7 @@ def validate_cfg(cfg: DictConfig) -> None:
         raise NotImplementedError
 
 
+@hydra.main(config_path="conf", config_name="sft.yaml", version_base=None)
 def train(cfg: DictConfig) -> None:
     training.set_seed(seed=SEED, debug_mode=DEBUG_MODE)
     DEVICE: torch.device = get_device(cfg.device)
@@ -140,3 +142,7 @@ def train(cfg: DictConfig) -> None:
                 loss_running = 0.0
                 num_tokens = 0
                 t0 = time.perf_counter()
+
+
+if __name__ == "__main__":
+    train()
