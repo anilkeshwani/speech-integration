@@ -1,5 +1,5 @@
 import time
-from typing import Callable
+from typing import Any, Callable
 
 import hydra
 import torch
@@ -7,6 +7,7 @@ from omegaconf import DictConfig, OmegaConf
 from torch import Tensor
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR, LRScheduler
+from torch.optim.optimizer import StateDict
 from torch.utils.data import DataLoader, Dataset, DistributedSampler
 from torchtune import config, modules, training
 from torchtune.models.llama3 import Llama3Tokenizer
@@ -20,7 +21,7 @@ from torchtune.utils import batch_to_device, get_device
 from tqdm import tqdm
 
 from ssi.checkpoint import FullModelHFCheckpointer
-from ssi.constants import EPOCHS_KEY, MODEL_KEY, OPTIMIZER_KEY, SEED, STEPS_KEY
+from ssi.constants import EPOCHS_KEY, MODEL_KEY, OPTIMIZER_KEY, SEED, SEED_KEY, STEPS_KEY, TOTAL_EPOCHS_KEY
 from ssi.data import setup_data
 from ssi.data.sft import SFTDataset
 from ssi.lr_schedule import setup_lr_scheduler
@@ -36,7 +37,7 @@ from ssi.tokenizer import setup_llama3_tokenizer
 # "error" or 2 -> error on nondeterministic operations and disable PyTorch CuDNN benchmark
 DEBUG_MODE: str | None = None
 
-SUPPORTED_DTYPES = [torch.float32, torch.bfloat16]
+SUPPORTED_DTYPES: set[torch.dtype] = {torch.float32, torch.bfloat16}
 
 
 def compute_loss(batch: dict[str, torch.Tensor], model: TransformerDecoder, loss_fn: Callable) -> torch.Tensor:
@@ -59,20 +60,21 @@ def validate_cfg(cfg: DictConfig) -> None:
         raise NotImplementedError
 
 
+def resume_training_state(ckpt_dict: dict[str, Any]) -> tuple[int, int, StateDict]:
+    if SEED != ckpt_dict[SEED_KEY]:
+        raise ValueError("Config value for seed does not match the checkpoint value")
+    return ckpt_dict[EPOCHS_KEY], ckpt_dict[STEPS_KEY], ckpt_dict[OPTIMIZER_KEY]
+
+
 @hydra.main(config_path="conf", config_name="sft.yaml", version_base=None)
 def train(cfg: DictConfig) -> None:
+    validate_cfg(cfg)
     training.set_seed(seed=SEED, debug_mode=DEBUG_MODE)
     DEVICE: torch.device = get_device(cfg.device)
     DTYPE: torch.dtype = get_dtype(cfg.dtype)
     wandb_logger = WandBLogger(cfg.wandb)
-
-    checkpointer = FullModelHFCheckpointer()
+    checkpointer = FullModelHFCheckpointer(**cfg.checkpointer)
     ckpt_dict = checkpointer.load_checkpoint()
-
-    if self._resume_from_checkpoint:
-        raise NotImplementedError
-        self._update_recipe_state(checkpoint_dict)  # TODO resolve all
-
     model: TransformerDecoder = setup_llama3_2_1b(
         cfg=cfg,
         model_state_dict=ckpt_dict[MODEL_KEY],  # NOTE require model ckpt
@@ -82,7 +84,10 @@ def train(cfg: DictConfig) -> None:
     model.to(device=DEVICE)
     model.train()
     tokenizer, special_tokens = setup_llama3_tokenizer(**cfg.tokenizer)
-    optimizer: AdamW = setup_optimizer(cfg.optimizer, model, ckpt_dict.get(OPTIMIZER_KEY))  # NOTE optim. ckpt optional
+    epochs_run, global_step, optimizer_state = 0, 0, None
+    if checkpointer.recipe_checkpoint is not None:  # cfg.checkpoint.recipe_checkpoint Path
+        epochs_run, global_step, optimizer_state = resume_training_state(ckpt_dict)
+    optimizer: AdamW = setup_optimizer(cfg.optimizer, model, optimizer_state)
     lr_scheduler: LambdaLR | None = setup_lr_scheduler(
         cfg=cfg,
         optimizer=optimizer,
@@ -101,8 +106,7 @@ def train(cfg: DictConfig) -> None:
     t0 = time.perf_counter()
     loss_running = 0.0
     num_tokens = 0
-    global_step = ckpt_dict.get(STEPS_KEY, 0)
-    for epoch in range(ckpt_dict.get(EPOCHS_KEY, 0), cfg.epochs):
+    for epoch in range(epochs_run, cfg.epochs):
         sampler_train.set_epoch(epoch)  # distinct seed each epoch
         for i, batch in tqdm(enumerate(data_train)):
             # TODO time each iteration
