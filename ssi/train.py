@@ -1,4 +1,5 @@
 import logging
+import math
 import os
 import sys
 import time
@@ -24,7 +25,7 @@ from tqdm import tqdm
 
 from ssi.checkpoint import FullModelHFCheckpointer
 from ssi.constants import EPOCHS_KEY, MODEL_KEY, OPTIMIZER_KEY, SEED, SEED_KEY, STEPS_KEY
-from ssi.data import setup_data
+from ssi.data import setup_sft_data
 from ssi.lr_schedule import setup_lr_scheduler
 from ssi.model import setup_llama3_2_1b
 from ssi.optimizer import setup_optimizer
@@ -123,19 +124,19 @@ def train(cfg: DictConfig) -> None:
         training.compile_loss(loss_fn)
     if isinstance(loss_fn, CEWithChunkedOutputLoss):
         model.set_num_output_chunks(loss_fn.num_output_chunks)
-    data_train, sampler_train = setup_data(cfg_dataset=cfg.data.train, model_tokenizer=tokenizer, loss_fn=loss_fn)
-    data_dev, sampler_dev = setup_data(cfg_dataset=cfg.data.dev, model_tokenizer=tokenizer, loss_fn=loss_fn)
+    data_train, sampler_train = setup_sft_data(cfg_dataset=cfg.data.train, model_tokenizer=tokenizer, loss_fn=loss_fn)
+    data_dev, sampler_dev = setup_sft_data(cfg_dataset=cfg.data.dev, model_tokenizer=tokenizer, loss_fn=loss_fn)
     optimizer.zero_grad()  # zero gradients before training # NOTE make conditional for optimizer_in_bwd
     t0 = time.perf_counter()
     loss_running = 0.0
     num_tokens = 0
+    steps_per_epoch = len(data_train) // cfg.gradient_accumulation_steps
+    n_epochs = math.ceil(cfg.max_steps / steps_per_epoch)
     LOGGER.info(OmegaConf.to_yaml(cfg, resolve=True, sort_keys=False))
-    for epoch in range(epochs_run, cfg.epochs):
+    for epoch in range(epochs_run, n_epochs):
         sampler_train.set_epoch(epoch)  # distinct seed each epoch
         for i, batch in tqdm(enumerate(data_train)):
-            # TODO time each iteration
             batch_to_device(batch, DEVICE)  # in-place
-            # TODO calculate number of non-pad tokens
             num_tokens_curr = (batch["labels"] != loss_fn.ignore_index).sum()
             num_tokens += num_tokens_curr
             # loss is normalized -> multiply by number of tokens for renormalization later for grad. accum.

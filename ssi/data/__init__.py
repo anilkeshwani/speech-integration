@@ -26,7 +26,7 @@ logging.basicConfig(
 LOGGER = logging.getLogger(__name__)
 
 
-def setup_data(
+def setup_sft_data(
     cfg_dataset: DictConfig,
     model_tokenizer: Llama3Tokenizer,
     loss_fn: CEWithChunkedOutputLoss,
