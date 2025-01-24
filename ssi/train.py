@@ -54,7 +54,7 @@ SUPPORTED_DTYPES: set[torch.dtype] = {torch.float32, torch.bfloat16}
 def compute_loss(batch: dict[str, torch.Tensor], model: TransformerDecoder, loss_fn: Callable) -> torch.Tensor:
     labels = batch.pop("labels")  # shape [b, s] needed for the loss not the model
     logits = model(**batch)  # NOTE add activation offloading context
-    labels = torch.hstack((labels[..., 1:], torch.full_like(labels[..., -1], loss_fn.ignore_index)))
+    labels = torch.hstack((labels[..., 1:], torch.full_like(labels[..., -1:], loss_fn.ignore_index)))
     if not isinstance(logits, list):
         labels = labels.reshape(-1)
         logits = logits.reshape(-1, logits.size(-1))
