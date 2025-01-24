@@ -65,8 +65,7 @@ optimizer:
   weight_decay: 0.01
   amsgrad: False
   fused: True
-epochs: 5
-max_steps: null # if unset, set according to the number of epochs and the number of steps per epoch
+max_steps: 10
 batch_size: 4
 gradient_accumulation_steps: 16
 clip_grad_norm: null
