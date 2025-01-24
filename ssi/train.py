@@ -111,7 +111,7 @@ def train(cfg: DictConfig) -> None:
     epochs_run, global_step, optimizer_state = 0, 0, None
     if checkpointer.recipe_checkpoint is not None:  # cfg.checkpoint.recipe_checkpoint Path
         epochs_run, global_step, optimizer_state = resume_training_state(ckpt_dict)
-    optimizer: AdamW = setup_optimizer(cfg.optimizer, model, optimizer_state)
+    optimizer: AdamW = setup_optimizer(cfg, model, optimizer_state)
     lr_scheduler: LambdaLR | None = setup_lr_scheduler(
         cfg=cfg,
         optimizer=optimizer,

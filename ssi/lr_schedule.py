@@ -8,6 +8,7 @@ from omegaconf import DictConfig
 from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LambdaLR
+from torchtune.training.lr_schedulers import get_cosine_schedule_with_warmup, get_lr
 
 
 logging.basicConfig(
@@ -20,26 +21,11 @@ logging.basicConfig(
 LOGGER = logging.getLogger(__name__)
 
 
-def lr_lambda(
-    num_training_steps: int,
-    current_step: int,
-    num_warmup_steps: int,
-    num_cycles: float,
-) -> float:
-    # linear warmup phase
-    if current_step < num_warmup_steps:
-        return current_step / max(1, num_warmup_steps)
-    # cosine
-    progress = (current_step - num_warmup_steps) / max(1, num_training_steps - num_warmup_steps)
-    cosine_lr_multiple = 0.5 * (1.0 + math.cos(math.pi * num_cycles * 2.0 * progress))
-    return max(0.0, cosine_lr_multiple)
-
-
 def setup_lr_scheduler(
     cfg: DictConfig,
     optimizer: Optimizer,
-    last_epoch: int,
-    current_step: int,
+    global_step: int,
+    num_warmup_steps: int,
     num_training_steps: int,
     optimizer_in_bwd: bool = False,  # for future impl.
     optim_ckpt_wrapper=None,  # for future impl.
@@ -56,16 +42,9 @@ def setup_lr_scheduler(
         # Standard case: use the single optimizer
         optimizer = optimizer
 
-    # Instantiate the learning rate scheduler
-    lr_lambda_partial = partial(
-        lr_lambda,
-        num_training_steps=num_training_steps,
-        current_step=current_step,
-        num_warmup_steps=cfg.lr_scheduler.num_warmup_steps,
-        num_cycles=cfg.lr_scheduler.num_cycles,
-    )
-
-    lr_scheduler = LambdaLR(optimizer, lr_lambda_partial, last_epoch)
+    # NOTE PyTorch LR schedulers have the extremely misleadingly name `last_epoch` parameter, which is in fact the
+    # global step in the cosine annealing with warmup regime, where we require step-level granularity
+    get_cosine_schedule_with_warmup(optimizer, 
 
     if optimizer_in_bwd:
         # Modify the scheduler for optimizer_in_bwd case
