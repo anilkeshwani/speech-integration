@@ -143,7 +143,7 @@ class SFTDataset(Dataset):
 
     def __getitem__(self, index: int) -> dict[str, Any]:
         sample = self._data[index]
-        return self._prepare_sample(sample) | dict(sample)
+        return self._prepare_sample(sample)  # | dict(sample)
 
     def _prepare_sample(self, sample: Mapping[str, Any]) -> dict[str, Any]:
         transformed_sample = self._message_transform(sample, self._inference)
