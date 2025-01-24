@@ -8,7 +8,7 @@ from omegaconf import DictConfig
 from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LambdaLR
-from torchtune.training.lr_schedulers import get_cosine_schedule_with_warmup, get_lr
+from torchtune.training.lr_schedulers import get_cosine_schedule_with_warmup
 
 
 logging.basicConfig(
@@ -25,26 +25,29 @@ def setup_lr_scheduler(
     cfg: DictConfig,
     optimizer: Optimizer,
     global_step: int,
-    num_warmup_steps: int,
     num_training_steps: int,
-    optimizer_in_bwd: bool = False,  # for future impl.
-    optim_ckpt_wrapper=None,  # for future impl.
+    # arguments for future implementation of optimizer_in_bwd
+    optimizer_in_bwd: bool = False,
+    optim_ckpt_wrapper=None,
 ) -> LambdaLR | None:
-    if cfg.lr_scheduler is None:
+    if cfg.get("lr_scheduler") is None:
         LOGGER.info("No learning rate scheduler configured. Using constant learning rate.")
         return None
 
     if optimizer_in_bwd:
         raise NotImplementedError
-        # Use the first optimizer from the wrapper to represent the learning rate
-        optimizer = next(iter(optim_ckpt_wrapper.optim_map.values()))
+        optimizer = next(iter(optim_ckpt_wrapper.optim_map.values()))  # get lr from first optimizer in wrapper
     else:
-        # Standard case: use the single optimizer
-        optimizer = optimizer
+        optimizer = optimizer  # standard case: use the single optimizer
 
     # NOTE PyTorch LR schedulers have the extremely misleadingly name `last_epoch` parameter, which is in fact the
     # global step in the cosine annealing with warmup regime, where we require step-level granularity
-    get_cosine_schedule_with_warmup(optimizer, 
+    lr_scheduler = get_cosine_schedule_with_warmup(
+        optimizer,
+        num_training_steps=num_training_steps,
+        last_epoch=global_step,
+        **cfg.lr_scheduler,
+    )
 
     if optimizer_in_bwd:
         # Modify the scheduler for optimizer_in_bwd case
