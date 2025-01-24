@@ -34,6 +34,7 @@ data:
 
     # not arguments to SFT dataset:
     batch_size: 4 # passed to DataLoader
+    drop_last: True # passed to DataLoader
     shuffle: True # passed to DistributedSampler
     packed: False # passed to pack_dataset to create a PackedDataset
   dev:
@@ -54,6 +55,7 @@ data:
 
     # not arguments to SFT dataset:
     batch_size: 4 # passed to DataLoader
+    drop_last: False # passed to DataLoader
     shuffle: False # passed to DistributedSampler # <- NOTE different from train
     packed: False # passed to pack_dataset to create a PackedDataset
 

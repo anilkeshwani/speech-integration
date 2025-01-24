@@ -37,6 +37,7 @@ def setup_data(
     # NOTE we mutate the cfg_dataset, even if we restore the struct setting
     shuffle = cfg_dataset.pop("shuffle")
     batch_size = cfg_dataset.pop("batch_size")
+    drop_last = cfg_dataset.pop("drop_last")
     packed = cfg_dataset.pop("packed", False)
 
     if isinstance(cfg_dataset, ListConfig):
@@ -52,7 +53,7 @@ def setup_data(
         dataset=dataset,
         batch_size=batch_size,
         sampler=sampler,
-        drop_last=True,  # dropping last avoids shape issues with compile + flex attention
+        drop_last=drop_last,  # dropping last avoids shape issues with compile + flex attention
         collate_fn=(
             partial(padded_collate_sft, padding_idx=model_tokenizer.pad_id, ignore_idx=loss_fn.ignore_index)
             if not packed
