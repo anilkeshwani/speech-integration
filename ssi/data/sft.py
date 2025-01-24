@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional
 
+import datasets
 import numpy as np
 from datasets import load_dataset
 from sardalign.utils import dsu2pua
@@ -10,6 +11,8 @@ from torchtune.data._common import CROSS_ENTROPY_IGNORE_IDX
 from torchtune.data._messages import validate_messages
 from torchtune.data._utils import load_image
 from torchtune.models.llama3 import Llama3Tokenizer
+
+from ssi.constants import RESERVED_BATCH_KEYS
 
 
 class SFTDataset(Dataset):
@@ -116,7 +119,11 @@ class SFTDataset(Dataset):
             image_dir=image_dir,
         )
         self._model_tokenizer = model_tokenizer
-        self._data = load_dataset(source, **load_dataset_kwargs)
+        self._data: datasets.Dataset = load_dataset(source, **load_dataset_kwargs)
+        if not isinstance(self._data, datasets.Dataset):
+            raise TypeError(f"Expected a datasets.Dataset object but found {type(self._data)}")
+        if any(k in self._data.features for k in RESERVED_BATCH_KEYS):
+            raise ValueError(f"Dataset contains reserved keys: {RESERVED_BATCH_KEYS}")
         if filter_fn is not None:
             self._data = self._data.filter(filter_fn)
         self._inference = inference
@@ -134,9 +141,9 @@ class SFTDataset(Dataset):
     def __len__(self):
         return len(self._data)
 
-    def __getitem__(self, index: int) -> tuple[dict[str, Any], Any]:
+    def __getitem__(self, index: int) -> dict[str, Any]:
         sample = self._data[index]
-        return self._prepare_sample(sample), sample
+        return self._prepare_sample(sample) | dict(sample)
 
     def _prepare_sample(self, sample: Mapping[str, Any]) -> dict[str, Any]:
         transformed_sample = self._message_transform(sample, self._inference)
