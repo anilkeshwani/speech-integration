@@ -3,7 +3,8 @@ import os
 import sys
 from functools import partial
 
-from omegaconf import DictConfig, ListConfig
+import omegaconf
+from omegaconf import DictConfig, ListConfig, OmegaConf
 from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
 from torch.utils.data import DataLoader, Dataset, DistributedSampler
 from torchtune.data import padded_collate_packed, padded_collate_sft
@@ -30,7 +31,10 @@ def setup_data(
     model_tokenizer: Llama3Tokenizer,
     loss_fn: CEWithChunkedOutputLoss,
 ) -> tuple[DataLoader, DistributedSampler]:
+    cfg_dataset_is_struct = OmegaConf.is_struct(cfg_dataset)
+    OmegaConf.set_struct(cfg_dataset, False)
     world_size, rank = get_world_size_and_rank()  # more general
+    # NOTE we mutate the cfg_dataset, even if we restore the struct setting
     shuffle = cfg_dataset.pop("shuffle")
     batch_size = cfg_dataset.pop("batch_size")
     packed = cfg_dataset.pop("packed", False)
@@ -55,6 +59,7 @@ def setup_data(
             else padded_collate_packed
         ),
     )
+    OmegaConf.set_struct(cfg_dataset, cfg_dataset_is_struct)
     return dataloader, sampler
 
 
