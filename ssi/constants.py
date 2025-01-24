@@ -28,3 +28,7 @@ assert RNG_KEY == "rng_state"
 # TODO remove this - strongly dislike this from torchtune - included as a reminder of functionality conflict
 # MAX_STEPS_KEY: str = training.MAX_STEPS_KEY
 # assert MAX_STEPS_KEY == "max_steps_per_epoch"
+
+# Keys required in the batch as accepted by torchtune's collate functions - used to avoid conflicts when returning
+# additional fields from a dataset (e.g. sample IDs to relate generations to ground truth transcripts in ASR evaluation)
+RESERVED_BATCH_KEYS: set[str] = {"tokens", "mask", "labels"}
