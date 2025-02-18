@@ -19,8 +19,9 @@ from torchtune.datasets import ConcatDataset
 from torchtune.generation import generate
 from torchtune.modules import TransformerDecoder
 from torchtune.recipe_interfaces import FTRecipeInterface
-from torchtune.training import DummyProfiler, PROFILER_KEY
+from torchtune.training import DummyProfiler, get_dtype, PROFILER_KEY
 from torchtune.training.metric_logging import WandBLogger
+from torchtune.utils import batch_to_device, get_device
 from tqdm import tqdm
 
 from ssi.tokenizer import setup_llama3_tokenizer
@@ -136,8 +137,8 @@ class FullFinetuneRecipeSingleDevice(FTRecipeInterface):
         validate_cfg(cfg=cfg)
 
         # hardware & precision
-        self.device = utils.get_device(device=cfg.device)
-        self.dtype = training.get_dtype(cfg.dtype, device=self.device)
+        self.device = get_device(device=cfg.device)
+        self.dtype = get_dtype(cfg.dtype, device=self.device)
         if self.dtype == torch.float16:
             raise NotImplementedError("Full fp16 training is not supported with this recipe. Use bf16 or fp32 instead.")
 
@@ -586,7 +587,7 @@ class FullFinetuneRecipeSingleDevice(FTRecipeInterface):
                 ):
                     torch.cuda.memory._record_memory_history()
 
-                utils.batch_to_device(batch, self.device)
+                batch_to_device(batch, self.device)
                 num_tokens += batch["tokens"].numel()  # TODO if not packed, surely this is meaningless (pad tokens)
                 # num_tokens += (batch["tokens"] != self.tokenizer.pad_id).sum().item()  # TODO think it should be this
 
@@ -626,7 +627,7 @@ class FullFinetuneRecipeSingleDevice(FTRecipeInterface):
                         self.model.eval()
                         with torch.inference_mode():
                             for i_dev, dev_batch in enumerate(self.data_dev):
-                                utils.batch_to_device(dev_batch, self.device)
+                                batch_to_device(dev_batch, self.device)
                                 dev_loss_batch = self.loss_step(dev_batch)
                                 LOGGER.info(
                                     f"Epoch {curr_epoch + 1:03d} | "
