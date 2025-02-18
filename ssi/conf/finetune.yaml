@@ -1,8 +1,8 @@
 # Experiment management
 model_name: Llama-3.2-1B-5000-dsus
-output_dir: ${experiments_root_dir}/${model_name}
 extended_models_dir: /mnt/scratch-artemis/anilkeshwani/models/extended/
 experiments_root_dir: /mnt/scratch-artemis/anilkeshwani/experiments
+output_dir: ${experiments_root_dir}/${model_name}
 experiment_name: null # if null, set to W&B run name
 
 # Model Arguments
@@ -74,7 +74,7 @@ optimizer:
 
 # Learning rate scheduler
 lr_scheduler:
-  _component_: torchtune.modules.lr_schedulers.get_cosine_schedule_with_warmup
+  _component_: torchtune.training.lr_schedulers.get_cosine_schedule_with_warmup
   num_warmup_steps: 0 # The number of steps for the warmup phase.
   num_cycles: 0.5 # The number of waves in the cosine schedule. Defaults to 0.5. (decrease from the max value to 0 following a half-cosine).
   last_epoch: -1 # The index of the last epoch when resuming training. Defaults to -1. Set to self.global_step - 1 in recipe.
@@ -112,7 +112,7 @@ checkpointer:
   resume_from_checkpoint: False
   safe_serialization: False
 
-save_steps: 2 # 382 is approx. every hour given 1.7 iters/sec and 16 grad. accum. steps
+save_steps: 50 # 382 is approx. every hour given 1.7 iters/sec and 16 grad. accum. steps
 
 # Logging
 metric_logger:
