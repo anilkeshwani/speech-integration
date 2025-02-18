@@ -23,8 +23,8 @@ from torchtune.training import DummyProfiler, PROFILER_KEY
 from torchtune.training.metric_logging import WandBLogger
 from tqdm import tqdm
 
-from tunalm.extendllama3 import setup_llama3_tokenizer
-from tunalm.utils import get_terminal_width, info_excepthook
+from ssi.tokenizer import setup_llama3_tokenizer
+from ssi.utils import get_terminal_width, info_excepthook
 
 
 sys.excepthook = info_excepthook
@@ -34,6 +34,31 @@ LOGGER = utils.get_logger("DEBUG")
 # Constants
 # NOTE torchtune.training exports STEPS_KEY = "steps_run" # number of steps completed thus far - for PPO
 GLOBAL_STEP_KEY: str = "global_step"
+
+
+def validate_cfg(cfg: DictConfig) -> None:
+    if cfg.gradient_accumulation_steps > 1 and cfg.optimizer_in_bwd:
+        raise RuntimeError(
+            "Gradient accumulation is not supported with optimizer in bwd."
+            "Set gradient_accumulation_steps=1 or optimizer_in_bwd=False."
+        )
+    if bool(cfg.epochs) == bool(cfg.max_steps):
+        raise ValueError("Either epochs or max_steps must be set, but not both.")
+
+    if not cfg.log_every_n_steps:
+        raise ValueError("log_every_n_steps must be set in the config.")
+
+    if not cfg.save_steps:
+        raise ValueError("save_steps must be set in the config.")
+
+    if cfg.eval_steps % cfg.log_every_n_steps != 0:
+        raise ValueError("eval_steps must be an integer multiple by log_every_n_steps")
+
+    if cfg.save_steps % cfg.eval_steps != 0:
+        raise ValueError("save_steps must be an integer multiple by eval_steps")
+
+    if cfg.max_steps is not None:
+        raise NotImplementedError("Implement max_steps support.")  # TODO implement max_steps support
 
 
 class FullFinetuneRecipeSingleDevice(FTRecipeInterface):
@@ -108,7 +133,7 @@ class FullFinetuneRecipeSingleDevice(FTRecipeInterface):
     """
 
     def __init__(self, cfg: DictConfig) -> None:
-        self.validate_cfg(cfg=cfg)
+        validate_cfg(cfg=cfg)
 
         # hardware & precision
         self.device = utils.get_device(device=cfg.device)
@@ -139,30 +164,6 @@ class FullFinetuneRecipeSingleDevice(FTRecipeInterface):
         # initialize counters for epochs run and global steps; updated downstream by the checkpoint loader
         self.epochs_run = 0
         self.global_step = 0
-
-    def validate_cfg(self, cfg: DictConfig) -> None:
-        if cfg.gradient_accumulation_steps > 1 and cfg.optimizer_in_bwd:
-            raise RuntimeError(
-                "Gradient accumulation is not supported with optimizer in bwd."
-                "Set gradient_accumulation_steps=1 or optimizer_in_bwd=False."
-            )
-        if bool(cfg.epochs) == bool(cfg.max_steps):
-            raise ValueError("Either epochs or max_steps must be set, but not both.")
-
-        if not cfg.log_every_n_steps:
-            raise ValueError("log_every_n_steps must be set in the config.")
-
-        if not cfg.save_steps:
-            raise ValueError("save_steps must be set in the config.")
-
-        if cfg.eval_steps % cfg.log_every_n_steps != 0:
-            raise ValueError("eval_steps must be an integer multiple by log_every_n_steps")
-
-        if cfg.save_steps % cfg.eval_steps != 0:
-            raise ValueError("save_steps must be an integer multiple by eval_steps")
-
-        if cfg.max_steps is not None:
-            raise NotImplementedError("Implement max_steps support.")  # TODO implement max_steps support
 
     def setup_checkpointer(self, cfg: DictConfig) -> DictConfig:
         assert self.experiment_name is not None, "Experiment name must be defined before setting up checkpointer"
