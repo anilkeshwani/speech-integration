@@ -14,50 +14,74 @@ tokenizer:
   prompt_template: null
   verbose: True
 
-# Data: NOTE Arguments to setup_data, not SFTDataset
+# Data
 data:
   train:
-    # SFTDataset
-    source: anilkeshwani/MLS_english_train_strat_sample_aligned_hubert
-    # model_tokenizer taken from code
-    inference: False # False for training, False for validation loss, toggled to True in code for validation inference
-    filter_fn: null
-    train_on_input: True # set to true to prevent forgetting; will hyperparam. search over this
-    column_map:
-      input: speech_tokens
-      output: transcript
-    new_system_prompt: "You will act as an automatic speech recognition (ASR) system. Transcribe the speech tokens into English text."
-    image_dir: null
-
-    # SFTDataset kwargs passed to datasets.load_dataset
+    _component_: torchtune.datasets.text_completion_dataset
+    source: anilkeshwani/MLS_english_train_strat_sample_aligned_hubert_interleaved # specified as a HF dataset
+    column: text
     split: train
-
-    # not arguments to SFT dataset:
-    batch_size: 4 # passed to DataLoader
-    drop_last: True # passed to DataLoader
-    shuffle: True # passed to DistributedSampler
-    packed: False # passed to pack_dataset to create a PackedDataset
+    add_eos: True
+    shuffle: True
+    packed: False # packing performed a priori at training time and leads to CPU RAM overflow for e.g. MLS interleaved
+    # split_across_pack: True # set to True for CPT; set to False for SFT
+    # tokenizer: # set above
+    # NOTE Following arguments copied across from text_completion_dataset docstring for reference
+    # filter_fn: Optional[Callable] = None
+    # **load_dataset_kwargs: Dict[str, Any]
   dev:
-    # SFTDataset
-    source: anilkeshwani/MLS_english_train_strat_sample_aligned_hubert
-    # model_tokenizer taken from code
-    inference: False # False for training, False for validation loss, toggled to True in code for validation inference
-    filter_fn: null
-    train_on_input: True # set to true to prevent forgetting; will hyperparam. search over this
-    column_map:
-      input: speech_tokens
-      output: transcript
-    new_system_prompt: "You will act as an automatic speech recognition (ASR) system. Transcribe the speech tokens into English text."
-    image_dir: null
+    _component_: torchtune.datasets.text_completion_dataset
+    source: anilkeshwani/MLS_english_train_strat_sample_aligned_hubert_interleaved # specified as a HF dataset
+    column: text
+    split: dev
+    add_eos: True
+    shuffle: False
+    packed: False
 
-    # SFTDataset kwargs passed to datasets.load_dataset
-    split: dev # <- NOTE different from train
+# # Data: NOTE Arguments to setup_data, not SFTDataset
+# data:
+#   train:
+#     # SFTDataset
+#     source: anilkeshwani/MLS_english_train_strat_sample_aligned_hubert
+#     # model_tokenizer taken from code
+#     inference: False # False for training, False for validation loss, toggled to True in code for validation inference
+#     filter_fn: null
+#     train_on_input: True # set to true to prevent forgetting; will hyperparam. search over this
+#     column_map:
+#       input: speech_tokens
+#       output: transcript
+#     new_system_prompt: "You will act as an automatic speech recognition (ASR) system. Transcribe the speech tokens into English text."
+#     image_dir: null
 
-    # not arguments to SFT dataset:
-    batch_size: 4 # passed to DataLoader
-    drop_last: False # passed to DataLoader
-    shuffle: False # passed to DistributedSampler # <- NOTE different from train
-    packed: False # passed to pack_dataset to create a PackedDataset
+#     # SFTDataset kwargs passed to datasets.load_dataset
+#     split: train
+
+#     # not arguments to SFT dataset:
+#     batch_size: 4 # passed to DataLoader
+#     drop_last: True # passed to DataLoader
+#     shuffle: True # passed to DistributedSampler
+#     packed: False # passed to pack_dataset to create a PackedDataset
+#   dev:
+#     # SFTDataset
+#     source: anilkeshwani/MLS_english_train_strat_sample_aligned_hubert
+#     # model_tokenizer taken from code
+#     inference: False # False for training, False for validation loss, toggled to True in code for validation inference
+#     filter_fn: null
+#     train_on_input: True # set to true to prevent forgetting; will hyperparam. search over this
+#     column_map:
+#       input: speech_tokens
+#       output: transcript
+#     new_system_prompt: "You will act as an automatic speech recognition (ASR) system. Transcribe the speech tokens into English text."
+#     image_dir: null
+
+#     # SFTDataset kwargs passed to datasets.load_dataset
+#     split: dev # <- NOTE different from train
+
+#     # not arguments to SFT dataset:
+#     batch_size: 4 # passed to DataLoader
+#     drop_last: False # passed to DataLoader
+#     shuffle: False # passed to DistributedSampler # <- NOTE different from train
+#     packed: False # passed to pack_dataset to create a PackedDataset
 
 # Optimization
 optimizer:
