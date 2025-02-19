@@ -144,32 +144,21 @@ def train(cfg: DictConfig) -> None:
         sampler_train.set_epoch(epoch)  # distinct seed each epoch
         for i, batch in tqdm(enumerate(data_train)):
             batch_to_device(batch, DEVICE)  # in-place
-
-            loss = compute_loss(batch, model, loss_fn)
-            loss = loss / cfg.gradient_accumulation_steps
-            loss_running += loss
-            loss.backward()
-
-            """
-            # New loss computation
             num_tokens_curr = (batch["labels"] != loss_fn.ignore_index).sum()
             num_tokens += num_tokens_curr
             # loss is normalized -> multiply by number of tokens for renormalization later for grad. accum.
             loss_curr = compute_loss(batch, model, loss_fn) * num_tokens_curr
             loss_running += loss_curr
             loss_curr.backward()
-            """
-
             if (i + 1) % cfg.gradient_accumulation_steps == 0:
-                # scale_grads(model, 1 / num_tokens)
+                scale_grads(model, 1 / num_tokens)
                 if cfg.clip_grad_norm is not None:
                     grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=float(cfg.clip_grad_norm))
                 optimizer.step()
                 optimizer.zero_grad(set_to_none=True)
                 if lr_scheduler is not None:
                     lr_scheduler.step()
-                # loss_to_log = loss_running.item() / num_tokens
-                loss_to_log = loss_running.item()
+                loss_to_log = loss_running.item() / num_tokens
                 global_step += 1
 
                 # log metrics
