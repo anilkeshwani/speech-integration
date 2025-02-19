@@ -50,11 +50,3 @@ python ssi/train.py \
     checkpointer.checkpoint_dir='/mnt/scratch-artemis/anilkeshwani/experiments/Llama-3.2-1B-5000-dsus-sft/avid-wind-123-id_xoafid42/checkpoints/global-step-006500' \
     checkpointer.checkpoint_files='["hf_model_0001_0.pt"]' # slightly weird syntax
 ```
-
-# Debugging
-
-Run finetuning from tuna-lm:
-
-```bash
-tune run ssi/finetune.py --config ssi/conf/finetune.yaml
-```
