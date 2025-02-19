@@ -158,8 +158,15 @@ def train(cfg: DictConfig) -> None:
                 optimizer.zero_grad(set_to_none=True)
                 if lr_scheduler is not None:
                     lr_scheduler.step()
-                loss_to_log = loss_running.item() / num_tokens
                 global_step += 1
+
+                loss_to_log = loss_running.item() / num_tokens
+                LOGGER.info(
+                    f"Epoch {epoch + 1:03d} | "
+                    f"Iter {i:0{len(str(steps_per_epoch))}d} / {steps_per_epoch} | "
+                    f"Global Step {global_step:0{len(str(steps_per_epoch))}d} | "  # TODO bad zero padding
+                    f"Loss: {loss_to_log:.4f}"
+                )
 
                 # log metrics
                 if global_step % cfg.log_interval == 0:
