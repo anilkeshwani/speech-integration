@@ -36,7 +36,7 @@ def setup_text_completion_data(
     collate_fn: str | None = None,  # type: ignore # TODO avoid changing type
 ) -> tuple[DataLoader, DistributedSampler]:
     cfg_dataset_is_struct = OmegaConf.is_struct(cfg_dataset)
-    OmegaConf.set_struct(cfg_dataset, False)
+    OmegaConf.set_struct(cfg_dataset, False)  # TODO
     if isinstance(cfg_dataset, ListConfig):
         raise NotImplementedError("Support for the shuffle parameter needs to be added to use ConcatDataset.")
     shuffle = cfg_dataset.pop("shuffle")
@@ -61,7 +61,7 @@ def setup_text_completion_data(
         ),
     )
     LOGGER.info(f"Dataset and Sampler initialized from {cfg_dataset.source}.")
-    OmegaConf.set_struct(cfg_dataset, cfg_dataset_is_struct)
+    OmegaConf.set_struct(cfg_dataset, cfg_dataset_is_struct)  # TODO
     return dataloader, sampler
 
 
@@ -71,7 +71,7 @@ def setup_sft_data(
     loss_fn: CEWithChunkedOutputLoss,
 ) -> tuple[DataLoader, DistributedSampler]:
     cfg_dataset_is_struct = OmegaConf.is_struct(cfg_dataset)
-    OmegaConf.set_struct(cfg_dataset, False)
+    OmegaConf.set_struct(cfg_dataset, False)  # TODO
     world_size, rank = get_world_size_and_rank()  # more general
     # NOTE we mutate the cfg_dataset, even if we restore the struct setting
     shuffle = cfg_dataset.pop("shuffle")
@@ -99,7 +99,7 @@ def setup_sft_data(
             else padded_collate_packed
         ),
     )
-    OmegaConf.set_struct(cfg_dataset, cfg_dataset_is_struct)
+    OmegaConf.set_struct(cfg_dataset, cfg_dataset_is_struct)  # TODO
     return dataloader, sampler
 
 
