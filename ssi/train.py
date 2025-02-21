@@ -168,7 +168,8 @@ def train(cfg: DictConfig) -> None:
     t_train_start = time.perf_counter()
     t0 = time.perf_counter()
     loss_running = 0.0
-    num_tokens = 0
+    num_tokens = 0  # TODO rename to num_tokens_step
+    tokens_train_total: int = 0
     steps_per_epoch = len(data_train) // cfg.gradient_accumulation_steps
     n_epochs = math.ceil(cfg.max_steps / steps_per_epoch)
     LOGGER.info(OmegaConf.to_yaml(cfg, resolve=True, sort_keys=False))
@@ -192,6 +193,8 @@ def train(cfg: DictConfig) -> None:
                     lr_scheduler.step()
                 global_step += 1
                 loss_to_log = loss_running.item() / num_tokens  # loss per token
+                tokens_train_total += num_tokens  # total number of tokens trained on so far
+                # TODO add separate speech and text token counters
                 # log metrics to console
                 LOGGER.info(
                     f"Epoch {epoch + 1:03d} | "
@@ -212,6 +215,8 @@ def train(cfg: DictConfig) -> None:
                         "lr": get_lr(optimizer),
                         "duration_step": dur_step,
                         "tokens_per_second_per_gpu": num_tokens / dur_step,
+                        "tokens_total": tokens_train_total,  # TODO check everything OK
+                        # TODO add separate speech and text token counters
                         "train_clock_time": (time.perf_counter() - t_train_start) / (60**2),
                     }
                     if cfg.clip_grad_norm is not None:
