@@ -89,7 +89,7 @@ def resume_training_state(ckpt_dict: dict[str, Any]) -> tuple[int, int, StateDic
     return ckpt_dict[EPOCHS_KEY], ckpt_dict[STEPS_KEY], ckpt_dict[OPTIMIZER_KEY]
 
 
-@hydra.main(config_path="conf", config_name="sft.yaml", version_base=None)
+@hydra.main(config_path="conf", config_name="cpt.yaml", version_base=None)
 def train(cfg: DictConfig) -> None:
     validate_cfg(cfg)
     training.set_seed(seed=SEED, debug_mode=DEBUG_MODE)
@@ -159,7 +159,7 @@ def train(cfg: DictConfig) -> None:
                 if lr_scheduler is not None:
                     lr_scheduler.step()
                 global_step += 1
-
+                # log metrics to terminal
                 loss_to_log = loss_running.item() / num_tokens
                 LOGGER.info(
                     f"Epoch {epoch + 1:03d} | "
@@ -167,12 +167,11 @@ def train(cfg: DictConfig) -> None:
                     f"Global Step {global_step:0{len(str(steps_per_epoch))}d} | "  # TODO bad zero padding
                     f"Loss: {loss_to_log:.4f}"
                 )
-
                 # log metrics
                 if global_step % cfg.log_interval == 0:
                     dur_step = time.perf_counter() - t0
                     log_dict = {
-                        "loss_train": loss_to_log,
+                        "loss": loss_to_log,
                         "lr": get_lr(optimizer),
                         "duration_step": dur_step,
                         "tokens_per_second_per_gpu": num_tokens / dur_step,
@@ -180,7 +179,6 @@ def train(cfg: DictConfig) -> None:
                     if cfg.clip_grad_norm is not None:
                         log_dict.update({"grad_norm": grad_norm})
                     wandb_logger.log_dict(log_dict, step=global_step)
-
                 # reset step-level tracker variables
                 loss_running = 0.0
                 num_tokens = 0
