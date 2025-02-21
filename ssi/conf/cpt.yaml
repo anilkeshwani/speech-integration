@@ -80,10 +80,10 @@ checkpointer:
   model_type: "llama3_2"
   safe_serialization: True
 
-save_steps: 500 # checkpoint save frequency
+save_steps: 500 # checkpoint save frequency **in steps** (not iterations)
 
 # Evaluation
-eval_steps: ${save_steps} # evaluation frequency
+eval_steps: ${save_steps} # evaluation frequency **in steps** (not iterations); should be a multiple of save_steps
 
 # Logging
 wandb:

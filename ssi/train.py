@@ -13,6 +13,7 @@ from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
 from torch.optim.optimizer import StateDict
+from torch.utils.data import DataLoader
 from torchtune import training
 from torchtune.modules import TransformerDecoder
 from torchtune.modules.loss import CEWithChunkedOutputLoss
@@ -89,6 +90,36 @@ def resume_training_state(ckpt_dict: dict[str, Any]) -> tuple[int, int, StateDic
     return ckpt_dict[EPOCHS_KEY], ckpt_dict[STEPS_KEY], ckpt_dict[OPTIMIZER_KEY]
 
 
+def validate(
+    model: TransformerDecoder,
+    data_dev: DataLoader,
+    loss_fn: Callable,
+    epoch: int,
+    global_step: int,
+    steps_per_epoch: int,
+    device: torch.device,
+) -> float:
+    dev_loss_running: float = 0
+    num_tokens_dev: int = 0
+    model.eval()
+    with torch.inference_mode():
+        for i_dev, dev_batch in enumerate(data_dev):
+            batch_to_device(dev_batch, device)
+            num_tokens_dev_batch = (dev_batch["labels"] != loss_fn.ignore_index).sum()
+            num_tokens_dev += num_tokens_dev_batch
+            dev_loss_batch = compute_loss(dev_batch, model, loss_fn) * num_tokens_dev_batch
+            dev_loss_running += dev_loss_batch.item()
+            LOGGER.info(
+                f"Epoch {epoch + 1:03d} | "
+                f"Global Step {global_step:0{len(str(steps_per_epoch))}d} | "  # TODO bad zero padding
+                f"Dev Iter {i_dev:0{len(str(steps_per_epoch))}d} / {steps_per_epoch} | "
+                f"Dev Batch {i_dev:0{len(str(len(data_dev)))}d} / {len(data_dev)} | "
+                f"Dev Loss (batch): {dev_loss_batch.item():.4f}"
+            )
+    model.train()
+    return dev_loss_running / num_tokens_dev  # loss per token
+
+
 @hydra.main(config_path="conf", config_name="cpt.yaml", version_base=None)
 def train(cfg: DictConfig) -> None:
     validate_cfg(cfg)
@@ -134,6 +165,7 @@ def train(cfg: DictConfig) -> None:
         cfg_dataset=cfg.data.dev, batch_size=cfg.batch_size, model_tokenizer=tokenizer
     )
     optimizer.zero_grad()  # zero gradients before training # NOTE make conditional for optimizer_in_bwd
+    t_train_start = time.perf_counter()
     t0 = time.perf_counter()
     loss_running = 0.0
     num_tokens = 0
@@ -144,12 +176,12 @@ def train(cfg: DictConfig) -> None:
         sampler_train.set_epoch(epoch)  # distinct seed each epoch
         for i, batch in tqdm(enumerate(data_train)):
             batch_to_device(batch, DEVICE)  # in-place
-            num_tokens_curr = (batch["labels"] != loss_fn.ignore_index).sum()
-            num_tokens += num_tokens_curr
+            num_tokens_batch = (batch["labels"] != loss_fn.ignore_index).sum()
+            num_tokens += num_tokens_batch
             # loss is normalized -> multiply by number of tokens for renormalization later for grad. accum.
-            loss_curr = compute_loss(batch, model, loss_fn) * num_tokens_curr
-            loss_running += loss_curr
-            loss_curr.backward()
+            loss_batch = compute_loss(batch, model, loss_fn) * num_tokens_batch
+            loss_running += loss_batch
+            loss_batch.backward()
             if (i + 1) % cfg.gradient_accumulation_steps == 0:
                 scale_grads(model, 1 / num_tokens)
                 if cfg.clip_grad_norm is not None:
@@ -159,15 +191,20 @@ def train(cfg: DictConfig) -> None:
                 if lr_scheduler is not None:
                     lr_scheduler.step()
                 global_step += 1
-                # log metrics to terminal
-                loss_to_log = loss_running.item() / num_tokens
+                loss_to_log = loss_running.item() / num_tokens  # loss per token
+                # log metrics to console
                 LOGGER.info(
                     f"Epoch {epoch + 1:03d} | "
                     f"Iter {i:0{len(str(steps_per_epoch))}d} / {steps_per_epoch} | "
                     f"Global Step {global_step:0{len(str(steps_per_epoch))}d} | "  # TODO bad zero padding
                     f"Loss: {loss_to_log:.4f}"
                 )
-                # log metrics
+                # validate (evaluate on dev set)
+                if global_step % cfg.eval_steps == 0:
+                    dev_loss = validate(model, data_dev, loss_fn, epoch, global_step, steps_per_epoch, DEVICE)
+                else:
+                    dev_loss = None
+                # log metrics to wandb
                 if global_step % cfg.log_interval == 0:
                     dur_step = time.perf_counter() - t0
                     log_dict = {
@@ -175,9 +212,12 @@ def train(cfg: DictConfig) -> None:
                         "lr": get_lr(optimizer),
                         "duration_step": dur_step,
                         "tokens_per_second_per_gpu": num_tokens / dur_step,
+                        "train_clock_time": (time.perf_counter() - t_train_start) / (60**2),
                     }
                     if cfg.clip_grad_norm is not None:
                         log_dict.update({"grad_norm": grad_norm})
+                    if dev_loss is not None:
+                        log_dict.update({"dev_loss": dev_loss})
                     wandb_logger.log_dict(log_dict, step=global_step)
                 # reset step-level tracker variables
                 loss_running = 0.0
