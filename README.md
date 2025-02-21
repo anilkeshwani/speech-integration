@@ -40,6 +40,16 @@ If you want to use pre-commit remember to install hooks:
 pre-commit install --install-hooks
 ```
 
+## Pre-training (inc. Continued Pre-training)
+
+```bash
+python ssi/train.py \
+    checkpointer.config_json='/mnt/scratch-artemis/anilkeshwani/models/extended/Llama-3.2-1B-5000-dsus/config.json' \
+    checkpointer.checkpoint_dir='/mnt/scratch-artemis/anilkeshwani/models/extended/Llama-3.2-1B-5000-dsus' \
+    checkpointer.checkpoint_files='["hf_model_0001_0.pt"]' # slightly weird syntax
+```
+
+
 ## Supervised Fine-tuning
 
 Run supervised fine-tuning for ASR with:

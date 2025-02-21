@@ -1,6 +1,6 @@
 # Experiment management
-extended_models_dir: /mnt/scratch-artemis/anilkeshwani/models/extended/
 model_name: Llama-3.2-1B-5000-dsus
+extended_models_dir: /mnt/scratch-artemis/anilkeshwani/models/extended/
 experiments_root_dir: /mnt/scratch-artemis/anilkeshwani/experiments
 output_dir: ${experiments_root_dir}/${model_name}
 
@@ -68,7 +68,7 @@ optimizer:
   amsgrad: False
   fused: True
 max_steps: 10
-batch_size: 1
+batch_size: 4
 gradient_accumulation_steps: 16
 clip_grad_norm: null
 
