@@ -2,12 +2,17 @@ import logging
 import os
 import sys
 from functools import partial
+from typing import Callable
 
 import omegaconf
+import torchtune.data
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
 from torch.utils.data import DataLoader, Dataset, DistributedSampler
+from torchtune import config
+from torchtune.config._utils import _get_component_from_path
 from torchtune.data import padded_collate_packed, padded_collate_sft
+from torchtune.data._common import CROSS_ENTROPY_IGNORE_IDX
 from torchtune.datasets import PackedDataset
 from torchtune.models.llama3 import Llama3Tokenizer
 from torchtune.modules.loss import CEWithChunkedOutputLoss
@@ -26,13 +31,49 @@ logging.basicConfig(
 LOGGER = logging.getLogger(__name__)
 
 
+def setup_text_completion_data(
+    cfg_dataset: DictConfig,
+    batch_size: int,
+    model_tokenizer: Llama3Tokenizer,
+    collate_fn: str | None = None,  # type: ignore # TODO avoid changing type
+) -> tuple[DataLoader, DistributedSampler]:
+    cfg_dataset_is_struct = OmegaConf.is_struct(cfg_dataset)
+    OmegaConf.set_struct(cfg_dataset, False)  # TODO
+    if isinstance(cfg_dataset, ListConfig):
+        raise NotImplementedError("Support for the shuffle parameter needs to be added to use ConcatDataset.")
+    shuffle = cfg_dataset.pop("shuffle")
+    ds = config.instantiate(cfg_dataset, model_tokenizer)
+    packed = cfg_dataset.get("packed", False)
+    if collate_fn is not None:
+        if "left_pad_sequence" in collate_fn:
+            raise RuntimeError("left_pad_sequence collator is only for inference.")
+        collate_fn: Callable = _get_component_from_path(collate_fn)  # type: ignore
+    else:
+        collate_fn = padded_collate_sft
+    sampler = DistributedSampler(ds, num_replicas=1, rank=0, shuffle=shuffle, seed=0)  # TODO
+    dataloader = DataLoader(
+        dataset=ds,
+        batch_size=batch_size,
+        sampler=sampler,
+        drop_last=True,  # dropping last avoids shape issues with compile + flex attention
+        collate_fn=(
+            partial(collate_fn, padding_idx=model_tokenizer.pad_id, ignore_idx=CROSS_ENTROPY_IGNORE_IDX)
+            if not packed
+            else padded_collate_packed
+        ),
+    )
+    LOGGER.info(f"Dataset and Sampler initialized from {cfg_dataset.source}.")
+    OmegaConf.set_struct(cfg_dataset, cfg_dataset_is_struct)  # TODO
+    return dataloader, sampler
+
+
 def setup_sft_data(
     cfg_dataset: DictConfig,
     model_tokenizer: Llama3Tokenizer,
     loss_fn: CEWithChunkedOutputLoss,
 ) -> tuple[DataLoader, DistributedSampler]:
     cfg_dataset_is_struct = OmegaConf.is_struct(cfg_dataset)
-    OmegaConf.set_struct(cfg_dataset, False)
+    OmegaConf.set_struct(cfg_dataset, False)  # TODO
     world_size, rank = get_world_size_and_rank()  # more general
     # NOTE we mutate the cfg_dataset, even if we restore the struct setting
     shuffle = cfg_dataset.pop("shuffle")
@@ -60,7 +101,7 @@ def setup_sft_data(
             else padded_collate_packed
         ),
     )
-    OmegaConf.set_struct(cfg_dataset, cfg_dataset_is_struct)
+    OmegaConf.set_struct(cfg_dataset, cfg_dataset_is_struct)  # TODO
     return dataloader, sampler
 
 
@@ -68,3 +109,30 @@ def pack_dataset(dataset: Dataset, tokenizer: Llama3Tokenizer) -> PackedDataset:
     if tokenizer.max_seq_len is None:
         raise ValueError("PackedDataset requires a max_seq_len to be set on the tokenizer.")
     return PackedDataset(dataset, max_seq_len=tokenizer.max_seq_len)
+
+
+####################################################################################################
+# Debug
+####################################################################################################
+
+
+def setup_data(
+    cfg_dataset: DictConfig,
+    tokenizer: Llama3Tokenizer,
+    loss_fn: Callable,
+    batch_size: int,
+    shuffle: bool = True,
+    collate_fn: Callable = torchtune.data.padded_collate_sft,
+) -> tuple[DistributedSampler, DataLoader]:
+    ds = config.instantiate(cfg_dataset, tokenizer)  # TODO make this inline
+    sampler = DistributedSampler(ds, num_replicas=1, rank=0, shuffle=shuffle, seed=0)
+    dataloader = DataLoader(
+        dataset=ds,
+        batch_size=batch_size,
+        sampler=sampler,
+        drop_last=True,  # dropping last avoids shape issues with compile + flex attention
+        collate_fn=partial(collate_fn, padding_idx=tokenizer.pad_id, ignore_idx=loss_fn.ignore_index),
+    )
+    LOGGER.info(f"Dataset and Sampler initialized from {cfg_dataset.source}.")
+    LOGGER.info(f"Data setup performed via: {setup_data.__name__}")
+    return sampler, dataloader
