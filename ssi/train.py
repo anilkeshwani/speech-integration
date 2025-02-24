@@ -26,7 +26,7 @@ from tqdm import tqdm
 
 from ssi.checkpoint import FullModelHFCheckpointer
 from ssi.constants import EPOCHS_KEY, MODEL_KEY, OPTIMIZER_KEY, SEED, SEED_KEY, STEPS_KEY
-from ssi.data import setup_sft_data, setup_text_completion_data
+from ssi.data import setup_data, setup_sft_data, setup_text_completion_data
 from ssi.lr_schedule import setup_lr_scheduler
 from ssi.model import setup_llama3_2_1b
 from ssi.optimizer import setup_optimizer
@@ -158,12 +158,19 @@ def train(cfg: DictConfig) -> None:
     # data_train, sampler_train = setup_sft_data(cfg_dataset=cfg.data.train, model_tokenizer=tokenizer, loss_fn=loss_fn)
     # data_dev, sampler_dev = setup_sft_data(cfg_dataset=cfg.data.dev, model_tokenizer=tokenizer, loss_fn=loss_fn)
 
-    data_train, sampler_train = setup_text_completion_data(
-        cfg_dataset=cfg.data.train, batch_size=cfg.batch_size, model_tokenizer=tokenizer
-    )
-    data_dev, sampler_dev = setup_text_completion_data(
-        cfg_dataset=cfg.data.dev, batch_size=cfg.batch_size, model_tokenizer=tokenizer
-    )
+    # data_train, sampler_train = setup_text_completion_data(
+    #     cfg_dataset=cfg.data.train, batch_size=cfg.batch_size, model_tokenizer=tokenizer
+    # )
+    # data_dev, sampler_dev = setup_text_completion_data(
+    #     cfg_dataset=cfg.data.dev, batch_size=cfg.batch_size, model_tokenizer=tokenizer
+    # )
+
+    ################################################################################################
+    # Debug Dataset error
+    ################################################################################################
+    data_train, sampler_train = setup_data(cfg_dataset=cfg.data.train, model_tokenizer=tokenizer, loss_fn=loss_fn)
+    data_dev, sampler_dev = setup_data(cfg_dataset=cfg.data.dev, model_tokenizer=tokenizer, loss_fn=loss_fn)
+
     optimizer.zero_grad()  # zero gradients before training # NOTE make conditional for optimizer_in_bwd
     t_train_start = time.perf_counter()
     t0 = time.perf_counter()
