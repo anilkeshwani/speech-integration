@@ -253,8 +253,8 @@ def train(cfg: DictConfig) -> None:
                         model_state_dict=model.state_dict(),
                         optimizer_state_dict=optimizer.state_dict(),
                         epoch=epoch,
-                        seed=SEED,
                         global_step=global_step,
+                        seed=SEED,
                     )
                     LOGGER.info(f"Checkpoint saved at step {global_step:0{len(str(steps_per_epoch))}d}")  # TODO 0s pad
 
