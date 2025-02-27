@@ -13,7 +13,6 @@ from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
 from torch.optim.optimizer import StateDict
-from torch.utils.data import DataLoader
 from torchtune import training
 from torchtune.modules import TransformerDecoder
 from torchtune.modules.loss import CEWithChunkedOutputLoss
@@ -25,6 +24,7 @@ from torchtune.utils import batch_to_device, get_device
 from tqdm import tqdm
 
 from ssi.checkpoint import FullModelHFCheckpointer
+from ssi.eval import compute_dataset_loss
 from ssi.constants import EPOCHS_KEY, MODEL_KEY, OPTIMIZER_KEY, SEED, SEED_KEY, STEPS_KEY
 from ssi.data import setup_text_completion_data
 from ssi.lr_schedule import setup_lr_scheduler
@@ -104,36 +104,6 @@ def resume_training_state(ckpt_dict: dict[str, Any]) -> tuple[int, int, StateDic
     if SEED != ckpt_dict[SEED_KEY]:
         raise ValueError("Config value for seed does not match the checkpoint value")
     return ckpt_dict[EPOCHS_KEY], ckpt_dict[STEPS_KEY], ckpt_dict[OPTIMIZER_KEY]
-
-
-def validate(
-    model: TransformerDecoder,
-    data_dev: DataLoader,
-    loss_fn: Callable,
-    epoch: int,
-    global_step: int,
-    steps_per_epoch: int,
-    device: torch.device,
-) -> float:
-    dev_loss_running: float = 0
-    num_tokens_dev: int = 0
-    model.eval()
-    with torch.inference_mode():
-        for i_dev, dev_batch in enumerate(data_dev):
-            batch_to_device(dev_batch, device)
-            num_tokens_dev_batch = (dev_batch["labels"] != loss_fn.ignore_index).sum()
-            num_tokens_dev += num_tokens_dev_batch
-            dev_loss_batch = compute_loss(dev_batch, model, loss_fn) * num_tokens_dev_batch
-            dev_loss_running += dev_loss_batch.item()
-            LOGGER.info(
-                f"Epoch {epoch + 1:03d} | "
-                f"Global Step {global_step:0{len(str(steps_per_epoch))}d} | "  # TODO bad zero padding
-                f"Dev Iter {i_dev:0{len(str(steps_per_epoch))}d} / {steps_per_epoch} | "
-                f"Dev Batch {i_dev:0{len(str(len(data_dev)))}d} / {len(data_dev)} | "
-                f"Dev Loss (batch): {dev_loss_batch.item():.4f}"
-            )
-    model.train()
-    return dev_loss_running / num_tokens_dev  # loss per token
 
 
 ################################################################################
@@ -223,7 +193,9 @@ def train(cfg: DictConfig) -> None:
                 )
                 # validate (evaluate on dev set)
                 if global_step % cfg.eval_steps == 0:
-                    dev_loss = validate(model, data_dev, loss_fn, epoch, global_step, steps_per_epoch, DEVICE)
+                    dev_loss = compute_dataset_loss(
+                        model, data_dev, loss_fn, epoch, global_step, steps_per_epoch, DEVICE
+                    )
                 else:
                     dev_loss = None
                 # log metrics to wandb
