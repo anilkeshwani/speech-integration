@@ -26,7 +26,7 @@ from tqdm import tqdm
 
 from ssi.checkpoint import FullModelHFCheckpointer
 from ssi.constants import EPOCHS_KEY, MODEL_KEY, OPTIMIZER_KEY, SEED, SEED_KEY, STEPS_KEY
-from ssi.data import setup_data, setup_sft_data, setup_text_completion_data
+from ssi.data import setup_alpaca_data, setup_sft_data, setup_text_completion_data
 from ssi.lr_schedule import setup_lr_scheduler
 from ssi.model import setup_llama3_2_1b
 from ssi.optimizer import setup_optimizer
@@ -189,8 +189,8 @@ def train(cfg: DictConfig) -> None:
     ################################################################################################
     # Debug Dataset error
     ################################################################################################
-    data_train, sampler_train = setup_data(tokenizer, loss_fn=loss_fn, batch_size=cfg.batch_size)
-    data_dev, sampler_dev = setup_data(tokenizer, loss_fn=loss_fn, batch_size=cfg.batch_size)
+    data_train, sampler_train = setup_alpaca_data(tokenizer, loss_fn=loss_fn, batch_size=cfg.batch_size)
+    data_dev, sampler_dev = setup_alpaca_data(tokenizer, loss_fn=loss_fn, batch_size=cfg.batch_size)
 
     optimizer.zero_grad()  # zero gradients before training # NOTE make conditional for optimizer_in_bwd
     t_train_start = time.perf_counter()
