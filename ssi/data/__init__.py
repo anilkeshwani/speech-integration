@@ -4,7 +4,6 @@ import sys
 from functools import partial
 from typing import Callable
 
-import omegaconf
 import torchtune.data
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
@@ -117,7 +116,7 @@ def pack_dataset(dataset: Dataset, tokenizer: Llama3Tokenizer) -> PackedDataset:
 ####################################################################################################
 
 
-def setup_data(
+def setup_alpaca_data(
     tokenizer: Llama3Tokenizer,
     loss_fn: Callable,
     batch_size: int,
@@ -135,5 +134,5 @@ def setup_data(
         collate_fn=partial(collate_fn, padding_idx=tokenizer.pad_id, ignore_idx=loss_fn.ignore_index),
     )
     LOGGER.info(f"Dataset and Sampler initialized: {ds._data}.")
-    LOGGER.info(f"Data setup performed via: {setup_data.__name__}")
+    LOGGER.info(f"Data setup performed via: {sys._getframe().f_code.co_name}")
     return dataloader, sampler
