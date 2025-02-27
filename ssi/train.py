@@ -26,7 +26,7 @@ from tqdm import tqdm
 
 from ssi.checkpoint import FullModelHFCheckpointer
 from ssi.constants import EPOCHS_KEY, MODEL_KEY, OPTIMIZER_KEY, SEED, SEED_KEY, STEPS_KEY
-from ssi.data import setup_alpaca_data, setup_sft_data, setup_text_completion_data
+from ssi.data import setup_text_completion_data
 from ssi.lr_schedule import setup_lr_scheduler
 from ssi.model import setup_llama3_2_1b
 from ssi.optimizer import setup_optimizer
@@ -37,7 +37,7 @@ from ssi.tokenizer import setup_llama3_tokenizer
 # Config to use; see conf/ directory
 ################################################################################
 
-CONFIG_NAME = "debug.yaml"
+CONFIG_NAME = "cpt.yaml"
 
 # Debug mode
 """
@@ -176,22 +176,12 @@ def train(cfg: DictConfig) -> None:
         training.compile_loss(loss_fn)
     if isinstance(loss_fn, CEWithChunkedOutputLoss):
         model.set_num_output_chunks(loss_fn.num_output_chunks)
-    # data_train, sampler_train = setup_sft_data(cfg_dataset=cfg.data.train, model_tokenizer=tokenizer, loss_fn=loss_fn)
-    # data_dev, sampler_dev = setup_sft_data(cfg_dataset=cfg.data.dev, model_tokenizer=tokenizer, loss_fn=loss_fn)
-
-    # data_train, sampler_train = setup_text_completion_data(
-    #     cfg_dataset=cfg.data.train, batch_size=cfg.batch_size, model_tokenizer=tokenizer
-    # )
-    # data_dev, sampler_dev = setup_text_completion_data(
-    #     cfg_dataset=cfg.data.dev, batch_size=cfg.batch_size, model_tokenizer=tokenizer
-    # )
-
-    ################################################################################################
-    # Debug Dataset error
-    ################################################################################################
-    data_train, sampler_train = setup_alpaca_data(tokenizer, loss_fn=loss_fn, batch_size=cfg.batch_size)
-    data_dev, sampler_dev = setup_alpaca_data(tokenizer, loss_fn=loss_fn, batch_size=cfg.batch_size)
-
+    data_train, sampler_train = setup_text_completion_data(
+        cfg_dataset=cfg.data.train, batch_size=cfg.batch_size, model_tokenizer=tokenizer
+    )
+    data_dev, sampler_dev = setup_text_completion_data(
+        cfg_dataset=cfg.data.dev, batch_size=cfg.batch_size, model_tokenizer=tokenizer
+    )
     optimizer.zero_grad()  # zero gradients before training # NOTE make conditional for optimizer_in_bwd
     t_train_start = time.perf_counter()
     t0 = time.perf_counter()
@@ -203,7 +193,7 @@ def train(cfg: DictConfig) -> None:
     LOGGER.info(OmegaConf.to_yaml(cfg, resolve=True, sort_keys=False))
     for epoch in range(epochs_run, n_epochs):
         sampler_train.set_epoch(epoch)  # distinct seed each epoch
-        for i, batch in tqdm(enumerate(data_train)):
+        for i, batch in tqdm(enumerate(data_train), total=len(data_train)):
             batch_to_device(batch, DEVICE)  # in-place
             num_tokens_batch = (batch["labels"] != loss_fn.ignore_index).sum()
             num_tokens += num_tokens_batch
