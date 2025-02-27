@@ -33,6 +33,25 @@ from ssi.optimizer import setup_optimizer
 from ssi.tokenizer import setup_llama3_tokenizer
 
 
+################################################################################
+# Config to use; see conf/ directory
+################################################################################
+
+CONFIG_NAME = "debug.yaml"
+
+# Debug mode
+"""
+`None` -> don't set any PyTorch global values
+"default" or 0 -> don't error or warn on nondeterministic operations and additionally enable PyTorch CuDNN benchmark
+"warn" or 1 -> warn on nondeterministic operations and disable PyTorch CuDNN benchmark
+"error" or 2 -> error on nondeterministic operations and disable PyTorch CuDNN benchmark
+"""
+DEBUG_MODE: str | None = None
+
+################################################################################
+# Preamble
+################################################################################
+
 logging.basicConfig(
     format=LOG_FORMAT,
     datefmt=LOG_DATEFMT,
@@ -42,14 +61,11 @@ logging.basicConfig(
 
 LOGGER = logging.getLogger(__name__)
 
-# Debug mode
-# `None` -> don't set any PyTorch global values
-# "default" or 0 -> don't error or warn on nondeterministic operations and additionally enable PyTorch CuDNN benchmark
-# "warn" or 1 -> warn on nondeterministic operations and disable PyTorch CuDNN benchmark
-# "error" or 2 -> error on nondeterministic operations and disable PyTorch CuDNN benchmark
-DEBUG_MODE: str | None = None
-
 SUPPORTED_DTYPES: set[torch.dtype] = {torch.float32, torch.bfloat16}
+
+################################################################################
+# Training helper functions
+################################################################################
 
 
 def compute_loss(batch: dict[str, torch.Tensor], model: TransformerDecoder, loss_fn: Callable) -> torch.Tensor:
@@ -120,7 +136,12 @@ def validate(
     return dev_loss_running / num_tokens_dev  # loss per token
 
 
-@hydra.main(config_path="conf", config_name="cpt.yaml", version_base=None)
+################################################################################
+# Training
+################################################################################
+
+
+@hydra.main(config_path="conf", config_name=CONFIG_NAME, version_base=None)
 def train(cfg: DictConfig) -> None:
     validate_cfg(cfg)
     training.set_seed(seed=SEED, debug_mode=DEBUG_MODE)
@@ -168,8 +189,8 @@ def train(cfg: DictConfig) -> None:
     ################################################################################################
     # Debug Dataset error
     ################################################################################################
-    data_train, sampler_train = setup_data(cfg_dataset=cfg.data.train, model_tokenizer=tokenizer, loss_fn=loss_fn)
-    data_dev, sampler_dev = setup_data(cfg_dataset=cfg.data.dev, model_tokenizer=tokenizer, loss_fn=loss_fn)
+    data_train, sampler_train = setup_data(tokenizer, loss_fn=loss_fn, batch_size=cfg.batch_size)
+    data_dev, sampler_dev = setup_data(tokenizer, loss_fn=loss_fn, batch_size=cfg.batch_size)
 
     optimizer.zero_grad()  # zero gradients before training # NOTE make conditional for optimizer_in_bwd
     t_train_start = time.perf_counter()
@@ -236,6 +257,10 @@ def train(cfg: DictConfig) -> None:
                 num_tokens = 0
                 t0 = time.perf_counter()
 
+
+################################################################################
+# Script entry point
+################################################################################
 
 if __name__ == "__main__":
     train()
