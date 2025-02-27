@@ -48,15 +48,3 @@ python ssi/train.py \
     checkpointer.checkpoint_dir='/mnt/scratch-artemis/anilkeshwani/models/extended/Llama-3.2-1B-5000-dsus' \
     checkpointer.checkpoint_files='["hf_model_0001_0.pt"]' # slightly weird syntax
 ```
-
-
-## Supervised Fine-tuning
-
-Run supervised fine-tuning for ASR with:
-
-```bash
-python ssi/train.py \
-    checkpointer.config_json='/mnt/scratch-artemis/anilkeshwani/experiments/Llama-3.2-1B-5000-dsus-sft/avid-wind-123-id_xoafid42/checkpoints/config.json' \
-    checkpointer.checkpoint_dir='/mnt/scratch-artemis/anilkeshwani/experiments/Llama-3.2-1B-5000-dsus-sft/avid-wind-123-id_xoafid42/checkpoints/global-step-006500' \
-    checkpointer.checkpoint_files='["hf_model_0001_0.pt"]' # slightly weird syntax
-```
