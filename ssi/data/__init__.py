@@ -18,6 +18,7 @@ from torchtune.models.llama3 import Llama3Tokenizer
 from torchtune.modules.loss import CEWithChunkedOutputLoss
 from torchtune.training import get_world_size_and_rank
 
+from ssi.constants import SEED
 from ssi.data.sft import SFTDataset
 
 
@@ -117,15 +118,15 @@ def pack_dataset(dataset: Dataset, tokenizer: Llama3Tokenizer) -> PackedDataset:
 
 
 def setup_data(
-    cfg_dataset: DictConfig,
     tokenizer: Llama3Tokenizer,
     loss_fn: Callable,
     batch_size: int,
     shuffle: bool = True,
     collate_fn: Callable = torchtune.data.padded_collate_sft,
-) -> tuple[DistributedSampler, DataLoader]:
-    ds = config.instantiate(cfg_dataset, tokenizer)  # TODO make this inline
-    sampler = DistributedSampler(ds, num_replicas=1, rank=0, shuffle=shuffle, seed=0)
+) -> tuple[DataLoader, DistributedSampler]:
+    ds = torchtune.datasets.alpaca_dataset(tokenizer=tokenizer, packed=False)
+    world_size, rank = get_world_size_and_rank()  # more general
+    sampler = DistributedSampler(ds, num_replicas=world_size, rank=rank, shuffle=shuffle, seed=SEED)
     dataloader = DataLoader(
         dataset=ds,
         batch_size=batch_size,
@@ -133,6 +134,6 @@ def setup_data(
         drop_last=True,  # dropping last avoids shape issues with compile + flex attention
         collate_fn=partial(collate_fn, padding_idx=tokenizer.pad_id, ignore_idx=loss_fn.ignore_index),
     )
-    LOGGER.info(f"Dataset and Sampler initialized from {cfg_dataset.source}.")
+    LOGGER.info(f"Dataset and Sampler initialized: {ds._data}.")
     LOGGER.info(f"Data setup performed via: {setup_data.__name__}")
-    return sampler, dataloader
+    return dataloader, sampler
