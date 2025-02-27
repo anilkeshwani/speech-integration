@@ -19,8 +19,12 @@ assert SEED_KEY == "seed"
 TOTAL_EPOCHS_KEY: str = training.TOTAL_EPOCHS_KEY  # total number of epochs
 assert TOTAL_EPOCHS_KEY == "total_epochs"
 
+# NOTE torchtune.training exports STEPS_KEY = "steps_run" # number of steps completed thus far - for PPO
 STEPS_KEY: str = training.STEPS_KEY  # number of steps completed thus far
 assert STEPS_KEY == "steps_run"
+
+# NOTE entirely different meaning cf STEPS_KEY exported by torchtune (used in PPO stage)
+GLOBAL_STEP_KEY: str = "global_step"
 
 RNG_KEY: str = training.RNG_KEY  # rng state for ensuring correct training resuming (original use in PPO impl.)
 assert RNG_KEY == "rng_state"

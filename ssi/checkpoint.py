@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Protocol, Union
 
 import torch
-from omegaconf import ListConfig, OmegaConf
+from omegaconf import DictConfig, ListConfig, OmegaConf
 from safetensors.torch import save_file
 from torchtune import training
 from torchtune.models import convert_weights
@@ -27,6 +27,8 @@ from torchtune.training.checkpointing._utils import (
     TORCH_INDEX_FNAME,
 )
 from torchtune.utils._logging import get_logger, log_rank_zero
+
+import ssi.constants
 
 
 logger = get_logger("DEBUG")
@@ -426,7 +428,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         with open(index_path, "w") as f:
             json.dump(index_data, f, indent=2)
 
-    def save_checkpoint(
+    def _save_checkpoint(
         self,
         state_dict: dict[str, Any],
         epoch: int,
@@ -556,3 +558,28 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                     "The full model checkpoint, including all weights and configurations, has been saved successfully."
                     "You can now use this checkpoint for further training or inference."
                 )
+
+    def save_checkpoint(
+        self,
+        model_state_dict: dict[str, Any],
+        optimizer_state_dict: dict[str, Any],
+        epoch: int,
+        seed: int,
+        global_step: int,
+        optimizer_in_bwd: bool = False,
+        optim_ckpt_wrapper=None,  # TODO typing if/when implemented
+    ) -> dict[str, Any]:
+        ckpt_dict: dict = {
+            ssi.constants.MODEL_KEY: model_state_dict,
+            ssi.constants.SEED_KEY: seed,
+            ssi.constants.EPOCHS_KEY: epoch,
+            ssi.constants.GLOBAL_STEP_KEY: global_step,
+        }
+        if optimizer_in_bwd:
+            ckpt_dict[training.OPT_KEY] = optim_ckpt_wrapper.state_dict()  # type: ignore # TODO
+        else:
+            ckpt_dict[training.OPT_KEY] = optimizer_state_dict
+        # self.output_dir.mkdir(parents=False, exist_ok=False)  # TODO needed?
+        # TODO make options accessible via function interface
+        self._save_checkpoint(ckpt_dict, epoch=epoch, save_training_state=True, adapter_only=False)
+        return ckpt_dict

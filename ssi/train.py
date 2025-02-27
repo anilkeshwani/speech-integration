@@ -150,6 +150,7 @@ def train(cfg: DictConfig) -> None:
     wandb_logger = WandBLogger(**cfg.wandb)
     if cfg.checkpointer.output_dir is None:
         cfg.checkpointer.output_dir = resolve_checkpointer_output_dir(cfg, wandb_logger)
+        LOGGER.info(f"No checkpointer output dir provided. Resolved to: {cfg.checkpointer.output_dir!s}")
     checkpointer = FullModelHFCheckpointer(**cfg.checkpointer)
     ckpt_dict = checkpointer.load_checkpoint()
     model: TransformerDecoder = setup_llama3_2_1b(
@@ -246,6 +247,16 @@ def train(cfg: DictConfig) -> None:
                 loss_running = 0.0
                 num_tokens = 0
                 t0 = time.perf_counter()
+                # Save checkpoint
+                if global_step != 0 and global_step % cfg.save_steps == 0:
+                    checkpointer.save_checkpoint(
+                        model_state_dict=model.state_dict(),
+                        optimizer_state_dict=optimizer.state_dict(),
+                        epoch=epoch,
+                        seed=SEED,
+                        global_step=global_step,
+                    )
+                    LOGGER.info(f"Checkpoint saved at step {global_step:0{len(str(steps_per_epoch))}d}")  # TODO 0s pad
 
 
 ################################################################################
