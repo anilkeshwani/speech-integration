@@ -25,7 +25,7 @@ from tqdm import tqdm
 
 from ssi.checkpoint import FullModelHFCheckpointer
 from ssi.constants import EPOCHS_KEY, MODEL_KEY, OPTIMIZER_KEY, SEED, SEED_KEY, STEPS_KEY
-from ssi.data import setup_text_completion_data
+from ssi.data import setup_sft_data, setup_text_completion_data
 from ssi.eval import compute_dataset_loss
 from ssi.loss import compute_loss
 from ssi.lr_schedule import setup_lr_scheduler
@@ -136,12 +136,8 @@ def train(cfg: DictConfig) -> None:
         training.compile_loss(loss_fn)
     if isinstance(loss_fn, CEWithChunkedOutputLoss):
         model.set_num_output_chunks(loss_fn.num_output_chunks)
-    data_train, sampler_train = setup_text_completion_data(
-        cfg_dataset=cfg.data.train, batch_size=cfg.batch_size, model_tokenizer=tokenizer
-    )
-    data_dev, sampler_dev = setup_text_completion_data(
-        cfg_dataset=cfg.data.dev, batch_size=cfg.batch_size, model_tokenizer=tokenizer
-    )
+    data_train, sampler_train = setup_text_completion_data(cfg_dataset=cfg.data.train, model_tokenizer=tokenizer)
+    data_dev, sampler_dev = setup_text_completion_data(cfg_dataset=cfg.data.dev, model_tokenizer=tokenizer)
     optimizer.zero_grad()  # zero gradients before training # NOTE make conditional for optimizer_in_bwd
     t_train_start = time.perf_counter()
     t0 = time.perf_counter()

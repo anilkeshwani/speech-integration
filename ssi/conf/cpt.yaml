@@ -24,8 +24,14 @@ data:
     column: text
     split: train
     add_eos: True
+
+    packed: False # TODO packing performed a priori at training time and leads to CPU RAM overflow for e.g. MLS interleaved
+
+    # passed to DataLoader (not arguments to text_completion_dataset)
     shuffle: True
-    packed: False # packing performed a priori at training time and leads to CPU RAM overflow for e.g. MLS interleaved
+    batch_size: 4
+
+    # TODO clean up / describe the following fields (arguments)
     # split_across_pack: True # set to True for CPT; set to False for SFT
     # tokenizer: # set above
     # NOTE Following arguments copied across from text_completion_dataset docstring for reference
@@ -37,8 +43,12 @@ data:
     column: text
     split: dev
     add_eos: True
-    shuffle: False
+
     packed: False
+
+    # passed to DataLoader (not arguments to text_completion_dataset)
+    shuffle: False
+    batch_size: 4 # TODO can we increase this?
 
 # Optimization
 optimizer:
@@ -49,7 +59,6 @@ optimizer:
   amsgrad: False
   fused: True
 max_steps: 10
-batch_size: 4
 gradient_accumulation_steps: 16
 clip_grad_norm: null
 

@@ -33,7 +33,6 @@ LOGGER = logging.getLogger(__name__)
 
 def setup_text_completion_data(
     cfg_dataset: DictConfig,
-    batch_size: int,
     model_tokenizer: Llama3Tokenizer,
     collate_fn: str | None = None,  # type: ignore # TODO avoid changing type
 ) -> tuple[DataLoader, DistributedSampler]:
@@ -42,6 +41,7 @@ def setup_text_completion_data(
     if isinstance(cfg_dataset, ListConfig):
         raise NotImplementedError("Support for the shuffle parameter needs to be added to use ConcatDataset.")
     shuffle = cfg_dataset.pop("shuffle")
+    batch_size = cfg_dataset.pop("batch_size")
     # TODO replace this torchtune.config.instantiate with hydra.utils.instantiate, which doesn't modify the sys path and has more functionality
     ds = config.instantiate(cfg_dataset, model_tokenizer)
     packed = cfg_dataset.get("packed", False)
