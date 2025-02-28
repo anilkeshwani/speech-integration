@@ -150,6 +150,7 @@ class SFTDataset(Dataset):
         if "messages" in transformed_sample:
             validate_messages(transformed_sample["messages"])
 
+        # NOTE Reminder as of torchtune v0.5.0 tokenizer inference mode is difference between adding or omitting eos_id
         tokenized_dict = self._model_tokenizer(transformed_sample, inference=self._inference)
 
         if not ("tokens" in tokenized_dict and "mask" in tokenized_dict):
