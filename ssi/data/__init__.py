@@ -34,7 +34,8 @@ LOGGER = logging.getLogger(__name__)
 def setup_text_completion_data(
     cfg_dataset: DictConfig,
     model_tokenizer: Llama3Tokenizer,
-    collate_fn: str | None = None,  # type: ignore # TODO avoid changing type
+    loss_fn: CEWithChunkedOutputLoss | None = None,
+    collate_fn: str | None = None,  # type: ignore # TODO avoid changing type; or remove to align with setup_sft_data
 ) -> tuple[DataLoader, DistributedSampler]:
     cfg_dataset_is_struct = OmegaConf.is_struct(cfg_dataset)
     OmegaConf.set_struct(cfg_dataset, False)  # TODO
@@ -51,14 +52,17 @@ def setup_text_completion_data(
         collate_fn: Callable = _get_component_from_path(collate_fn)  # type: ignore
     else:
         collate_fn = padded_collate_sft
-    sampler = DistributedSampler(ds, num_replicas=1, rank=0, shuffle=shuffle, seed=0)  # TODO
+    if loss_fn is None:
+        ignore_idx = CROSS_ENTROPY_IGNORE_IDX
+    sampler = DistributedSampler(ds, num_replicas=1, rank=0, shuffle=shuffle, seed=0)  # TODO get_world_size_and_rank
+    ignore_idx = CROSS_ENTROPY_IGNORE_IDX if loss_fn is None else loss_fn.ignore_index
     dataloader = DataLoader(
         dataset=ds,
         batch_size=batch_size,
         sampler=sampler,
         drop_last=True,  # dropping last avoids shape issues with compile + flex attention
         collate_fn=(
-            partial(collate_fn, padding_idx=model_tokenizer.pad_id, ignore_idx=CROSS_ENTROPY_IGNORE_IDX)
+            partial(collate_fn, padding_idx=model_tokenizer.pad_id, ignore_idx=ignore_idx)  # TODO
             if not packed
             else padded_collate_packed
         ),
@@ -71,7 +75,7 @@ def setup_text_completion_data(
 def setup_sft_data(
     cfg_dataset: DictConfig,
     model_tokenizer: Llama3Tokenizer,
-    loss_fn: CEWithChunkedOutputLoss,
+    loss_fn: CEWithChunkedOutputLoss | None = None,
 ) -> tuple[DataLoader, DistributedSampler]:
     cfg_dataset_is_struct = OmegaConf.is_struct(cfg_dataset)
     OmegaConf.set_struct(cfg_dataset, False)  # TODO
@@ -81,23 +85,21 @@ def setup_sft_data(
     batch_size = cfg_dataset.pop("batch_size")
     drop_last = cfg_dataset.pop("drop_last")
     packed = cfg_dataset.pop("packed", False)
-
     if isinstance(cfg_dataset, ListConfig):
         raise NotImplementedError
     else:
         dataset = SFTDataset(**cfg_dataset, model_tokenizer=model_tokenizer)
-
     if packed:
         dataset = pack_dataset(dataset, model_tokenizer)
-
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=shuffle, seed=0)
+    ignore_idx = CROSS_ENTROPY_IGNORE_IDX if loss_fn is None else loss_fn.ignore_index
     dataloader = DataLoader(
         dataset=dataset,
         batch_size=batch_size,
         sampler=sampler,
         drop_last=drop_last,  # dropping last avoids shape issues with compile + flex attention
         collate_fn=(
-            partial(padded_collate_sft, padding_idx=model_tokenizer.pad_id, ignore_idx=loss_fn.ignore_index)
+            partial(padded_collate_sft, padding_idx=model_tokenizer.pad_id, ignore_idx=ignore_idx)
             if not packed
             else padded_collate_packed
         ),
