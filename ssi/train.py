@@ -86,7 +86,7 @@ def resolve_checkpointer_output_dir(cfg: DictConfig, wandb_logger: WandBLogger) 
         raise RuntimeError("wandb run not initialized")
     run_name = wandb_logger._wandb.run.name
     run_id = wandb_logger._wandb.run.id
-    return Path(cfg.experiments_root_dir, cfg.model_name, f"{run_name}-id_{run_id}", "checkpoints")
+    return Path(cfg.output_dir, f"{run_name}-id_{run_id}", "checkpoints")
 
 
 def resume_training_state(ckpt_dict: dict[str, Any]) -> tuple[int, int, StateDict]:

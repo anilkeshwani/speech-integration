@@ -2,7 +2,7 @@ defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
   - cpt
   - _self_
 
-model_name: Llama-3.2-1B-5000-dsus-sft # NOTE this percolates down to output_dir and others as resolution is lazy
+output_dir: ${experiments_root_dir}/${base_model_name}-sft
 
 data: # NOTE: arguments are to setup **function** not SFTDataset class
   train:
