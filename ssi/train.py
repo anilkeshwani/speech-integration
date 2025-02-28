@@ -4,7 +4,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import hydra
 import torch
@@ -27,6 +27,7 @@ from ssi.checkpoint import FullModelHFCheckpointer
 from ssi.constants import EPOCHS_KEY, MODEL_KEY, OPTIMIZER_KEY, SEED, SEED_KEY, STEPS_KEY
 from ssi.data import setup_text_completion_data
 from ssi.eval import compute_dataset_loss
+from ssi.loss import compute_loss
 from ssi.lr_schedule import setup_lr_scheduler
 from ssi.model import setup_llama3_2_1b
 from ssi.optimizer import setup_optimizer
@@ -66,18 +67,6 @@ SUPPORTED_DTYPES: set[torch.dtype] = {torch.float32, torch.bfloat16}
 ################################################################################
 # Training helper functions
 ################################################################################
-
-
-def compute_loss(batch: dict[str, torch.Tensor], model: TransformerDecoder, loss_fn: Callable) -> torch.Tensor:
-    labels = batch.pop("labels")  # shape [b, s] needed for the loss not the model
-    logits = model(**batch)  # NOTE add activation offloading context
-    labels = torch.hstack((labels[..., 1:], torch.full_like(labels[..., -1:], loss_fn.ignore_index)))
-    if not isinstance(logits, list):
-        labels = labels.reshape(-1)
-        logits = logits.reshape(-1, logits.size(-1))
-    loss = loss_fn(logits, labels)
-    del logits  # free logits otherwise peaks backward memory
-    return loss
 
 
 def validate_cfg(cfg: DictConfig) -> None:
