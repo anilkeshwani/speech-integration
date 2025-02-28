@@ -24,9 +24,9 @@ from torchtune.utils import batch_to_device, get_device
 from tqdm import tqdm
 
 from ssi.checkpoint import FullModelHFCheckpointer
-from ssi.eval import compute_dataset_loss
 from ssi.constants import EPOCHS_KEY, MODEL_KEY, OPTIMIZER_KEY, SEED, SEED_KEY, STEPS_KEY
 from ssi.data import setup_text_completion_data
+from ssi.eval import compute_dataset_loss
 from ssi.lr_schedule import setup_lr_scheduler
 from ssi.model import setup_llama3_2_1b
 from ssi.optimizer import setup_optimizer
@@ -229,6 +229,8 @@ def train(cfg: DictConfig) -> None:
                         seed=SEED,
                     )
                     LOGGER.info(f"Checkpoint saved at step {global_step:0{len(str(steps_per_epoch))}d}")  # TODO 0s pad
+            del batch  # Explicitly delete the batch to free memory; attempt to debug OOM
+            torch.cuda.empty_cache()  # Release all unoccupied cached memory; attempt to debug OOM
 
 
 ################################################################################
