@@ -24,7 +24,7 @@ from torchtune.utils import batch_to_device, get_device
 from tqdm import tqdm
 
 from ssi.checkpoint import FullModelHFCheckpointer
-from ssi.constants import EPOCHS_KEY, MODEL_KEY, OPTIMIZER_KEY, SEED, SEED_KEY, STEPS_KEY
+from ssi.constants import EPOCHS_KEY, MODEL_KEY, OPTIMIZER_KEY, SEED, SEED_KEY, STEPS_KEY, SUPPORTED_DTYPES
 from ssi.data import setup_sft_data, setup_text_completion_data
 from ssi.eval import compute_dataset_loss
 from ssi.loss import compute_loss
@@ -61,8 +61,6 @@ logging.basicConfig(
 )
 
 LOGGER = logging.getLogger(__name__)
-
-SUPPORTED_DTYPES: set[torch.dtype] = {torch.float32, torch.bfloat16}
 
 ################################################################################
 # Training helper functions

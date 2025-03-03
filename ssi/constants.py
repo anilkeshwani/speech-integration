@@ -1,8 +1,11 @@
+import torch
 from sardalign.constants import SEED
 from torchtune import training
 
 
-# Keys: based on torchtune.training constrained to values as of v0.5.0
+####################################################################################################
+# Keys - Based on torchtune.training constrained to values as of v0.5.0
+####################################################################################################
 ADAPTER_KEY: str = training.ADAPTER_KEY  # adapter weights such as LoRA weights
 assert ADAPTER_KEY == "adapter"
 
@@ -36,3 +39,9 @@ assert RNG_KEY == "rng_state"
 # Keys required in the batch as accepted by torchtune's collate functions - used to avoid conflicts when returning
 # additional fields from a dataset (e.g. sample IDs to relate generations to ground truth transcripts in ASR evaluation)
 RESERVED_BATCH_KEYS: set[str] = {"tokens", "mask", "labels"}
+
+####################################################################################################
+# Constants
+####################################################################################################
+
+SUPPORTED_DTYPES: set[torch.dtype] = {torch.float32, torch.bfloat16}
