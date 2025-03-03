@@ -3,7 +3,6 @@ import math
 import os
 import sys
 import time
-from pathlib import Path
 from typing import Any
 
 import hydra
@@ -23,7 +22,7 @@ from torchtune.training.precision import PRECISION_STR_TO_DTYPE
 from torchtune.utils import batch_to_device, get_device
 from tqdm import tqdm
 
-from ssi.checkpoint import FullModelHFCheckpointer
+from ssi.checkpoint import FullModelHFCheckpointer, resolve_checkpointer_output_dir
 from ssi.constants import EPOCHS_KEY, MODEL_KEY, OPTIMIZER_KEY, SEED, SEED_KEY, STEPS_KEY, SUPPORTED_DTYPES
 from ssi.data import setup_sft_data, setup_text_completion_data
 from ssi.eval import compute_dataset_loss
@@ -78,14 +77,6 @@ def validate_cfg(cfg: DictConfig) -> None:
     missing_keys = OmegaConf.missing_keys(cfg)
     if missing_keys:
         raise ValueError(f"Missing keys in config: {missing_keys}")
-
-
-def resolve_checkpointer_output_dir(cfg: DictConfig, wandb_logger: WandBLogger) -> Path:
-    if wandb_logger._wandb.run is None:
-        raise RuntimeError("wandb run not initialized")
-    run_name = wandb_logger._wandb.run.name
-    run_id = wandb_logger._wandb.run.id
-    return Path(cfg.output_dir, f"{run_name}-id_{run_id}", "checkpoints")
 
 
 def resume_training_state(ckpt_dict: dict[str, Any]) -> tuple[int, int, StateDict]:

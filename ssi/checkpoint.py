@@ -26,6 +26,7 @@ from torchtune.training.checkpointing._utils import (
     SUFFIXES_TO_NOT_COPY,
     TORCH_INDEX_FNAME,
 )
+from torchtune.training.metric_logging import WandBLogger
 from torchtune.utils._logging import get_logger, log_rank_zero
 
 import ssi.constants
@@ -586,3 +587,11 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             ckpt_dict, epoch=epoch, global_step=global_step, save_training_state=True, adapter_only=False
         )
         return ckpt_dict
+
+
+def resolve_checkpointer_output_dir(cfg: DictConfig, wandb_logger: WandBLogger) -> Path:
+    if wandb_logger._wandb.run is None:
+        raise RuntimeError("wandb run not initialized")
+    run_name = wandb_logger._wandb.run.name
+    run_id = wandb_logger._wandb.run.id
+    return Path(cfg.output_dir, f"{run_name}-id_{run_id}", "checkpoints")
