@@ -1,0 +1,24 @@
+defaults:
+  - sft
+  - _self_
+
+output_dir: ./generation_output
+
+# Generation arguments
+max_new_tokens: 300
+temperature: 0.6 # 0.8 and 0.6 are popular values to try
+top_k: 300
+
+# TODO we're removing this in favour of directly getting the instruction from the SFT dataset items (samples)
+# prompt:
+#   system: null
+#   user: "Tell me a joke."
+
+enable_kv_cache: False # set to false for now; set to true for better performance
+
+# Checkpointing
+checkpointer:
+  checkpoint_dir: ???
+  checkpoint_files: ???
+  config_json: ???
+  output_dir: /tmp/nonsense # we don't need any checkpoint outputs
