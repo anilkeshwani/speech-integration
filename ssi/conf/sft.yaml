@@ -2,7 +2,7 @@ defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
   - cpt
   - _self_
 
-output_dir: ${experiments_root_dir}/${base_model_name}-sft
+model_name: Llama-3.2-1B-5000-dsus # NOTE this percolates down to output_dir as resolution is lazy
 
 data: # NOTE: arguments are to setup **function** not SFTDataset class
   train:
@@ -22,10 +22,14 @@ data: # NOTE: arguments are to setup **function** not SFTDataset class
     split: train
 
     # not arguments to SFT dataset:
-    batch_size: 4 # passed to DataLoader
+    batch_size: 1 # passed to DataLoader
     drop_last: True # passed to DataLoader
     shuffle: True # passed to DistributedSampler
     packed: False # passed to pack_dataset to create a PackedDataset
+
+    # arguments to remove from sft.yaml inherited from cpt.yaml # TODO find a cleaner way of dropping inherited keys
+    column: null
+    add_eos: null
   dev:
     # SFTDataset
     source: anilkeshwani/MLS_english_train_strat_sample_aligned_hubert
@@ -43,7 +47,11 @@ data: # NOTE: arguments are to setup **function** not SFTDataset class
     split: dev # <- NOTE different from train
 
     # not arguments to SFT dataset:
-    batch_size: 4 # passed to DataLoader
+    batch_size: 1 # passed to DataLoader
     drop_last: False # passed to DataLoader
     shuffle: False # passed to DistributedSampler # <- NOTE different from train
     packed: False # passed to pack_dataset to create a PackedDataset
+
+    # arguments to remove from sft.yaml inherited from cpt.yaml # TODO find a cleaner way of dropping inherited keys
+    column: null
+    add_eos: null
