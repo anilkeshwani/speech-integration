@@ -35,9 +35,10 @@ from ssi.tokenizer import setup_llama3_tokenizer
 
 
 ################################################################################
-# Config to use; see conf/ directory
+# Global Settings
 ################################################################################
 
+# Config to use; see conf/ directory
 CONFIG_NAME = "sft.yaml"
 
 # Debug mode
