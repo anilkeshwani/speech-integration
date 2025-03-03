@@ -48,3 +48,12 @@ python ssi/train.py \
     checkpointer.checkpoint_dir='/mnt/scratch-artemis/anilkeshwani/models/extended/Llama-3.2-1B-5000-dsus' \
     checkpointer.checkpoint_files='["hf_model_0001_0.pt"]' # slightly weird syntax
 ```
+
+## Generation
+
+```bash
+python ssi/generate.py \
+    checkpointer.config_json='/mnt/scratch-artemis/anilkeshwani/models/extended/Llama-3.2-1B-5000-dsus/config.json' \
+    checkpointer.checkpoint_dir='/mnt/scratch-artemis/anilkeshwani/models/extended/Llama-3.2-1B-5000-dsus' \
+    checkpointer.checkpoint_files='["hf_model_0001_0.pt"]' # slightly weird syntax
+```
