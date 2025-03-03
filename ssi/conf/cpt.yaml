@@ -19,7 +19,6 @@ tokenizer:
 # Data
 data:
   train:
-    _component_: torchtune.datasets.text_completion_dataset
     source: anilkeshwani/MLS_english_train_strat_sample_aligned_hubert_interleaved # specified as a HF dataset
     column: text
     split: train
@@ -38,7 +37,6 @@ data:
     # filter_fn: Optional[Callable] = None
     # **load_dataset_kwargs: Dict[str, Any]
   dev:
-    _component_: torchtune.datasets.text_completion_dataset
     source: anilkeshwani/MLS_english_train_strat_sample_aligned_hubert_interleaved # specified as a HF dataset
     column: text
     split: dev

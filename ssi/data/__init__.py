@@ -44,7 +44,7 @@ def setup_text_completion_data(
     shuffle = cfg_dataset.pop("shuffle")
     batch_size = cfg_dataset.pop("batch_size")
     # TODO replace this torchtune.config.instantiate with hydra.utils.instantiate, which doesn't modify the sys path and has more functionality
-    ds = config.instantiate(cfg_dataset, model_tokenizer)
+    ds = torchtune.datasets.text_completion_dataset(tokenizer=model_tokenizer, **cfg_dataset)
     packed = cfg_dataset.get("packed", False)
     if collate_fn is not None:
         if "left_pad_sequence" in collate_fn:
