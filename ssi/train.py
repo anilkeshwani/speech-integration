@@ -38,7 +38,7 @@ from ssi.tokenizer import setup_llama3_tokenizer
 ################################################################################
 
 # Config to use; see conf/ directory
-CONFIG_NAME = "sft.yaml"
+CONFIG_NAME = "cpt.yaml"
 
 # Debug mode
 """
@@ -126,8 +126,15 @@ def train(cfg: DictConfig) -> None:
         training.compile_loss(loss_fn)
     if isinstance(loss_fn, CEWithChunkedOutputLoss):
         model.set_num_output_chunks(loss_fn.num_output_chunks)
-    data_train, sampler_train = setup_sft_data(cfg_dataset=cfg.data.train, model_tokenizer=tokenizer)
-    data_dev, sampler_dev = setup_sft_data(cfg_dataset=cfg.data.dev, model_tokenizer=tokenizer)
+    # TODO clean this up later -> use hydra.utils.instantiate (requires refactoring configs)
+    if CONFIG_NAME == "sft.yaml":
+        data_train, sampler_train = setup_sft_data(cfg_dataset=cfg.data.train, model_tokenizer=tokenizer)
+        data_dev, sampler_dev = setup_sft_data(cfg_dataset=cfg.data.dev, model_tokenizer=tokenizer)
+    elif CONFIG_NAME == "cpt.yaml":
+        data_train, sampler_train = setup_text_completion_data(cfg.data.train, tokenizer)
+        data_dev, sampler_dev = setup_text_completion_data(cfg.data.dev, tokenizer)
+    else:
+        raise NotImplementedError
     optimizer.zero_grad()  # zero gradients before training # NOTE make conditional for optimizer_in_bwd
     t_train_start = time.perf_counter()
     t0 = time.perf_counter()

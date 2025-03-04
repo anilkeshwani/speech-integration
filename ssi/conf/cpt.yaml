@@ -25,8 +25,9 @@ data:
       split: train
       add_eos: True
     dataloader:
-      shuffle: True
       batch_size: 4
+      drop_last: True
+    shuffle: True
     packed: False # TODO packing performed a priori at training time and leads to CPU RAM overflow for e.g. MLS interleaved
     # TODO clean up / describe the following fields (arguments)
     # split_across_pack: True # set to True for CPT; set to False for SFT
@@ -41,8 +42,9 @@ data:
       split: dev
       add_eos: True
     dataloader:
-      shuffle: False
       batch_size: 4 # TODO can we increase this?
+      drop_last: False
+    shuffle: False
     packed: False
 
 # Optimization
