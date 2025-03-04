@@ -38,7 +38,7 @@ from ssi.tokenizer import setup_llama3_tokenizer
 ################################################################################
 
 # Config to use; see conf/ directory
-CONFIG_NAME = "cpt.yaml"
+CONFIG_NAME = "sft.yaml"
 
 # Debug mode
 """
