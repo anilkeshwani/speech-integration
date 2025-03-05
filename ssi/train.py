@@ -211,8 +211,8 @@ def train(cfg: DictConfig) -> None:
                         seed=SEED,
                     )
                     LOGGER.info(f"Checkpoint saved at step {global_step:0{len(str(steps_per_epoch))}d}")  # TODO 0s pad
-            del batch  # Explicitly delete the batch to free memory; attempt to debug OOM
-            torch.cuda.empty_cache()  # Release all unoccupied cached memory; attempt to debug OOM
+            # del batch  # Explicitly delete the batch to free memory; attempt to debug OOM
+            # torch.cuda.empty_cache()  # Release all unoccupied cached memory; attempt to debug OOM
 
 
 ################################################################################

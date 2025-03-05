@@ -23,7 +23,7 @@ data: # NOTE: arguments are to setup **function** not SFTDataset class
       column: null
       add_eos: null
     dataloader:
-      batch_size: 1
+      batch_size: 2
       drop_last: True
     shuffle: True # passed to DistributedSampler
     packed: False # passed to pack_dataset to create a PackedDataset
@@ -45,7 +45,7 @@ data: # NOTE: arguments are to setup **function** not SFTDataset class
       column: null
       add_eos: null
     dataloader:
-      batch_size: 1
+      batch_size: 2
       drop_last: False
     shuffle: False # passed to DistributedSampler <- NOTE different from train
     packed: False # passed to pack_dataset to create a PackedDataset
