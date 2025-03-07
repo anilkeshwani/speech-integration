@@ -110,6 +110,7 @@ class SFTDataset(Dataset):
         column_map: Optional[dict[str, str]] = None,
         new_system_prompt: Optional[str] = None,
         image_dir: Optional[Path] = None,
+        additional_keys: list[str] = [],
         **load_dataset_kwargs: dict[str, Any],
     ) -> None:
         self._message_transform = InputOutputToMessages(
@@ -127,6 +128,7 @@ class SFTDataset(Dataset):
         if filter_fn is not None:
             self._data = self._data.filter(filter_fn)
         self._inference = inference
+        self.additional_keys = additional_keys
 
     @property
     def inference(self) -> bool:
@@ -143,7 +145,7 @@ class SFTDataset(Dataset):
 
     def __getitem__(self, index: int) -> dict[str, Any]:
         sample = self._data[index]
-        return self._prepare_sample(sample)  # | dict(sample)
+        return self._prepare_sample(sample) | {k: sample[k] for k in self.additional_keys}
 
     def _prepare_sample(self, sample: Mapping[str, Any]) -> dict[str, Any]:
         transformed_sample = self._message_transform(sample, self._inference)
