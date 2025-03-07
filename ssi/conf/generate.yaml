@@ -2,6 +2,12 @@ defaults:
   - sft
   - _self_
 
+data: # NOTE: arguments are to setup **function** not SFTDataset class
+  dev:
+    inference: True
+    dataloader:
+      batch_size: 1
+
 output_dir: ./generation_output
 
 # Generation arguments
