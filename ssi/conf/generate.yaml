@@ -4,7 +4,10 @@ defaults:
 
 data: # NOTE: arguments are to setup **function** not SFTDataset class
   dev:
-    inference: True
+    dataset:
+      inference: True
+      additional_keys:
+        - ID
     dataloader:
       batch_size: 1
 
