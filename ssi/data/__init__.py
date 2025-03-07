@@ -66,26 +66,26 @@ def setup_sft_data(
     model_tokenizer: Llama3Tokenizer,
     loss_fn: CEWithChunkedOutputLoss | None = None,
 ) -> tuple[DataLoader, DistributedSampler]:
-    world_size, rank = get_world_size_and_rank()  # more general
-    packed = cfg_dataset.get("packed", False)
     if isinstance(cfg_dataset, ListConfig):
         raise NotImplementedError
-    else:
-        dataset = SFTDataset(model_tokenizer=model_tokenizer, **cfg_dataset.dataset)
-    if packed:
+    dataset = SFTDataset(model_tokenizer=model_tokenizer, **cfg_dataset.dataset)
+    if cfg_dataset.get("packed", False):
         dataset = pack_dataset(dataset, model_tokenizer, split_across_pack=False)
+        collate_fn = padded_collate_packed
+    else:
+        if loss_fn is None:
+            ignore_idx = CROSS_ENTROPY_IGNORE_IDX
+        ignore_idx = CROSS_ENTROPY_IGNORE_IDX if loss_fn is None else loss_fn.ignore_index
+        collate_fn = partial(padded_collate_sft, padding_idx=model_tokenizer.pad_id, ignore_idx=ignore_idx)
+    world_size, rank = get_world_size_and_rank()  # more general
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=cfg_dataset["shuffle"], seed=0)
-    ignore_idx = CROSS_ENTROPY_IGNORE_IDX if loss_fn is None else loss_fn.ignore_index
+    # NOTE dropping last avoids shape issues w/ compile + flex attention
     dataloader = DataLoader(
         dataset=dataset,
-        batch_size=cfg_dataset.dataloader["batch_size"],
+        batch_size=cfg_dataset.dataloader.batch_size,
         sampler=sampler,
-        drop_last=cfg_dataset.dataloader["drop_last"],  # dropping last avoids shape issues w/ compile + flex attention
-        collate_fn=(
-            partial(padded_collate_sft, padding_idx=model_tokenizer.pad_id, ignore_idx=ignore_idx)
-            if not packed
-            else padded_collate_packed
-        ),
+        drop_last=cfg_dataset.dataloader.drop_last,
+        collate_fn=collate_fn,
     )
     return dataloader, sampler
 
