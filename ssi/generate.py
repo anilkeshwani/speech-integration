@@ -56,6 +56,8 @@ LOGGER = logging.getLogger(__name__)
 @hydra.main(config_path="conf", config_name=CONFIG_NAME, version_base=None)
 @torch.inference_mode()
 def generate(cfg: DictConfig):
+    if cfg.data.dev.packed:
+        raise NotImplementedError("Packed datasets are not supported for generation.")
     DEVICE: torch.device = get_device(cfg.device)
     DTYPE: torch.dtype = get_dtype(cfg.dtype)
     custom_generate_next_token = None
@@ -72,14 +74,16 @@ def generate(cfg: DictConfig):
 
     tokenizer, special_tokens = setup_llama3_tokenizer(**cfg.tokenizer)
     data_dev, sampler_dev = setup_sft_data(cfg_dataset=cfg.data.dev, model_tokenizer=tokenizer)
+
     data_dev.inference = True  # TODO BUG this sets inference on the DataLoader instance - meaningless
+
     model_size = sum([p.numel() * p.dtype.itemsize for p in itertools.chain(model.parameters(), model.buffers())])
     # TODO ensure this check doesn't cause the DL to skip the first sample
     if next(iter(data_dev))["tokens"].size(0) != 1:
-        raise ValueError("Generation only supports batch size 1")
+        raise RuntimeError("Generation only supports batch size 1")
     for i, batch in tqdm(enumerate(data_dev), total=len(data_dev)):
         t0 = time.perf_counter()
-        batch_to_device(batch, DEVICE)  # in-place
+        batch_to_device({k: v for k, v in batch.items() if k not in cfg.data.dev.dataset.additional_keys}, DEVICE)
         prompt = batch["tokens"]  # batch["tokens"].masked_select(batch["tokens"] != tokenizer.pad_id) redundant if bs=1
         if cfg.enable_kv_cache:
             with DEVICE:
