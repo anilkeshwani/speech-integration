@@ -119,10 +119,10 @@ class SFTDataset(Dataset):
             image_dir=image_dir,
         )
         self._model_tokenizer = model_tokenizer
-        self._data: datasets.Dataset = load_dataset(source, **load_dataset_kwargs)
+        self._data = load_dataset(source, **load_dataset_kwargs)
         if not isinstance(self._data, datasets.Dataset):
             raise TypeError(f"Expected a datasets.Dataset object but found {type(self._data)}")
-        if any(k in self._data.features for k in RESERVED_BATCH_KEYS):
+        if any((k in self._data.features) for k in RESERVED_BATCH_KEYS):
             raise ValueError(f"Dataset contains reserved keys: {RESERVED_BATCH_KEYS}")
         if filter_fn is not None:
             self._data = self._data.filter(filter_fn)

@@ -40,28 +40,22 @@ def setup_text_completion_data(
     if isinstance(cfg_dataset, ListConfig):
         raise NotImplementedError("Support for the shuffle parameter needs to be added to use ConcatDataset.")
     packed = cfg_dataset.get("packed", False)
-    ds = TextCompletionDataset(tokenizer=model_tokenizer, **cfg_dataset.dataset)
+    dataset = TextCompletionDataset(tokenizer=model_tokenizer, **cfg_dataset.dataset)
     if packed:
-        ds = pack_dataset(ds, model_tokenizer, split_across_pack=cfg_dataset.get("split_across_pack", False))
+        dataset = pack_dataset(dataset, model_tokenizer, split_across_pack=cfg_dataset.get("split_across_pack", False))
     if collate_fn is not None:
         if "left_pad_sequence" in collate_fn:
-            raise RuntimeError("left_pad_sequence collator is only for inference.")
+            raise ValueError("left_pad_sequence collator is only for inference.")
         collate_fn: Callable = _get_component_from_path(collate_fn)  # type: ignore
     else:
         collate_fn = padded_collate_sft
     if loss_fn is None:
         ignore_idx = CROSS_ENTROPY_IGNORE_IDX
     world_size, rank = get_world_size_and_rank()
-    sampler = DistributedSampler(
-        ds,
-        num_replicas=world_size,
-        rank=rank,
-        shuffle=cfg_dataset["shuffle"],
-        seed=0,
-    )
+    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=cfg_dataset["shuffle"], seed=0)
     ignore_idx = CROSS_ENTROPY_IGNORE_IDX if loss_fn is None else loss_fn.ignore_index
     dataloader = DataLoader(
-        dataset=ds,
+        dataset=dataset,
         batch_size=cfg_dataset.dataloader["batch_size"],
         sampler=sampler,
         drop_last=cfg_dataset.dataloader["drop_last"],  # dropping last avoids shape issues w/ compile + flex attention
