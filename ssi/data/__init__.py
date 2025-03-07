@@ -35,35 +35,27 @@ def setup_text_completion_data(
     cfg_dataset: DictConfig,
     model_tokenizer: Llama3Tokenizer,
     loss_fn: CEWithChunkedOutputLoss | None = None,
-    collate_fn: str | None = None,  # type: ignore # TODO avoid changing type; or remove to align with setup_sft_data
 ) -> tuple[DataLoader, DistributedSampler]:
     if isinstance(cfg_dataset, ListConfig):
         raise NotImplementedError("Support for the shuffle parameter needs to be added to use ConcatDataset.")
-    packed = cfg_dataset.get("packed", False)
     dataset = TextCompletionDataset(tokenizer=model_tokenizer, **cfg_dataset.dataset)
-    if packed:
+    if cfg_dataset.get("packed", False):
         dataset = pack_dataset(dataset, model_tokenizer, split_across_pack=cfg_dataset.get("split_across_pack", False))
-    if collate_fn is not None:
-        if "left_pad_sequence" in collate_fn:
-            raise ValueError("left_pad_sequence collator is only for inference.")
-        collate_fn: Callable = _get_component_from_path(collate_fn)  # type: ignore
+        collate_fn = padded_collate_packed
     else:
-        collate_fn = padded_collate_sft
-    if loss_fn is None:
-        ignore_idx = CROSS_ENTROPY_IGNORE_IDX
+        if loss_fn is None:
+            ignore_idx = CROSS_ENTROPY_IGNORE_IDX
+        ignore_idx = CROSS_ENTROPY_IGNORE_IDX if loss_fn is None else loss_fn.ignore_index
+        collate_fn = partial(padded_collate_sft, padding_idx=model_tokenizer.pad_id, ignore_idx=ignore_idx)
     world_size, rank = get_world_size_and_rank()
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=cfg_dataset["shuffle"], seed=0)
-    ignore_idx = CROSS_ENTROPY_IGNORE_IDX if loss_fn is None else loss_fn.ignore_index
+    # NOTE dropping last avoids shape issues w/ compile + flex attention
     dataloader = DataLoader(
         dataset=dataset,
-        batch_size=cfg_dataset.dataloader["batch_size"],
+        batch_size=cfg_dataset.dataloader.batch_size,
         sampler=sampler,
-        drop_last=cfg_dataset.dataloader["drop_last"],  # dropping last avoids shape issues w/ compile + flex attention
-        collate_fn=(
-            partial(collate_fn, padding_idx=model_tokenizer.pad_id, ignore_idx=ignore_idx)
-            if not packed
-            else padded_collate_packed
-        ),
+        drop_last=cfg_dataset.dataloader.drop_last,
+        collate_fn=collate_fn,
     )
     LOGGER.info(f"Dataset and Sampler initialized from {cfg_dataset.dataset.source}.")
     return dataloader, sampler
