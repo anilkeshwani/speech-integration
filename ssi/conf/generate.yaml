@@ -28,3 +28,5 @@ checkpointer:
   checkpoint_files: ???
   config_json: ???
   output_dir: /tmp/nonsense # we don't need any checkpoint outputs
+
+observability: False

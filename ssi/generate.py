@@ -69,28 +69,21 @@ def generate(cfg: DictConfig):
     )
     model.to(device=DEVICE)
     model.eval()
+
     tokenizer, special_tokens = setup_llama3_tokenizer(**cfg.tokenizer)
     data_dev, sampler_dev = setup_sft_data(cfg_dataset=cfg.data.dev, model_tokenizer=tokenizer)
-    data_dev.inference = True
+    data_dev.inference = True  # TODO BUG this sets inference on the DataLoader instance - meaningless
+    model_size = sum([p.numel() * p.dtype.itemsize for p in itertools.chain(model.parameters(), model.buffers())])
     # TODO ensure this check doesn't cause the DL to skip the first sample
     if next(iter(data_dev))["tokens"].size(0) != 1:
         raise ValueError("Generation only supports batch size 1")
-
-    # NOTE Disabled KV Cache as this seems to only make sense with a single sample
-    # TODO check if pre-filling the KV cache even when we're generating for several samples is beneficial
-    # # Ensure the cache is setup on the right device, with only as many tokens as we need
-    # if cfg.enable_kv_cache:
-    #     with DEVICE:
-    #         model.setup_caches(
-    #             batch_size=1,
-    #             dtype=DTYPE,
-    #             decoder_max_seq_len=prompt.numel() + cfg.max_new_tokens,
-    #         )
-
     for i, batch in tqdm(enumerate(data_dev), total=len(data_dev)):
         t0 = time.perf_counter()
         batch_to_device(batch, DEVICE)  # in-place
         prompt = batch["tokens"]  # batch["tokens"].masked_select(batch["tokens"] != tokenizer.pad_id) redundant if bs=1
+        if cfg.enable_kv_cache:
+            with DEVICE:
+                model.setup_caches(batch_size=1, dtype=DTYPE, decoder_max_seq_len=prompt.numel() + cfg.max_new_tokens)
         generated_tokens, logits = generation.generate(
             model=model,
             prompt=prompt,
@@ -101,6 +94,7 @@ def generate(cfg: DictConfig):
             stop_tokens=tokenizer.stop_tokens,
             custom_generate_next_token=custom_generate_next_token,
         )
+
         print(f"{prompt.size() = }")
         print(f"{generated_tokens.size() = }")
         print(f"{logits.size() = }")
@@ -108,19 +102,32 @@ def generate(cfg: DictConfig):
         print(f"{prompt_length = }")
         print(tokenizer.decode(generated_tokens[0, prompt_length:].tolist()))
         generated_tokens_list = generated_tokens.tolist()
-
-        breakpoint()
-
-        model_size = sum([p.numel() * p.dtype.itemsize for p in itertools.chain(model.parameters(), model.buffers())])
-        tokens_generated = len(generated_tokens[0]) - prompt.size(0)
-        tokens_sec = tokens_generated / t
-        breakpoint()
-        LOGGER.info(f"Time for inference: {t:.02f} sec total, {tokens_sec:.02f} tokens/sec")
-        LOGGER.info(f"Bandwidth achieved: {model_size * tokens_sec / 1e9:.02f} GB/s")
-        LOGGER.info(f"Memory used: {torch.cuda.max_memory_allocated() / 1e9:.02f} GB")
         t = time.perf_counter() - t0
-        del batch, generated_tokens, logits  # Explicitly delete to free memory
-        torch.cuda.empty_cache()  # Release all unoccupied cached memory
+
+        promptdec = tokenizer.decode(prompt.squeeze(0).tolist())
+        gendec = tokenizer.decode(generated_tokens.squeeze(0).tolist(), truncate_at_eos=True, skip_special_tokens=True)
+        gendec_notrunc = tokenizer.decode(
+            generated_tokens.squeeze(0).tolist(), truncate_at_eos=False, skip_special_tokens=True
+        )
+        gendec_notrunc_incspec = tokenizer.decode(
+            generated_tokens.squeeze(0).tolist(), truncate_at_eos=False, skip_special_tokens=False
+        )
+
+        LOGGER.info(f"{promptdec = }")
+        LOGGER.info(f"{gendec = }")
+        LOGGER.info(f"{gendec_notrunc = }")
+        LOGGER.info(f"{gendec_notrunc_incspec = }")
+
+        if cfg.observability:
+            tokens_generated = len(generated_tokens[0]) - prompt.size(0)
+            tokens_sec = tokens_generated / t
+            LOGGER.info(f"Time for inference: {t:.02f} sec total, {tokens_sec:.02f} tokens/sec")
+            LOGGER.info(f"Bandwidth achieved: {model_size * tokens_sec / 1e9:.02f} GB/s")
+            LOGGER.info(f"Memory used: {torch.cuda.max_memory_allocated() / 1e9:.02f} GB")
+
+        # # Explicitly release all unoccupied (inc. cache allocated) memory
+        # del batch, generated_tokens, logits
+        # torch.cuda.empty_cache()
 
 
 if __name__ == "__main__":
