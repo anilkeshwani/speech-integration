@@ -11,11 +11,11 @@ data: # NOTE: arguments are to setup **function** not SFTDataset class
     dataloader:
       batch_size: 1
 
-output_dir: ./generation_output
+output_jsonl: ???
 
 # Generation arguments
 max_new_tokens: 300
-temperature: 0.6 # 0.8 and 0.6 are popular values to try
+temperature: 0.0 # 0.8 and 0.6 are popular values to try
 top_k: 300
 
 # TODO we're removing this in favour of directly getting the instruction from the SFT dataset items (samples)
