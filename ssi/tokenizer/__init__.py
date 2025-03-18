@@ -4,8 +4,10 @@ from pprint import pformat
 
 from tiktoken.load import load_tiktoken_bpe
 from torchtune.data import PromptTemplate
-from torchtune.models.llama3 import Llama3Tokenizer
 from torchtune.models.llama3._tokenizer import LLAMA3_SPECIAL_TOKENS
+
+# this is the only module in ssi where we instantiate a Llama3Tokenizer (all other references are type hints)
+from ssi.tokenizer.monkeypatch import Llama3TokenizerPUA as Llama3Tokenizer
 
 
 def setup_llama3_tokenizer(
