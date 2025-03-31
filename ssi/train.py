@@ -5,7 +5,6 @@ import sys
 import time
 from typing import Any
 
-import hydra
 import torch
 from omegaconf import DictConfig, OmegaConf
 from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
@@ -33,26 +32,6 @@ from ssi.optimizer import setup_optimizer
 from ssi.tokenizer import setup_llama3_tokenizer
 
 
-################################################################################
-# Global Settings
-################################################################################
-
-# Config to use; see conf/ directory
-CONFIG_NAME = "sft.yaml"
-
-# Debug mode
-"""
-`None` -> don't set any PyTorch global values
-"default" or 0 -> don't error or warn on nondeterministic operations and additionally enable PyTorch CuDNN benchmark
-"warn" or 1 -> warn on nondeterministic operations and disable PyTorch CuDNN benchmark
-"error" or 2 -> error on nondeterministic operations and disable PyTorch CuDNN benchmark
-"""
-DEBUG_MODE: str | None = None
-
-################################################################################
-# Preamble
-################################################################################
-
 logging.basicConfig(
     format=LOG_FORMAT,
     datefmt=LOG_DATEFMT,
@@ -61,10 +40,6 @@ logging.basicConfig(
 )
 
 LOGGER = logging.getLogger(__name__)
-
-################################################################################
-# Training helper functions
-################################################################################
 
 
 def validate_cfg(cfg: DictConfig) -> None:
@@ -85,15 +60,9 @@ def resume_training_state(ckpt_dict: dict[str, Any]) -> tuple[int, int, StateDic
     return ckpt_dict[EPOCHS_KEY], ckpt_dict[STEPS_KEY], ckpt_dict[OPTIMIZER_KEY]
 
 
-################################################################################
-# Training
-################################################################################
-
-
-@hydra.main(config_path="conf", config_name=CONFIG_NAME, version_base=None)
 def train(cfg: DictConfig) -> None:
     validate_cfg(cfg)
-    training.set_seed(seed=SEED, debug_mode=DEBUG_MODE)
+    training.set_seed(seed=SEED, debug_mode=cfg.debug_mode)
     DEVICE: torch.device = get_device(cfg.device)
     DTYPE: torch.dtype = get_dtype(cfg.dtype)
     wandb_logger = WandBLogger(**cfg.wandb)
@@ -127,10 +96,10 @@ def train(cfg: DictConfig) -> None:
     if isinstance(loss_fn, CEWithChunkedOutputLoss):
         model.set_num_output_chunks(loss_fn.num_output_chunks)
     # TODO clean this up later -> use hydra.utils.instantiate (requires refactoring configs)
-    if CONFIG_NAME == "sft.yaml":
+    if cfg.config_name == "sft.yaml":
         data_train, sampler_train = setup_sft_data(cfg_dataset=cfg.data.train, model_tokenizer=tokenizer)
         data_dev, sampler_dev = setup_sft_data(cfg_dataset=cfg.data.dev, model_tokenizer=tokenizer)
-    elif CONFIG_NAME == "cpt.yaml":
+    elif cfg.config_name == "cpt.yaml":
         data_train, sampler_train = setup_text_completion_data(cfg.data.train, tokenizer)
         data_dev, sampler_dev = setup_text_completion_data(cfg.data.dev, tokenizer)
     else:
@@ -213,11 +182,3 @@ def train(cfg: DictConfig) -> None:
                     LOGGER.info(f"Checkpoint saved at step {global_step:0{len(str(steps_per_epoch))}d}")  # TODO 0s pad
             # del batch  # Explicitly delete the batch to free memory; attempt to debug OOM
             # torch.cuda.empty_cache()  # Release all unoccupied cached memory; attempt to debug OOM
-
-
-################################################################################
-# Script entry point
-################################################################################
-
-if __name__ == "__main__":
-    train()
