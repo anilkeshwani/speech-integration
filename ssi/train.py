@@ -71,7 +71,7 @@ def train(cfg: DictConfig) -> None:
         LOGGER.info(f"No checkpointer output dir provided. Resolved to: {cfg.checkpointer.output_dir!s}")
     checkpointer = FullModelHFCheckpointer(**cfg.checkpointer)
     ckpt_dict = checkpointer.load_checkpoint()
-    model: TransformerDecoder = setup_llama3_2_1b(
+    model, llama_config = setup_llama3_2_1b(
         cfg=cfg,
         model_state_dict=ckpt_dict[MODEL_KEY],  # NOTE require model ckpt
         dtype_default=DTYPE,

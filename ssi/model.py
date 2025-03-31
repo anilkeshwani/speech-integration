@@ -12,7 +12,7 @@ from torchtune.modules import TransformerDecoder
 from torchtune.training import get_dtype
 from torchtune.utils import get_device
 
-from ssi.llama_configs import configllama3_2_1b
+from ssi.llama_configs import ConfigLlama3_2, configllama3_2_1b
 
 
 logging.basicConfig(
@@ -26,7 +26,7 @@ def setup_llama3_2_1b(
     model_state_dict: dict[str, Any],
     dtype_default: torch.dtype | str = torch.get_default_dtype(),  # type: ignore
     device_default: torch.device | str = torch.get_default_device(),  # type: ignore
-) -> TransformerDecoder:
+) -> tuple[TransformerDecoder, ConfigLlama3_2]:
     if isinstance(dtype_default, str):
         dtype_default: torch.dtype = get_dtype(cfg.dtype)
     if isinstance(device_default, str):
@@ -46,4 +46,4 @@ def setup_llama3_2_1b(
         activations_handling_ctx = training.get_act_offloading_ctx_manager(model, cfg.enable_activation_offloading)
     if cfg.enable_activation_checkpointing and (not cfg.enable_activation_offloading):
         LOGGER.warning("Activation checkpointing is enabled but activation offloading is not.")
-    return model
+    return model, configllama3_2_1b
