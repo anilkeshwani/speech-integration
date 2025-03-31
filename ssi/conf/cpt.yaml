@@ -1,6 +1,13 @@
 # Experiment management
 experiments_root_dir: /mnt/scratch-artemis/anilkeshwani/experiments
 output_dir: ${experiments_root_dir}/${base_model_name}
+config_name: ${hydra:job.name} # name of the config file -> used to identify job type: {cpt, sft, etc.}
+# Debug Mode
+# `None` -> don't set any PyTorch global values
+# "default" or 0 -> don't error or warn on nondeterministic operations and additionally enable PyTorch CuDNN benchmark
+# "warn" or 1 -> warn on nondeterministic operations and disable PyTorch CuDNN benchmark
+# "error" or 2 -> error on nondeterministic operations and disable PyTorch CuDNN benchmark
+debug_mode: null
 
 # Base models directory
 extended_models_dir: /mnt/scratch-artemis/anilkeshwani/models/extended/
