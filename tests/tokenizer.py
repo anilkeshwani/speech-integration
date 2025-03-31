@@ -22,38 +22,21 @@ if __name__ == "__main__":
     print(text)
     print(f"{len(dsus) = }")
 
-    # enc_base = tok_base.encode(text)
+    enc_base = tok_base.encode(text)
     enc_ext = tok_ext.encode(text)
 
-    # print(enc_base)
-    # print(enc_ext)
+    print(enc_base)
+    print(enc_ext)
 
-    # print(f"{enc_base == enc_ext = }")
+    print(f"{enc_base == enc_ext = }")
 
-    exit(0)
+    enc_base_no_spec = [_ for _ in enc_base if _ not in tok_base.special_tokens.values()]
+    enc_ext_no_spec = [_ for _ in enc_ext if _ not in tok_ext.special_tokens.values()]
 
-    # enc_base_no_spec = [_ for _ in enc_base if _ not in tok_base.special_tokens.values()]
-    # enc_ext_no_spec = [_ for _ in enc_ext if _ not in tok_ext.special_tokens.values()]
-
-    # print(f"{enc_base_no_spec == enc_ext_no_spec = }")
-
-    # text_ss = (  # ss -> space-separated, as related to the DSUs portion of the text
-    #     "English Speech: "
-    #     + "".join(dsu2pua(dsu) for dsu in sample["speech_tokens"])
-    #     + "\nEnglish Text: "
-    #     + sample["transcript"]
-    # )
-
-    # enc_base_ss = tok_base.encode(text_ss)
-    # enc_ext_ss = tok_ext.encode(text_ss)
-
-    # enc_base_no_spec_ss = [_ for _ in enc_base if _ not in tok_base.special_tokens.values()]
-    # enc_ext_no_spec_ss = [_ for _ in enc_ext if _ not in tok_ext.special_tokens.values()]
-
-    # print(f"{enc_base_no_spec_ss == enc_ext_no_spec_ss = }")
+    print(f"{enc_base_no_spec == enc_ext_no_spec = }")
 
     print(f"{tok_ext.tt_model.tt_model._pat_str = }")
 
     print(tok_ext.tt_model.tt_model.encode(text))
 
-    # print([tok_ext.tt_model.tt_model.encode_single_token(dsu) for dsu in dsus])
+    print([tok_ext.tt_model.tt_model.encode_single_token(dsu) for dsu in dsus])
