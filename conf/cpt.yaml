@@ -32,7 +32,7 @@ data:
       split: train
       add_eos: True
     dataloader:
-      batch_size: 4
+      batch_size: 8
       drop_last: True
     shuffle: True
     packed: False # TODO packing performed a priori at training time and leads to CPU RAM overflow for e.g. MLS interleaved
@@ -49,7 +49,7 @@ data:
       split: dev
       add_eos: True
     dataloader:
-      batch_size: 4 # TODO can we increase this?
+      batch_size: 8 # TODO can we increase this?
       drop_last: False
     shuffle: False
     packed: False
@@ -63,7 +63,7 @@ optimizer:
   amsgrad: False
   fused: True
 max_steps: 10
-gradient_accumulation_steps: 16
+gradient_accumulation_steps: 8
 clip_grad_norm: null
 
 # Learning rate scheduler
