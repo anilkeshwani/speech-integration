@@ -4,7 +4,7 @@ from torchtune.models.llama3._tokenizer import CL100K_PATTERN
 from torchtune.modules.tokenizers import TikTokenBaseTokenizer
 
 
-CL100K_PATTERN_PUA = r"""(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\U000f0000-\U000ffffd\p{N}]?[\p{L}\U000f0000-\U000ffffd]+|\p{N}{1,3}| ?[^\s\p{L}\U000f0000-\U000ffffd\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+"""  # noqa
+CL100K_PATTERN_PUA = r"""(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}\p{Co}]?\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}\p{Co}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+|\p{Co}"""  # noqa
 
 assert CL100K_PATTERN_PUA != CL100K_PATTERN
 
