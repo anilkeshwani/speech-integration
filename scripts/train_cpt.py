@@ -18,7 +18,7 @@ logging.basicConfig(
 LOGGER = logging.getLogger(__name__)
 
 
-@hydra.main(config_path="conf", config_name="cpt.yaml", version_base=None)
+@hydra.main(config_path="../conf", config_name="cpt.yaml", version_base=None)
 def main(cfg):
     train(cfg)
 
