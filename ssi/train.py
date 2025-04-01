@@ -8,6 +8,7 @@ from typing import Any
 import torch
 from omegaconf import DictConfig, OmegaConf
 from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
+from torch import Tensor
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
 from torch.optim.optimizer import StateDict
@@ -58,6 +59,23 @@ def resume_training_state(ckpt_dict: dict[str, Any]) -> tuple[int, int, StateDic
     if SEED != ckpt_dict[SEED_KEY]:
         raise ValueError("Config value for seed does not match the checkpoint value")
     return ckpt_dict[EPOCHS_KEY], ckpt_dict[STEPS_KEY], ckpt_dict[OPTIMIZER_KEY]
+
+
+def token_type_counts(tokens: Tensor, ranges: dict[str, tuple[int, int]]) -> dict[str, int]:
+    """
+    Count the number of tokens of each type in the given tensor.
+
+    Args:
+        tokens (Tensor): The tensor containing the token IDs.
+        ranges (dict[str, tuple[int, int]]): A dictionary mapping token types to their ranges (inclusive).
+
+    Returns:
+        dict[str, int]: A dictionary mapping token types to their counts.
+    """
+    counts = {}
+    for token_type, (start, end) in ranges.items():
+        counts[token_type] = ((tokens >= start) & (tokens <= end)).sum().item()
+    return counts
 
 
 def train(cfg: DictConfig) -> None:
