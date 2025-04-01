@@ -126,7 +126,7 @@ def train(cfg: DictConfig) -> None:
     t_train_start = time.perf_counter()
     t0 = time.perf_counter()
     loss_running = 0.0
-    num_tokens = 0  # TODO rename to num_tokens_step
+    num_tokens_step = 0
     tokens_train_total: int = 0
     steps_per_epoch = len(data_train) // cfg.gradient_accumulation_steps
     n_epochs = math.ceil(cfg.max_steps / steps_per_epoch)
@@ -135,14 +135,14 @@ def train(cfg: DictConfig) -> None:
         sampler_train.set_epoch(epoch)  # distinct seed each epoch
         for i, batch in tqdm(enumerate(data_train), total=len(data_train)):
             batch_to_device(batch, DEVICE)  # in-place
-            num_tokens_batch = (batch["labels"] != loss_fn.ignore_index).sum()
-            num_tokens += num_tokens_batch
+            num_tokens_iter = (batch["labels"] != loss_fn.ignore_index).sum()
+            num_tokens_step += num_tokens_iter
             # loss is normalized -> multiply by number of tokens for renormalization later for grad. accum.
-            loss_batch = compute_loss(batch, model, loss_fn) * num_tokens_batch
+            loss_batch = compute_loss(batch, model, loss_fn) * num_tokens_iter
             loss_running += loss_batch
             loss_batch.backward()
             if (i + 1) % cfg.gradient_accumulation_steps == 0:
-                scale_grads(model, 1 / num_tokens)
+                scale_grads(model, 1 / num_tokens_step)
                 if cfg.clip_grad_norm is not None:
                     grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=float(cfg.clip_grad_norm))
                 optimizer.step()
@@ -150,8 +150,8 @@ def train(cfg: DictConfig) -> None:
                 if lr_scheduler is not None:
                     lr_scheduler.step()
                 global_step += 1
-                loss_to_log = loss_running.item() / num_tokens  # loss per token
-                tokens_train_total += num_tokens  # total number of tokens trained on so far
+                loss_to_log = loss_running.item() / num_tokens_step  # loss per token
+                tokens_train_total += num_tokens_step  # total number of tokens trained on so far
                 # TODO add separate speech and text token counters
                 # log metrics to console
                 LOGGER.info(
@@ -174,7 +174,7 @@ def train(cfg: DictConfig) -> None:
                         "loss": loss_to_log,
                         "lr": get_lr(optimizer),
                         "duration_step": dur_step,
-                        "tokens_per_second_per_gpu": num_tokens / dur_step,
+                        "tokens_per_second_per_gpu": num_tokens_step / dur_step,
                         "tokens_total": tokens_train_total,  # TODO check everything OK
                         # TODO add separate speech and text token counters
                         "train_clock_time": (time.perf_counter() - t_train_start) / (60**2),
@@ -186,7 +186,7 @@ def train(cfg: DictConfig) -> None:
                     wandb_logger.log_dict(log_dict, step=global_step)
                 # reset step-level tracker variables
                 loss_running = 0.0
-                num_tokens = 0
+                num_tokens_step = 0
                 t0 = time.perf_counter()
                 # Save checkpoint
                 if global_step != 0 and global_step % cfg.save_steps == 0:
