@@ -56,6 +56,8 @@ python ssi/train.py \
 
 ## Generation
 
+Example call:
+
 ```bash
 python ssi/generate.py \
     checkpointer.config_json='/mnt/scratch-artemis/anilkeshwani/models/extended/Llama-3.2-1B-5000-dsus/config.json' \
@@ -64,18 +66,3 @@ python ssi/generate.py \
     output_jsonl='generated-playful-morning-global-step-053862.jsonl'
 ```
 
-```bash
-python ssi/generate.py \
-    checkpointer.config_json='/mnt/scratch-artemis/anilkeshwani/experiments/Llama-3.2-1B-5000-dsus/volcanic-cosmos-259-id_rfn4pt2m/checkpoints/epoch_0/global_step_16500/config.json' \
-    checkpointer.checkpoint_dir='/mnt/scratch-artemis/anilkeshwani/experiments/Llama-3.2-1B-5000-dsus/volcanic-cosmos-259-id_rfn4pt2m/checkpoints/epoch_0/global_step_16500' \
-    checkpointer.checkpoint_files='["ft-model-00001-of-00001.safetensors"]' \
-    output_jsonl='generated-volcanic-cosmos-global_step_16500.jsonl'
-```
-
-```bash
-python ssi/generate.py \
-    checkpointer.config_json='/mnt/scratch-artemis/anilkeshwani/experiments/Llama-3.2-1B-5000-dsus/brisk-plant-260-id_xxqkyczh/checkpoints/epoch_0/global_step_23500/config.json' \
-    checkpointer.checkpoint_dir='/mnt/scratch-artemis/anilkeshwani/experiments/Llama-3.2-1B-5000-dsus/brisk-plant-260-id_xxqkyczh/checkpoints/epoch_0/global_step_23500' \
-    checkpointer.checkpoint_files='["ft-model-00001-of-00001.safetensors"]' \
-    output_jsonl='generated-brisk-plant-global_step_23500.jsonl'
-```
