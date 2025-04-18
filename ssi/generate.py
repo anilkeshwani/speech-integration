@@ -56,7 +56,7 @@ logging.basicConfig(
 LOGGER = logging.getLogger(__name__)
 
 
-@hydra.main(config_path="conf", config_name=CONFIG_NAME, version_base=None)
+@hydra.main(config_path="../conf", config_name=CONFIG_NAME, version_base=None)
 @torch.inference_mode()
 def generate(cfg: DictConfig):
     if cfg.data.dev.packed:
@@ -105,7 +105,7 @@ def generate(cfg: DictConfig):
             )
             transcript_generated = tokenizer.decode(
                 generated_tokens[0, prompt.size(1) :].tolist(),
-                truncate_at_eos=True,  # NOTE
+                truncate_at_eos=False,  # NOTE
                 skip_special_tokens=True,  # NOTE
             )
             sample_output = {"transcript_generated": transcript_generated} | {
