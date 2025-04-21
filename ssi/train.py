@@ -215,6 +215,11 @@ def train(cfg: DictConfig) -> None:
                     dev_loss = compute_dataset_loss(
                         model, data_dev, loss_fn, epoch, global_step, steps_per_epoch, DEVICE
                     )
+                    LOGGER.info(
+                        f"Epoch {epoch + 1:,0{n_epochs}d} | "
+                        f"Global Step {global_step:0{len(str(steps_per_epoch))}d} | "
+                        f"Dev Loss (per token): {dev_loss:.4f}"
+                    )
                 else:
                     dev_loss = None
                 # log metrics to wandb
