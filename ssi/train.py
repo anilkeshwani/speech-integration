@@ -104,6 +104,10 @@ def count_token_types(tokens: Tensor, ranges: dict[str, tuple[int, int]], pad_id
 
 
 def train(cfg: DictConfig) -> None:
+
+    # DEBUG overfit on a single mini-batch test
+    cfg.data.train.shuffle = False
+
     validate_cfg(cfg)
     training.set_seed(seed=SEED, debug_mode=cfg.debug_mode)
     DEVICE: torch.device = get_device(cfg.device)
@@ -156,10 +160,22 @@ def train(cfg: DictConfig) -> None:
     num_tokens_step = 0
     tokens_train_total: int = 0
     steps_per_epoch = len(data_train) // cfg.gradient_accumulation_steps
+    LOGGER.info(f"{len(data_train) = :,}")
+    LOGGER.info(f"Steps per epoch: {steps_per_epoch:,}")
     n_epochs = math.ceil(cfg.max_steps / steps_per_epoch)
+    LOGGER.info(f"Number of epochs (max. based on steps/epoch): {n_epochs:,}")
     LOGGER.info(OmegaConf.to_yaml(cfg, resolve=True, sort_keys=False))
+
+    # DEBUG overfit on a single mini-batch test
+    n_epochs: int = 1_000_000_000  # big number -> we can observe training loss
+    N_OVERFIT: int = 1
+
     for epoch in range(epochs_run, n_epochs):
-        sampler_train.set_epoch(epoch)  # distinct seed each epoch
+        # sampler_train.set_epoch(epoch)  # distinct seed each epoch
+
+        # DEBUG overfit on a single mini-batch test
+        sampler_train.set_epoch(0)  # distinct seed each epoch
+
         for i, batch in tqdm(enumerate(data_train), total=len(data_train)):
             batch_to_device(batch, DEVICE)  # in-place
             for tt, ttcnt in count_token_types(batch["tokens"], token_type_ranges, tokenizer.pad_id).items():
@@ -233,7 +249,10 @@ def train(cfg: DictConfig) -> None:
                     )
                     LOGGER.info(f"Checkpoint saved at step {global_step:0{len(str(steps_per_epoch))}d}")  # TODO 0s pad
                 if global_step >= cfg.max_steps:
-                    LOGGER.info("Training completed.")
+                    LOGGER.info("Reached max_steps ({cfg.max_steps}). Exiting training loop.")
+                    break
+                # DEBUG overfit on a single mini-batch test
+                if global_step >= N_OVERFIT:
                     break
             # del batch  # Explicitly delete the batch to free memory; attempt to debug OOM
             # torch.cuda.empty_cache()  # Release all unoccupied cached memory; attempt to debug OOM
