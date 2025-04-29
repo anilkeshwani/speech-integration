@@ -96,10 +96,10 @@ checkpointer:
   model_type: "llama3_2"
   safe_serialization: True
 
-save_steps: 500 # checkpoint save period in **steps** (not iterations; i.e. with grad. accum.); should be multiple of eval_steps
+save_steps: 1000 # should be multiple of eval_steps
 
 # Evaluation
-eval_steps: 250 # evaluation period **in steps** (not iterations; i.e. with grad. accum.)
+eval_steps: 250
 
 # Logging
 wandb:
