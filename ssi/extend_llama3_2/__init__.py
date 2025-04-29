@@ -65,14 +65,14 @@ def extend_tiktoken(n_new_dsus: int, tokenizer_model: Path, output_path: Path) -
         new_tokenizer_lines.append(f"{token_b64_ascii} {rank}\n")
         rank += 1
 
-    print(f"Added {len(new_tokenizer_lines)} tokens to {tokenizer_model}")
+    LOGGER.info(f"Added {len(new_tokenizer_lines)} tokens to {tokenizer_model}")
 
     # Write the extended tokenizer.model file to disk
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "x") as file:
         file.writelines(base_tokenizer_lines + new_tokenizer_lines)
 
-    print(f"Extended tokenizer.model saved to {output_path}")
+    LOGGER.info(f"Extended tokenizer.model saved to {output_path}")
 
 
 def simple_setup_model(model_state_dict: dict[str, Any], device: str = "cpu") -> TransformerDecoder:
@@ -113,7 +113,7 @@ def extend_model(
     assert len(model.tok_embeddings.weight.data) == base_vocab_size + special_tokens_size + n_new_dsus  # redundant
     assert len(model.tok_embeddings.weight.data) - len(emb_orig) == n_new_dsus
 
-    print(f"Added {n_new_dsus} new embeddings to the model (in memory)")
+    LOGGER.info(f"Added {n_new_dsus} new embeddings to the model (in memory)")
 
 
 def extend_config(config_json: Path, bos_token_id: int, eos_token_id: int, vocab_size: int) -> None:
@@ -127,4 +127,4 @@ def extend_config(config_json: Path, bos_token_id: int, eos_token_id: int, vocab
     config["vocab_size"] = vocab_size
     with open(config_json, "w") as f:
         json.dump(config, f, indent=2)
-    print(f"Updated config.json with new bos_token_id, eos_token_id, and vocab_size: {config_json}")
+    LOGGER.info(f"Updated config.json with new bos_token_id, eos_token_id, and vocab_size: {config_json}")
