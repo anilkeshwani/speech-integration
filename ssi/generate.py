@@ -68,7 +68,7 @@ def generate(cfg: DictConfig):
     ckpt_dict = checkpointer.load_checkpoint()
     model, llama_config = setup_llama3_2_1b(
         cfg=cfg,
-        model_state_dict=ckpt_dict[MODEL_KEY],  # NOTE require model ckpt
+        model_state_dict=ckpt_dict[MODEL_KEY],
         dtype_default=DTYPE,
         device_default=DEVICE,
     )

@@ -83,7 +83,7 @@ def add_dsus_to_tiktoken(n_new_dsus: int, tokenizer_model: Path, output_path: Pa
     new_dsu_tkns = [dsu2pua(i) for i in range(n_new_dsus)]  # NOTE in future can specify start/end idxs for new DSUs
 
     with open(tokenizer_model, "r") as file:
-        base_tokenizer_lines = file.readlines()
+        base_tokenizer_lines: list[str] = file.readlines()
 
     # Create a dict[bytes, int] dictionary of the current vocabulary - to test for duplicates
     vocabulary: dict[bytes, int] = {}
