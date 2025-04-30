@@ -25,6 +25,7 @@ from ssi.extend_llama3_2.constants import (
     SEED,
     TORCHTUNE_EXTENDED_MODELS_DIR,
 )
+from ssi.llama_configs import configllama3_2_1b
 from ssi.tokenizer import setup_llama3_tokenizer
 
 
@@ -66,7 +67,10 @@ def parse_args() -> Namespace:
 def main(args: Namespace) -> None:
     seed_everything(SEED)  # reproducibility
     extend_tiktoken(
-        args.n_new_dsus, args.input_dir / LLAMA_3_2_TOKENIZER_RELPATH, args.output_dir / LLAMA_3_2_TOKENIZER_RELPATH
+        args.n_new_dsus,
+        args.use_modality_tokens,
+        args.input_dir / LLAMA_3_2_TOKENIZER_RELPATH,
+        args.output_dir / LLAMA_3_2_TOKENIZER_RELPATH,
     )
     checkpointer = FullModelHFCheckpointer(
         checkpoint_dir=str(args.input_dir),
@@ -88,8 +92,9 @@ def main(args: Namespace) -> None:
         bos_token_id=special_tokens[LLAMA_BOS_TOKEN],
         eos_token_id=special_tokens[LLAMA_EOS_TOKEN],
         vocab_size=tokenizer_extended.vocab_size,
+        llama_config=configllama3_2_1b,
     )
-    extend_model(args.n_new_dsus, model, tokenizer_extended)  # in place
+    extend_model(args.n_new_dsus, args.use_modality_tokens, model, tokenizer_extended, llama_config=configllama3_2_1b)
     LOGGER.info(f"Model extended successfully: {model}")
     ckpt_dict_extended = {torchtune.training.MODEL_KEY: model.state_dict()}
     checkpointer.save_checkpoint(ckpt_dict_extended, epoch=0, intermediate_checkpoint=False, adapter_only=False)
