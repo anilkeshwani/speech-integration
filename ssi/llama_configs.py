@@ -46,6 +46,7 @@ class ConfigLlama3_2:
     @property
     def parameters(self) -> dict:
         """Return (only) the parameters needed to initialise a model with torchtune.models.llama3_2.llama3_2"""
+        # NOTE asdict returns a dict of all fields including "private" ones; but not properties or methods
         return {"vocab_size": self.vocab_size} | {k: v for k, v in asdict(self).items() if not k.startswith("_")}
 
 
