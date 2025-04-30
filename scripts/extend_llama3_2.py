@@ -54,12 +54,6 @@ def parse_args() -> Namespace:
         dest="use_modality_tokens",
         help="Do no prepend special modality tokens to spans of text/speech tokens",
     )
-    parser.add_argument(
-        "--base_vocab_size",
-        type=int,
-        default=configllama3_2_1b._base_vocab_size_txt + configllama3_2_1b._n_special_txt,
-        help="Tokenizer base vocabulary size",
-    )
     args = parser.parse_args()
     if args.output_dir is None:
         dirname = f"{args.input_dir.name}-{args.n_new_dsus}_dsus"
