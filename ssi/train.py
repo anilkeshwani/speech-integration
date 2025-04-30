@@ -63,25 +63,23 @@ def resume_training_state(ckpt_dict: dict[str, Any]) -> tuple[int, int, StateDic
 
 
 def get_token_type_ranges(llama_config: ConfigLlama3_2) -> dict[str, tuple[int, int]]:
+    """Produce inclusive ranges for each token type in the vocabulary."""
     ranges: dict[str, tuple[int, int]] = {
         "text": (0, llama_config._base_vocab_size_txt - 1),
         "dsu": (llama_config._base_vocab_size_txt, llama_config._base_vocab_size_txt + llama_config.n_dsus - 1),
     }
     offset = llama_config._base_vocab_size_txt + llama_config.n_dsus
     if llama_config.modality_tokens:
-        ranges["modality"] = (
-            llama_config._base_vocab_size_txt + llama_config.n_dsus,
-            llama_config._base_vocab_size_txt + llama_config.n_dsus + 1,
-        )
+        ranges["modality"] = (offset, offset + 1)
         offset += 2
-    # NOTE special_text category includes padding token; usually "<|finetune_right_pad_id|>": 128004 for Llama 3.2 tok
+    # NOTE special_text category includes padding token; usually "<|finetune_right_pad_id|>": 128004 for Llama 3.2 tknzr
     ranges["special_text"] = (offset, offset + llama_config._n_special_txt - 1)
-    if offset + llama_config._n_special_txt != llama_config.vocab_size:
-        raise ValueError(
-            f"Vocab vs token ranges mismatch: {offset + llama_config._n_special_txt} != {llama_config.vocab_size}"
-        )
+
+    offset += llama_config._n_special_txt  # resolve offset to final vocab size -> check ranges cover whole vocabulary
+    if offset != llama_config.vocab_size:
+        raise ValueError(f"Vocab vs token ranges mismatch: {offset} != {llama_config.vocab_size}")
     if "total" in ranges:
-        raise AssertionError('"total" key reserved')  # NOTE avoid hot loop if placed in token_type_counts # TODO good?
+        raise AssertionError('"total" key reserved')  # NOTE this avoids hot loop if placed in token_type_counts; TODO
     return ranges
 
 
