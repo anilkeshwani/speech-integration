@@ -6,8 +6,8 @@ from sardalign.constants import SEED  # noqa F401
 
 # Constants
 HAFH_DIR = Path(os.environ.get("HAFH", "/mnt/scratch-artemis/anilkeshwani/"))
-TORCHTUNE_BASE_MODELS_DIR = HAFH_DIR / "models" / "base" / "torchtune"
-TORCHTUNE_EXTENDED_MODELS_DIR = HAFH_DIR / "models" / "extended" / "torchtune"
+TORCHTUNE_BASE_MODELS_DIR = HAFH_DIR / "models" / "base"
+TORCHTUNE_EXTENDED_MODELS_DIR = HAFH_DIR / "models" / "extended"
 LLAMA_3_2_1B_BASE_DIR = TORCHTUNE_BASE_MODELS_DIR / "Llama-3.2-1B"
 LLAMA_3_2_3B_BASE_DIR = TORCHTUNE_BASE_MODELS_DIR / "Llama-3.2-3B"
 
