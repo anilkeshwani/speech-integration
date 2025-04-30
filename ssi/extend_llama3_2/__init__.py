@@ -98,8 +98,8 @@ def extend_model(
     base_vocab_size: int = llama_config._base_vocab_size_txt
     special_tokens_size: int = llama_config._n_special_txt
     emb_orig = model.tok_embeddings.weight.data.clone()  # retain original embeddings
-    # TODO check whether Llama 3.2 3B has the same embedding size - update comments/docstrings if 3B supported
-    assert emb_orig.size() == torch.Size([128_256, 2048]), "Unexpected embedding size for Llama 3.2 1B"
+    if emb_orig.size() != torch.Size([base_vocab_size + special_tokens_size, llama_config.embed_dim]):
+        raise RuntimeError("Unexpected embedding size for Llama 3.2 model")
     embeddings = model.tok_embeddings.weight.data
     base_vocab_embeddings = embeddings[:base_vocab_size, :]
     special_tokens_embeddings = embeddings[base_vocab_size:, :]
