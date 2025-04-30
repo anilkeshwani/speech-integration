@@ -16,7 +16,6 @@ from torchtune.training.checkpointing import FullModelHFCheckpointer  # NOTE als
 
 from ssi.extend_llama3_2 import extend_config, extend_model, extend_tiktoken, simple_setup_model
 from ssi.extend_llama3_2.constants import (
-    BASE_VOCAB_SIZE,
     LLAMA_3_2_1B_BASE_DIR,
     LLAMA_3_2_CONFIG_RELPATH,
     LLAMA_3_2_TOKENIZER_RELPATH,
@@ -55,7 +54,12 @@ def parse_args() -> Namespace:
         dest="use_modality_tokens",
         help="Do no prepend special modality tokens to spans of text/speech tokens",
     )
-    parser.add_argument("--base_vocab_size", type=int, default=BASE_VOCAB_SIZE, help="Tokenizer base vocabulary size")
+    parser.add_argument(
+        "--base_vocab_size",
+        type=int,
+        default=configllama3_2_1b._base_vocab_size_txt + configllama3_2_1b._n_special_txt,
+        help="Tokenizer base vocabulary size",
+    )
     args = parser.parse_args()
     if args.output_dir is None:
         mdl_tks_flg = "" if args.use_modality_tokens else "no_modality_tokens-"

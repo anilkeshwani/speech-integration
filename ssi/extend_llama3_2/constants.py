@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from torchtune.models.llama3._tokenizer import LLAMA3_SPECIAL_TOKENS
+from sardalign.constants import SEED  # noqa F401
 
 
 # Constants
@@ -15,11 +15,6 @@ LLAMA_3_2_TOKENIZER_RELPATH = Path("original", "tokenizer.model")
 LLAMA_3_2_MODEL_RELPATH = Path("model.safetensors")
 LLAMA_3_2_CONFIG_RELPATH = Path("config.json")
 
-BASE_VOCAB_SIZE: int = 128_000
-SPECIAL_TOKENS_SIZE = len(LLAMA3_SPECIAL_TOKENS)
-assert SPECIAL_TOKENS_SIZE == 256, "Unexpected number of special tokens in Llama 3.2 1B. Has the API changed?"
-
+# Llama 3.2 tokenizer
 LLAMA_BOS_TOKEN = "<|begin_of_text|>"
 LLAMA_EOS_TOKEN = "<|end_of_text|>"
-
-from sardalign.constants import SEED  # noqa F401

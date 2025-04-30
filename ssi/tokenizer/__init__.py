@@ -10,6 +10,11 @@ from torchtune.models.llama3._tokenizer import LLAMA3_SPECIAL_TOKENS
 from ssi.tokenizer.monkeypatch import Llama3TokenizerPUA as Llama3Tokenizer
 
 
+# NOTE Check hard-coded to detect breaking API changes from torchtune
+if len(LLAMA3_SPECIAL_TOKENS) != 256:
+    raise RuntimeError("Unexpected number of special tokens in Llama 3.2 1B. Has the API changed?")
+
+
 def setup_llama3_tokenizer(
     path: Path,
     max_seq_len: int | None = None,
