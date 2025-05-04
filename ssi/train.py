@@ -44,7 +44,7 @@ logging.basicConfig(
 LOGGER = logging.getLogger(__name__)
 
 
-def validate_cfg(cfg: DictConfig) -> None:
+def validate_train_cfg(cfg: DictConfig) -> None:
     if PRECISION_STR_TO_DTYPE.get(cfg.dtype) not in SUPPORTED_DTYPES:
         raise ValueError(f"Unsupported dtype: {cfg.dtype}. Supported dtypes: {SUPPORTED_DTYPES}")
 
@@ -102,7 +102,7 @@ def count_token_types(tokens: Tensor, ranges: dict[str, tuple[int, int]], pad_id
 
 
 def train(cfg: DictConfig) -> None:
-    validate_cfg(cfg)
+    validate_train_cfg(cfg)
     training.set_seed(seed=SEED, debug_mode=cfg.debug_mode)
     DEVICE: torch.device = get_device(cfg.device)
     DTYPE: torch.dtype = get_dtype(cfg.dtype)
