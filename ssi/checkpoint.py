@@ -549,7 +549,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                 f"saved to {recipe_state_output_path}"
             )
         else:
-            logger.info("Saving final epoch checkpoint.")
+            logger.info("No training state saved.")
             if adapter_only:
                 logger.info(
                     "Please note that you have set adapter_only=True, so only adapter weights will be saved."
@@ -565,12 +565,14 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
     def save_checkpoint(
         self,
         model_state_dict: dict[str, Any],
-        optimizer_state_dict: dict[str, Any],
+        optimizer_state_dict: dict[str, Any] | None,
         epoch: int,
         global_step: int,
         seed: int,
         optimizer_in_bwd: bool = False,  # TODO not implemented
         optim_ckpt_wrapper=None,  # TODO typing if/when implemented; not implemented
+        save_training_state=True,
+        adapter_only=False,
     ) -> dict[str, Any]:
         ckpt_dict: dict = {
             ssi.constants.MODEL_KEY: model_state_dict,
@@ -578,13 +580,17 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             ssi.constants.GLOBAL_STEP_KEY: global_step,
             ssi.constants.SEED_KEY: seed,
         }
-        if optimizer_in_bwd:
-            ckpt_dict[training.OPT_KEY] = optim_ckpt_wrapper.state_dict()  # type: ignore # TODO
-        else:
-            ckpt_dict[training.OPT_KEY] = optimizer_state_dict
-        # TODO make options accessible via function interface
+        if optimizer_state_dict is not None:
+            if optimizer_in_bwd:
+                ckpt_dict[training.OPT_KEY] = optim_ckpt_wrapper.state_dict()  # type: ignore # TODO
+            else:
+                ckpt_dict[training.OPT_KEY] = optimizer_state_dict
         self._save_checkpoint(
-            ckpt_dict, epoch=epoch, global_step=global_step, save_training_state=True, adapter_only=False
+            ckpt_dict,
+            epoch=epoch,
+            global_step=global_step,
+            save_training_state=save_training_state,
+            adapter_only=adapter_only,
         )
         return ckpt_dict
 

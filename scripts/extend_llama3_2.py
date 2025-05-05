@@ -11,9 +11,7 @@ import torchtune.training
 from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
 from sardalign.utils import seed_everything
 
-# NOTE we use the torchtune native FullModelHFCheckpointer (not the custom checkpointer in ssi) for simplicity
-from torchtune.training.checkpointing import FullModelHFCheckpointer  # NOTE also exported by torchtune.training
-
+from ssi.checkpoint import FullModelHFCheckpointer
 from ssi.extend_llama3_2 import extend_config, extend_model, extend_tiktoken, simple_setup_model
 from ssi.extend_llama3_2.constants import (
     LLAMA_3_2_1B_BASE_DIR,
@@ -72,14 +70,10 @@ def main(args: Namespace) -> None:
         args.output_dir / LLAMA_3_2_TOKENIZER_RELPATH,
     )
     checkpointer = FullModelHFCheckpointer(
-        checkpoint_dir=str(args.input_dir),
+        checkpoint_dir=args.input_dir,
         checkpoint_files=["model.safetensors"],
-        model_type="LLAMA3_2",  # NOTE only supports LLAMA3_2 for now; this is a torchtune.training.ModelType
+        config_json=args.input_dir / LLAMA_3_2_CONFIG_RELPATH,
         output_dir=str(args.output_dir),
-        adapter_checkpoint=None,
-        recipe_checkpoint=None,
-        resume_from_checkpoint=False,
-        safe_serialization=False,
     )
     ckpt_dict: dict[str, Any] = checkpointer.load_checkpoint()
     model = simple_setup_model(model_state_dict=ckpt_dict[torchtune.training.MODEL_KEY])
@@ -95,8 +89,7 @@ def main(args: Namespace) -> None:
     )
     extend_model(args.n_new_dsus, args.use_modality_tokens, model, tokenizer_extended, llama_config=configllama3_2_1b)
     LOGGER.info(f"Model extended successfully: {model}")
-    ckpt_dict_extended = {torchtune.training.MODEL_KEY: model.state_dict()}
-    checkpointer.save_checkpoint(ckpt_dict_extended, epoch=0, intermediate_checkpoint=False, adapter_only=False)
+    checkpointer.save_checkpoint(model.state_dict(), epoch=0, intermediate_checkpoint=False, adapter_only=False)
 
 
 if __name__ == "__main__":
