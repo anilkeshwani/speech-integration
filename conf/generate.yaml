@@ -11,6 +11,9 @@ data: # NOTE: arguments are to setup **function** not SFTDataset class
     dataloader:
       batch_size: 1
 
+# Precision
+dtype: fp32
+
 output_jsonl: ???
 
 # Generation arguments
