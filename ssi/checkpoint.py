@@ -347,6 +347,8 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         )
 
     def save_full_model(self, state_dict: dict[str, Any], epoch: int, global_step: int) -> None:
+        output_dir_step_level = self.output_dir / f"epoch_{epoch}" / f"global_step_{global_step}"
+
         if self._weight_map is None:
             raise ValueError("Weight map is not initialized. Please load a checkpoint before saving.")
 
@@ -396,8 +398,8 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             # however, having the SHARD_FNAME standardizes our checkpoints
             shard_name = SHARD_FNAME.format(cpt_idx=f"{cpt_idx}".zfill(5), num_shards=f"{num_shards}".zfill(5))
             map_original_name_to_new_name[cpt_idx] = shard_name
-            output_path = self.output_dir / f"epoch_{epoch}" / f"global_step_{global_step}" / shard_name
-            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path = output_dir_step_level / shard_name
+            output_dir_step_level.mkdir(parents=True, exist_ok=True)
             if not self.safe_serialization:
                 output_path = output_path.with_suffix(".bin")
                 torch.save(model_state_dict, output_path)
@@ -420,7 +422,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             weight_map = {k: map_original_name_to_new_name[cpt_idx] + ".bin" for k, cpt_idx in self._weight_map.items()}
             index_file_name = TORCH_INDEX_FNAME
 
-        index_path = self.output_dir / f"epoch_{epoch}" / f"global_step_{global_step}" / index_file_name
+        index_path = output_dir_step_level / index_file_name
 
         index_data = {
             "metadata": {"total_size": total_size},
@@ -455,6 +457,8 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         Raises:
             ValueError: if ``adapter_only`` is True and adapter checkpoint not found in state_dict.
         """
+        output_dir_step_level = self.output_dir / f"epoch_{epoch}" / f"global_step_{global_step}"
+
         # convert the state_dict back to hf format; do this inplace
         if not adapter_only:
             self.save_full_model(state_dict, epoch, global_step)
@@ -464,10 +468,8 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             # convert_weights.tune_to_peft_adapter_weights, we do NOT have a fn
             # convert_weights.peft_to_tune. The .pt format is not needed, but
             # it is an easy way to distinguish the adapters. Ideally we should save only one.
-            output_path = (
-                self.output_dir / f"epoch_{epoch}" / f"global_step_{global_step}" / ADAPTER_MODEL_FNAME
-            ).with_suffix(".pt")
-            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path = (output_dir_step_level / ADAPTER_MODEL_FNAME).with_suffix(".pt")
+            output_dir_step_level.mkdir(parents=True, exist_ok=True)
             torch.save(state_dict[training.ADAPTER_KEY], output_path)
             logger.info(
                 f"Adapter checkpoint of size {os.path.getsize(output_path) / 1024**3:.2f} GiB saved to {output_path}"
@@ -489,8 +491,8 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                     dim=self._config["hidden_size"],
                     head_dim=self._config.get("head_dim", None),
                 )
-                output_path = self.output_dir / f"epoch_{epoch}" / f"global_step_{global_step}" / ADAPTER_MODEL_FNAME
-                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path = output_dir_step_level / ADAPTER_MODEL_FNAME
+                output_dir_step_level.mkdir(parents=True, exist_ok=True)
                 if not self.safe_serialization:
                     output_path = output_path.with_suffix(".bin")
                     torch.save(state_dict[training.ADAPTER_KEY], output_path)
@@ -515,9 +517,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                     adapter_config=state_dict[training.ADAPTER_CONFIG],
                     base_model_name_or_path=self.repo_id,
                 )
-                output_path = (
-                    self.output_dir / f"epoch_{epoch}" / f"global_step_{global_step}" / ADAPTER_CONFIG_FNAME
-                ).with_suffix(".json")
+                output_path = (output_dir_step_level / ADAPTER_CONFIG_FNAME).with_suffix(".json")
                 with open(output_path, "w") as f:
                     json.dump(state_dict[training.ADAPTER_CONFIG], f)
                 logger.info(
@@ -530,7 +530,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         # So its easy to run inference with the model using this epoch's checkpoint
         copy_files(
             self.checkpoint_dir,
-            self.output_dir / f"epoch_{epoch}" / f"global_step_{global_step}",
+            output_dir_step_level,
             ignore_suffixes=SUFFIXES_TO_NOT_COPY,
         )
 
