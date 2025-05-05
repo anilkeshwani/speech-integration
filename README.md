@@ -46,6 +46,18 @@ pre-commit install --install-hooks
 
 ## Download Llama 3.2 Base Model
 
+### Download with Hugging Face CLI
+
+```bash
+base_models_dir=/mnt/scratch-artemis/anilkeshwani/models/base/ &&
+huggingface-cli download "meta-llama/Llama-3.2-1B" \
+    --local-dir ${base_models_dir}/Llama-3.2-1B \
+    --exclude "original/consolidated.00.pth" \
+    --revision "4e20de362430cd3b72f300e6b0f18e50e7166e08" # specific Git LFS commit
+```
+
+### Download with torchtune (`tune download`) - Not Recommended
+
 The training recipe assumes that you've run the following command, substituting relevant variables from the configuration file values, in order to download the Llama 3.2 pre-trained (base) model:
 
 ``` bash
