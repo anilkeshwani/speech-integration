@@ -79,17 +79,23 @@ def main(args: Namespace) -> None:
     model = simple_setup_model(model_state_dict=ckpt_dict[torchtune.training.MODEL_KEY])
     LOGGER.info(f"Model loaded successfully: {model}")
     tokenizer_extended, special_tokens = setup_llama3_tokenizer(args.output_dir / LLAMA_3_2_TOKENIZER_RELPATH)
-    # NOTE FullModelHFCheckpointer writes the input config.json to the output_dir on __init__ -> forced to overwrite
-    extend_config(
-        args.output_dir / LLAMA_3_2_CONFIG_RELPATH,
-        bos_token_id=special_tokens[LLAMA_BOS_TOKEN],
-        eos_token_id=special_tokens[LLAMA_EOS_TOKEN],
-        vocab_size=tokenizer_extended.vocab_size,
-        llama_config=configllama3_2_1b,
-    )
     extend_model(args.n_new_dsus, args.use_modality_tokens, model, tokenizer_extended, llama_config=configllama3_2_1b)
     LOGGER.info(f"Model extended successfully: {model}")
-    checkpointer.save_checkpoint(model.state_dict(), epoch=0, intermediate_checkpoint=False, adapter_only=False)
+    checkpointer.save_checkpoint(
+        model.state_dict(),
+        optimizer_state_dict=None,
+        epoch=0,
+        global_step=0,
+        seed=SEED,
+        save_training_state=False,
+    )
+    # extend_config(
+    #     args.output_dir / LLAMA_3_2_CONFIG_RELPATH,
+    #     bos_token_id=special_tokens[LLAMA_BOS_TOKEN],
+    #     eos_token_id=special_tokens[LLAMA_EOS_TOKEN],
+    #     vocab_size=tokenizer_extended.vocab_size,
+    #     llama_config=configllama3_2_1b,
+    # )
 
 
 if __name__ == "__main__":
