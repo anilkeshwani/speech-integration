@@ -541,10 +541,10 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         epoch: int,
         global_step: int,
         seed: int,
-        optimizer_in_bwd: bool = False,  # TODO not implemented
-        optim_ckpt_wrapper=None,  # TODO typing if/when implemented; not implemented
         save_training_state=True,
         adapter_only=False,
+        optimizer_in_bwd: bool = False,  # TODO not implemented
+        optim_ckpt_wrapper=None,  # TODO typing if/when implemented; not implemented
     ) -> tuple[dict[str, Any], Path]:
         ckpt_dict: dict = {
             ssi.constants.MODEL_KEY: model_state_dict,
