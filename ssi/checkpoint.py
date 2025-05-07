@@ -439,24 +439,6 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         save_training_state: bool,
         adapter_only: bool = False,
     ) -> None:
-        """
-        Save HF checkpoint to file. If ``save_training_state`` is True, an additional
-        checkpoint file ``recipe_state.pt`` is created in ``_output_dir/RECIPE_STATE_DIRNAME``
-        which contains the recipe state.
-
-        The state_dict is first converted back to the HF format and then partitioned based on the
-        ``_weight_map`` into separate checkpoint files.
-
-        Args:
-            state_dict (dict[str, Any]): Checkpoint state dict to be written out to file
-            epoch (int): Epoch number. Used to create the checkpoint file name
-            save_training_state (bool): If True, an additional checkpoint files for recipe state
-                and (if applicable) adapter weights are created. Default is False
-            adapter_only (bool): If True, only save the adapter weights. Default is False
-
-        Raises:
-            ValueError: if ``adapter_only`` is True and adapter checkpoint not found in state_dict.
-        """
         output_dir_step_level = self.output_dir / f"epoch_{epoch}" / f"global_step_{global_step}"
 
         # convert the state_dict back to hf format; do this inplace
