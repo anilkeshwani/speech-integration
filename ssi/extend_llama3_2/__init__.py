@@ -38,7 +38,8 @@ def extend_tiktoken(n_new_dsus: int, use_modality_tokens: bool, tokenizer_model:
         - tokenizer_model: Path to the tokenizer.model file
         - n_new_dsus: Number of DSUs to add as tokens. Converted to PUA tokens via dsu2pua.
     """
-    if output_path.exists():
+    is_inplace: bool = tokenizer_model == output_path
+    if not is_inplace and output_path.exists():
         raise FileExistsError(f"Extended tokenizer output already exists at: {output_path}")
 
     with open(tokenizer_model, "r") as file:
@@ -81,7 +82,7 @@ def extend_tiktoken(n_new_dsus: int, use_modality_tokens: bool, tokenizer_model:
 
     # Write the extended tokenizer.model file to disk
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "x") as file:
+    with open(output_path, "w" if is_inplace else "x") as file:
         file.writelines(base_tokenizer_lines + dsu_tokenizer_lines + modality_tokenizer_lines)
 
     LOGGER.info(f"Extended tokenizer.model saved to {output_path}")
