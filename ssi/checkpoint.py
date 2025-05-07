@@ -488,7 +488,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         output_dir: Path,
         save_training_state: bool,
         adapter_only: bool,
-        ignore_suffixes=SUFFIXES_TO_NOT_COPY,
+        ignore_suffixes: list[str],
     ) -> None:
         # convert the state_dict back to hf format; do this in place
         if adapter_only:
@@ -498,7 +498,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         else:
             self.save_full_model(state_dict, output_dir)
 
-        # NOTE Save the adapter weights if present, even when adapter_only is False; NOTE not used currently
+        # NOTE not used currently; Save the adapter weights if present (even when adapter_only is False)
         if training.ADAPTER_KEY in state_dict:
             self.save_adapter_weights(state_dict, output_dir)
 
@@ -525,6 +525,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         adapter_only=False,
         optimizer_in_bwd: bool = False,  # TODO not implemented
         optim_ckpt_wrapper=None,  # TODO typing if/when implemented; not implemented
+        ignore_suffixes: list[str] = SUFFIXES_TO_NOT_COPY,
     ) -> tuple[dict[str, Any], Path]:
         ckpt_dict: dict = {
             ssi.constants.MODEL_KEY: model_state_dict,
@@ -537,15 +538,14 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                 ckpt_dict[training.OPT_KEY] = optim_ckpt_wrapper.state_dict()  # type: ignore # TODO
             else:
                 ckpt_dict[training.OPT_KEY] = optimizer_state_dict
-
         output_dir_step = self.output_dir / f"epoch_{epoch}" / f"global_step_{global_step}"
         self._save_checkpoint(
             ckpt_dict,
             output_dir=output_dir_step,
             save_training_state=save_training_state,
             adapter_only=adapter_only,
+            ignore_suffixes=ignore_suffixes,
         )
-
         return ckpt_dict, output_dir_step
 
 
