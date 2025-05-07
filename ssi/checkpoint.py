@@ -424,6 +424,64 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         with open(index_path, "w") as f:
             json.dump(index_data, f, indent=2)
 
+        logger.info(f"The full model checkpoint has been saved to {output_dir}")
+
+    def save_adapter_weights(self, state_dict: dict[str, Any], output_dir: Path) -> None:
+        # TODO [Meta] saving it "as is" is a requirement because, if we only save with
+        # convert_weights.tune_to_peft_adapter_weights, we do NOT have a fn
+        # convert_weights.peft_to_tune. The .pt format is not needed, but
+        # it is an easy way to distinguish the adapters. Ideally we should save only one.
+        output_path = (output_dir / ADAPTER_MODEL_FNAME).with_suffix(".pt")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        torch.save(state_dict[training.ADAPTER_KEY], output_path)
+        _ckpt_sz = os.path.getsize(output_path) / 1024**3
+        logger.info(f"Adapter checkpoint of size {_ckpt_sz:.2f} GiB saved to {output_path}")
+
+        if self.model_type == ModelType.PHI3_MINI:
+            logger.warning("Phi-3 Mini adapter to PEFT conversion unsupported. Saved in torchtune format")
+        elif self.model_type == ModelType.LLAMA3_VISION:
+            logger.warning("Llama3.2 Vision adapter to PEFT conversion unsupported. Saved in torchtune format")
+        else:
+            state_dict[training.ADAPTER_KEY] = convert_weights.tune_to_peft_adapter_weights(
+                state_dict[training.ADAPTER_KEY],
+                num_heads=self._config["num_attention_heads"],
+                num_kv_heads=self._config["num_key_value_heads"],
+                dim=self._config["hidden_size"],
+                head_dim=self._config.get("head_dim", None),
+            )
+            output_path = output_dir / ADAPTER_MODEL_FNAME
+            output_dir.mkdir(parents=True, exist_ok=True)
+            if not self.safe_serialization:
+                output_path = output_path.with_suffix(".bin")
+                torch.save(state_dict[training.ADAPTER_KEY], output_path)
+            else:
+                output_path = output_path.with_suffix(".safetensors")
+                save_file(state_dict[training.ADAPTER_KEY], output_path, metadata={"format": "pt"})
+            _ckpt_sz = os.path.getsize(output_path) / 1024**3
+            logger.info(f"Adapter checkpoint of size {_ckpt_sz:.2f} GiB saved to {output_path}")
+
+    def save_adapter_config(self, state_dict: dict[str, Any], output_dir: Path) -> None:
+        if self.model_type == ModelType.PHI3_MINI:
+            logger.warning("PEFT integration for Phi-3 Mini is not supported. Skipping adapter config save")
+        elif self.model_type == ModelType.LLAMA3_VISION:
+            logger.warning("PEFT integration for Llama3.2 Vision is not supported. Skipping adapter config save")
+        else:
+            state_dict[training.ADAPTER_CONFIG] = convert_weights.tune_to_peft_adapter_config(
+                adapter_config=state_dict[training.ADAPTER_CONFIG],
+                base_model_name_or_path=self.repo_id,
+            )
+            output_path = (output_dir / ADAPTER_CONFIG_FNAME).with_suffix(".json")
+            with open(output_path, "w") as f:
+                json.dump(state_dict[training.ADAPTER_CONFIG], f)
+            logger.info(f"Adapter config saved to {output_path}")
+
+    def save_recipe_state(self, state_dict: dict[str, Any]) -> None:
+        output_path = self.output_dir / "recipe_state.pt"  # NOTE dropped added subdir resp. Meta code
+        exclude_keys = (training.MODEL_KEY, training.ADAPTER_KEY, training.ADAPTER_CONFIG)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        torch.save({k: v for k, v in state_dict.items() if k not in exclude_keys}, output_path)
+        logger.info(f"Recipe checkpoint ({os.path.getsize(output_path) / 1024**3:.2f} GiB) saved to {output_path}")
+
     def _save_checkpoint(
         self,
         state_dict: dict[str, Any],
@@ -436,98 +494,25 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         if adapter_only:
             if training.ADAPTER_KEY not in state_dict:
                 raise ValueError("Adapter checkpoint not in state_dict. Ensure the state_dict contains adapter weights")
+            logger.info("Note: Set adapter_only=True so only adapter weights will be saved.")
         else:
             self.save_full_model(state_dict, output_dir)
 
-        # NOTE Save the adapter weights if found even when adapter_only is False; NOTE not used currently
+        # NOTE Save the adapter weights if present, even when adapter_only is False; NOTE not used currently
         if training.ADAPTER_KEY in state_dict:
-            # TODO [Meta] saving it "as is" is a requirement because, if we only save with
-            # convert_weights.tune_to_peft_adapter_weights, we do NOT have a fn
-            # convert_weights.peft_to_tune. The .pt format is not needed, but
-            # it is an easy way to distinguish the adapters. Ideally we should save only one.
-            output_path = (output_dir / ADAPTER_MODEL_FNAME).with_suffix(".pt")
-            output_dir.mkdir(parents=True, exist_ok=True)
-            torch.save(state_dict[training.ADAPTER_KEY], output_path)
-            _ckpt_sz = os.path.getsize(output_path) / 1024**3
-            logger.info(f"Adapter checkpoint of size {_ckpt_sz:.2f} GiB saved to {output_path}")
-
-            if self.model_type == ModelType.PHI3_MINI:
-                logger.warning("Phi-3 Mini adapter to PEFT conversion unsupported. Saved in torchtune format")
-            elif self.model_type == ModelType.LLAMA3_VISION:
-                logger.warning("Llama3.2 Vision adapter to PEFT conversion unsupported. Saved in torchtune format")
-            else:
-                state_dict[training.ADAPTER_KEY] = convert_weights.tune_to_peft_adapter_weights(
-                    state_dict[training.ADAPTER_KEY],
-                    num_heads=self._config["num_attention_heads"],
-                    num_kv_heads=self._config["num_key_value_heads"],
-                    dim=self._config["hidden_size"],
-                    head_dim=self._config.get("head_dim", None),
-                )
-                output_path = output_dir / ADAPTER_MODEL_FNAME
-                output_dir.mkdir(parents=True, exist_ok=True)
-                if not self.safe_serialization:
-                    output_path = output_path.with_suffix(".bin")
-                    torch.save(state_dict[training.ADAPTER_KEY], output_path)
-                else:
-                    output_path = output_path.with_suffix(".safetensors")
-                    save_file(state_dict[training.ADAPTER_KEY], output_path, metadata={"format": "pt"})
-                _ckpt_sz = os.path.getsize(output_path) / 1024**3
-                logger.info(f"Adapter checkpoint of size {_ckpt_sz:.2f} GiB saved to {output_path}")
+            self.save_adapter_weights(state_dict, output_dir)
 
         # NOTE not used currently
         if training.ADAPTER_CONFIG in state_dict:
-            if self.model_type == ModelType.PHI3_MINI:
-                logger.warning("PEFT integration for Phi-3 Mini is not supported. Skipping adapter config save")
-            elif self.model_type == ModelType.LLAMA3_VISION:
-                logger.warning("PEFT integration for Llama3.2 Vision is not supported. Skipping adapter config save")
-            else:
-                state_dict[training.ADAPTER_CONFIG] = convert_weights.tune_to_peft_adapter_config(
-                    adapter_config=state_dict[training.ADAPTER_CONFIG],
-                    base_model_name_or_path=self.repo_id,
-                )
-                output_path = (output_dir / ADAPTER_CONFIG_FNAME).with_suffix(".json")
-                with open(output_path, "w") as f:
-                    json.dump(state_dict[training.ADAPTER_CONFIG], f)
-                logger.info(
-                    "Adapter checkpoint of size "
-                    f"{os.path.getsize(output_path) / 1024**3:.2f} GiB "
-                    f"saved to {output_path}"
-                )
+            self.save_adapter_config(state_dict, output_dir)
 
         # Save all files in ckpt_dir except model weights and mapping -> facilitate inference
         copy_files(self.checkpoint_dir, output_dir, ignore_suffixes=ignore_suffixes)
 
-        # If the recipe state needs to be output, first remove the model state dict
-        # and if it exists, remove the adapter state dict as well
         if save_training_state:
-            recipe_state_output_path = self.output_dir / "recipe_state.pt"  # NOTE dropped added subdir resp. Meta code
-            self.output_dir.mkdir(parents=True, exist_ok=True)
-            torch.save(
-                {
-                    k: v
-                    for k, v in state_dict.items()
-                    if k not in (training.MODEL_KEY, training.ADAPTER_KEY, training.ADAPTER_CONFIG)
-                },
-                recipe_state_output_path,
-            )
-            logger.info(
-                "Recipe checkpoint of size "
-                f"{os.path.getsize(recipe_state_output_path) / 1024**3:.2f} GiB "
-                f"saved to {recipe_state_output_path}"
-            )
+            self.save_recipe_state(state_dict)
         else:
             logger.info("No training state saved.")
-            if adapter_only:
-                logger.info(
-                    "Please note that you have set adapter_only=True, so only adapter weights will be saved."
-                    "You need to merge the adapter weights into your base model for further use. "
-                    f"See {self.__class__.__name__}.save_checkpoint for more details."
-                )
-            else:
-                logger.info(
-                    "The full model checkpoint, including all weights and configurations, has been saved successfully."
-                    "You can now use this checkpoint for further training or inference."
-                )
 
     def save_checkpoint(
         self,
@@ -552,6 +537,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                 ckpt_dict[training.OPT_KEY] = optim_ckpt_wrapper.state_dict()  # type: ignore # TODO
             else:
                 ckpt_dict[training.OPT_KEY] = optimizer_state_dict
+
         output_dir_step = self.output_dir / f"epoch_{epoch}" / f"global_step_{global_step}"
         self._save_checkpoint(
             ckpt_dict,
@@ -559,6 +545,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             save_training_state=save_training_state,
             adapter_only=adapter_only,
         )
+
         return ckpt_dict, output_dir_step
 
 
