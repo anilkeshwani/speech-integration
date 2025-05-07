@@ -427,19 +427,16 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
     def _save_checkpoint(
         self,
         state_dict: dict[str, Any],
-        epoch: int,
-        global_step: int,
+        output_dir: Path,
         save_training_state: bool,
-        adapter_only: bool = False,
+        adapter_only: bool,
     ) -> None:
-        output_dir_step_level = self.output_dir / f"epoch_{epoch}" / f"global_step_{global_step}"
-
         # convert the state_dict back to hf format; do this in place
         if adapter_only:
             if training.ADAPTER_KEY not in state_dict:
                 raise ValueError("Adapter checkpoint not in state_dict. Ensure the state_dict contains adapter weights")
         else:
-            self.save_full_model(state_dict, output_dir_step_level)
+            self.save_full_model(state_dict, output_dir)
 
         # NOTE Save the adapter weights if found even when adapter_only is False; NOTE not used currently
         if training.ADAPTER_KEY in state_dict:
@@ -447,8 +444,8 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             # convert_weights.tune_to_peft_adapter_weights, we do NOT have a fn
             # convert_weights.peft_to_tune. The .pt format is not needed, but
             # it is an easy way to distinguish the adapters. Ideally we should save only one.
-            output_path = (output_dir_step_level / ADAPTER_MODEL_FNAME).with_suffix(".pt")
-            output_dir_step_level.mkdir(parents=True, exist_ok=True)
+            output_path = (output_dir / ADAPTER_MODEL_FNAME).with_suffix(".pt")
+            output_dir.mkdir(parents=True, exist_ok=True)
             torch.save(state_dict[training.ADAPTER_KEY], output_path)
             logger.info(
                 f"Adapter checkpoint of size {os.path.getsize(output_path) / 1024**3:.2f} GiB saved to {output_path}"
@@ -470,8 +467,8 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                     dim=self._config["hidden_size"],
                     head_dim=self._config.get("head_dim", None),
                 )
-                output_path = output_dir_step_level / ADAPTER_MODEL_FNAME
-                output_dir_step_level.mkdir(parents=True, exist_ok=True)
+                output_path = output_dir / ADAPTER_MODEL_FNAME
+                output_dir.mkdir(parents=True, exist_ok=True)
                 if not self.safe_serialization:
                     output_path = output_path.with_suffix(".bin")
                     torch.save(state_dict[training.ADAPTER_KEY], output_path)
@@ -493,7 +490,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                     adapter_config=state_dict[training.ADAPTER_CONFIG],
                     base_model_name_or_path=self.repo_id,
                 )
-                output_path = (output_dir_step_level / ADAPTER_CONFIG_FNAME).with_suffix(".json")
+                output_path = (output_dir / ADAPTER_CONFIG_FNAME).with_suffix(".json")
                 with open(output_path, "w") as f:
                     json.dump(state_dict[training.ADAPTER_CONFIG], f)
                 logger.info(
@@ -503,7 +500,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                 )
 
         # Save all files in ckpt_dir except model weights and mapping -> facilitate inference
-        copy_files(self.checkpoint_dir, output_dir_step_level, ignore_suffixes=SUFFIXES_TO_NOT_COPY)
+        copy_files(self.checkpoint_dir, output_dir, ignore_suffixes=SUFFIXES_TO_NOT_COPY)
 
         # If the recipe state needs to be output, first remove the model state dict
         # and if it exists, remove the adapter state dict as well
@@ -548,7 +545,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         optim_ckpt_wrapper=None,  # TODO typing if/when implemented; not implemented
         save_training_state=True,
         adapter_only=False,
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], Path]:
         ckpt_dict: dict = {
             ssi.constants.MODEL_KEY: model_state_dict,
             ssi.constants.EPOCHS_KEY: epoch,
@@ -560,14 +557,14 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                 ckpt_dict[training.OPT_KEY] = optim_ckpt_wrapper.state_dict()  # type: ignore # TODO
             else:
                 ckpt_dict[training.OPT_KEY] = optimizer_state_dict
+        output_dir_step = self.output_dir / f"epoch_{epoch}" / f"global_step_{global_step}"
         self._save_checkpoint(
             ckpt_dict,
-            epoch=epoch,
-            global_step=global_step,
+            output_dir=output_dir_step,
             save_training_state=save_training_state,
             adapter_only=adapter_only,
         )
-        return ckpt_dict
+        return ckpt_dict, output_dir_step
 
 
 def resolve_checkpointer_output_dir(cfg: DictConfig, wandb_logger: WandBLogger) -> Path:
