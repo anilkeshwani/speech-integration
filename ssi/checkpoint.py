@@ -1,12 +1,15 @@
 import gc
 import json
+import logging
 import os
+import sys
 from pathlib import Path
 from typing import Any, Dict
 
 import torch
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from safetensors.torch import save_file
+from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
 from torchtune import training
 from torchtune.models import convert_weights
 from torchtune.training.checkpointing._checkpointer import _CheckpointerInterface
@@ -26,12 +29,18 @@ from torchtune.training.checkpointing._utils import (
     TORCH_INDEX_FNAME,
 )
 from torchtune.training.metric_logging import WandBLogger
-from torchtune.utils._logging import get_logger, log_rank_zero
 
 import ssi.constants
 
 
-logger = get_logger("DEBUG")
+logging.basicConfig(
+    format=LOG_FORMAT,
+    datefmt=LOG_DATEFMT,
+    level=os.environ.get("LOGLEVEL", LOG_LEVEL).upper(),
+    stream=sys.stdout,
+)
+
+LOGGER = logging.getLogger(__name__)
 
 
 def validate_checkpoint_files(checkpoint_files: list[str], input_dir: Path, missing_ok=False) -> list[Path]:
@@ -126,13 +135,13 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             checkpoint_dir=self.checkpoint_dir,
         )
 
-        logger.info(f"Resuming from checkpoint(s): {[str(path) for path in self._checkpoint_paths]}")
+        LOGGER.info(f"Resuming from checkpoint(s): {[str(path) for path in self._checkpoint_paths]}")
         if self.recipe_checkpoint is not None:
-            logger.info(f"Resuming optimizer and recipe state from: {self.recipe_checkpoint}")
+            LOGGER.info(f"Resuming optimizer and recipe state from: {self.recipe_checkpoint}")
         else:
-            logger.info("No recipe state checkpoint passed. Will initialize optimizer state from scratch.")
+            LOGGER.info("No recipe state checkpoint passed. Will initialize optimizer state from scratch.")
         if self.adapter_checkpoint:
-            logger.info(f"Resuming adapter from checkpoint: {self.adapter_checkpoint}")
+            LOGGER.info(f"Resuming adapter from checkpoint: {self.adapter_checkpoint}")
 
     def load_checkpoint(self) -> Dict[str, Any]:
         """
@@ -214,10 +223,9 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         return converted_state_dict
 
     def phi3_hf_to_tune(self, merged_state_dict, converted_state_dict):
-        log_rank_zero(
-            logger=logger,
-            msg="Converting Phi-3 Mini weights from HF format."
-            "Note that conversion of adapter weights into PEFT format is not supported.",
+        LOGGER.info(
+            "Converting Phi-3 Mini weights from HF format."
+            "Note that conversion of adapter weights into PEFT format is not supported."
         )
         from torchtune.models.phi3._convert_weights import phi3_hf_to_tune
 
@@ -401,7 +409,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                 output_path = output_path.with_suffix(".safetensors")
                 save_file(model_state_dict, output_path, metadata={"format": "pt"})
             _ckpt_sz = os.path.getsize(output_path) / 1024**3
-            logger.info(f"Model checkpoint of size {_ckpt_sz:.2f} GiB saved to {output_path}")
+            LOGGER.info(f"Model checkpoint of size {_ckpt_sz:.2f} GiB saved to {output_path}")
 
         # Save the appropriate index file based on serialization format; example:
         # {
@@ -422,7 +430,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         with open(index_path, "w") as f:
             json.dump(index_data, f, indent=2)
 
-        logger.info(f"The full model checkpoint has been saved to {output_dir}")
+        LOGGER.info(f"The full model checkpoint has been saved to {output_dir}")
 
     def save_adapter_weights(self, state_dict: dict[str, Any], output_dir: Path) -> None:
         # TODO [Meta] saving it "as is" is a requirement because, if we only save with
@@ -433,12 +441,12 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         output_dir.mkdir(parents=True, exist_ok=True)
         torch.save(state_dict[training.ADAPTER_KEY], output_path)
         _ckpt_sz = os.path.getsize(output_path) / 1024**3
-        logger.info(f"Adapter checkpoint of size {_ckpt_sz:.2f} GiB saved to {output_path}")
+        LOGGER.info(f"Adapter checkpoint of size {_ckpt_sz:.2f} GiB saved to {output_path}")
 
         if self.model_type == ModelType.PHI3_MINI:
-            logger.warning("Phi-3 Mini adapter to PEFT conversion unsupported. Saved in torchtune format")
+            LOGGER.warning("Phi-3 Mini adapter to PEFT conversion unsupported. Saved in torchtune format")
         elif self.model_type == ModelType.LLAMA3_VISION:
-            logger.warning("Llama3.2 Vision adapter to PEFT conversion unsupported. Saved in torchtune format")
+            LOGGER.warning("Llama3.2 Vision adapter to PEFT conversion unsupported. Saved in torchtune format")
         else:
             state_dict[training.ADAPTER_KEY] = convert_weights.tune_to_peft_adapter_weights(
                 state_dict[training.ADAPTER_KEY],
@@ -456,13 +464,13 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                 output_path = output_path.with_suffix(".safetensors")
                 save_file(state_dict[training.ADAPTER_KEY], output_path, metadata={"format": "pt"})
             _ckpt_sz = os.path.getsize(output_path) / 1024**3
-            logger.info(f"Adapter checkpoint of size {_ckpt_sz:.2f} GiB saved to {output_path}")
+            LOGGER.info(f"Adapter checkpoint of size {_ckpt_sz:.2f} GiB saved to {output_path}")
 
     def save_adapter_config(self, state_dict: dict[str, Any], output_dir: Path) -> None:
         if self.model_type == ModelType.PHI3_MINI:
-            logger.warning("PEFT integration for Phi-3 Mini is not supported. Skipping adapter config save")
+            LOGGER.warning("PEFT integration for Phi-3 Mini is not supported. Skipping adapter config save")
         elif self.model_type == ModelType.LLAMA3_VISION:
-            logger.warning("PEFT integration for Llama3.2 Vision is not supported. Skipping adapter config save")
+            LOGGER.warning("PEFT integration for Llama3.2 Vision is not supported. Skipping adapter config save")
         else:
             state_dict[training.ADAPTER_CONFIG] = convert_weights.tune_to_peft_adapter_config(
                 adapter_config=state_dict[training.ADAPTER_CONFIG],
@@ -471,14 +479,14 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             output_path = (output_dir / ADAPTER_CONFIG_FNAME).with_suffix(".json")
             with open(output_path, "w") as f:
                 json.dump(state_dict[training.ADAPTER_CONFIG], f)
-            logger.info(f"Adapter config saved to {output_path}")
+            LOGGER.info(f"Adapter config saved to {output_path}")
 
     def save_recipe_state(self, state_dict: dict[str, Any]) -> None:
         output_path = self.output_dir / "recipe_state.pt"  # NOTE dropped added subdir resp. Meta code
         exclude_keys = (training.MODEL_KEY, training.ADAPTER_KEY, training.ADAPTER_CONFIG)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         torch.save({k: v for k, v in state_dict.items() if k not in exclude_keys}, output_path)
-        logger.info(f"Recipe checkpoint ({os.path.getsize(output_path) / 1024**3:.2f} GiB) saved to {output_path}")
+        LOGGER.info(f"Recipe checkpoint ({os.path.getsize(output_path) / 1024**3:.2f} GiB) saved to {output_path}")
 
     def _save_checkpoint(
         self,
@@ -492,7 +500,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         if adapter_only:
             if training.ADAPTER_KEY not in state_dict:
                 raise ValueError("Adapter checkpoint not in state_dict. Ensure the state_dict contains adapter weights")
-            logger.info("Note: Set adapter_only=True so only adapter weights will be saved.")
+            LOGGER.info("Note: Set adapter_only=True so only adapter weights will be saved.")
         else:
             self.save_full_model(state_dict, output_dir)
 
@@ -510,7 +518,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         if save_training_state:
             self.save_recipe_state(state_dict)
         else:
-            logger.info("No training state saved.")
+            LOGGER.info("No training state saved.")
 
     def save_checkpoint(
         self,
