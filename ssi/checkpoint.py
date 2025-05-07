@@ -127,11 +127,10 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         )
 
         logger.info(f"Resuming from checkpoint(s): {[str(path) for path in self._checkpoint_paths]}")
-        logger.info(
-            f"Resuming optimizer and recipe state from: {self.recipe_checkpoint}"
-            if self.recipe_checkpoint
-            else "Initializing optimizer and recipe state from cold."
-        )
+        if self.recipe_checkpoint is not None:
+            logger.info(f"Resuming optimizer and recipe state from: {self.recipe_checkpoint}")
+        else:
+            logger.info("No recipe state checkpoint passed. Will initialize optimizer state from scratch.")
         if self.adapter_checkpoint:
             logger.info(f"Resuming adapter from checkpoint: {self.adapter_checkpoint}")
 
