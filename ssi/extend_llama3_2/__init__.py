@@ -148,4 +148,5 @@ def simple_setup_model(model_state_dict: dict[str, Any], device: str = "cpu") ->
         model = llama3_2_1b()
     model.load_state_dict(model_state_dict)
     torchtune.training.validate_expected_param_dtype(model.named_parameters(), dtype=torch.float32)  # check fp32
+    LOGGER.info(f"Model loaded successfully: {model}")
     return model
