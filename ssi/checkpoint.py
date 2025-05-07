@@ -448,18 +448,13 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             output_path = (output_dir / ADAPTER_MODEL_FNAME).with_suffix(".pt")
             output_dir.mkdir(parents=True, exist_ok=True)
             torch.save(state_dict[training.ADAPTER_KEY], output_path)
-            logger.info(
-                f"Adapter checkpoint of size {os.path.getsize(output_path) / 1024**3:.2f} GiB saved to {output_path}"
-            )
+            _ckpt_sz = os.path.getsize(output_path) / 1024**3
+            logger.info(f"Adapter checkpoint of size {_ckpt_sz:.2f} GiB saved to {output_path}")
 
             if self.model_type == ModelType.PHI3_MINI:
-                logger.warning(
-                    "Saving Phi-3 Mini adapter weights to PEFT format is not supported, saving to torchtune format instead"
-                )
+                logger.warning("Phi-3 Mini adapter to PEFT conversion unsupported. Saved in torchtune format")
             elif self.model_type == ModelType.LLAMA3_VISION:
-                logger.warning(
-                    "Saving Llama3.2 Vision adapter weights to PEFT format is not supported, saving to torchtune format instead"
-                )
+                logger.warning("Llama3.2 Vision adapter to PEFT conversion unsupported. Saved in torchtune format")
             else:
                 state_dict[training.ADAPTER_KEY] = convert_weights.tune_to_peft_adapter_weights(
                     state_dict[training.ADAPTER_KEY],
@@ -476,16 +471,15 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                 else:
                     output_path = output_path.with_suffix(".safetensors")
                     save_file(state_dict[training.ADAPTER_KEY], output_path, metadata={"format": "pt"})
-                logger.info(
-                    f"Adapter checkpoint of size {os.path.getsize(output_path)/1024**3:.2f} GiB saved to {output_path}"
-                )
+                _ckpt_sz = os.path.getsize(output_path) / 1024**3
+                logger.info(f"Adapter checkpoint of size {_ckpt_sz:.2f} GiB saved to {output_path}")
 
         # NOTE not used currently
         if training.ADAPTER_CONFIG in state_dict:
             if self.model_type == ModelType.PHI3_MINI:
-                logger.warning("PEFT integration for Phi-3 Mini is not supported, skipping adapter config save")
+                logger.warning("PEFT integration for Phi-3 Mini is not supported. Skipping adapter config save")
             elif self.model_type == ModelType.LLAMA3_VISION:
-                logger.warning("PEFT integration for Llama3.2 Vision is not supported, skipping adapter config save")
+                logger.warning("PEFT integration for Llama3.2 Vision is not supported. Skipping adapter config save")
             else:
                 state_dict[training.ADAPTER_CONFIG] = convert_weights.tune_to_peft_adapter_config(
                     adapter_config=state_dict[training.ADAPTER_CONFIG],
