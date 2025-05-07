@@ -91,7 +91,6 @@ def extend_model(
     n_new_dsus: int,
     use_modality_tokens: bool,
     model: TransformerDecoder,
-    extended_tokenizer: Llama3Tokenizer,
     llama_config: ConfigLlama3_2,
 ) -> None:
     """Extends a Llama 3 1B model's input embedding layer and tied output layer in place"""
@@ -103,7 +102,6 @@ def extend_model(
     embeddings = model.tok_embeddings.weight.data
     base_vocab_embeddings = embeddings[:base_vocab_size, :]
     special_tokens_embeddings = embeddings[base_vocab_size:, :]
-    assert extended_tokenizer.vocab_size == base_vocab_size + special_tokens_size + n_new_dsus + 2 * use_modality_tokens
     mvgaussian = multivariate_normal_from_weights(base_vocab_embeddings, sigma_scaling=1e-5)  # 1e-5 is the default
     new_token_embeddings = mvgaussian.sample(torch.Size((n_new_dsus + 2 * use_modality_tokens,)))
     # NOTE TransformerDecoder needs an nn.Embedding module as tok_embeddings and input to TiedLinear
@@ -114,7 +112,6 @@ def extend_model(
     # validate new embeddings
     assert model.tok_embeddings.weight.data[:base_vocab_size, :].equal(emb_orig[:base_vocab_size, :])
     assert model.tok_embeddings.weight.data[-special_tokens_size:, :].equal(emb_orig[-special_tokens_size:, :])
-    assert len(model.tok_embeddings.weight.data) == extended_tokenizer.vocab_size
     assert len(model.tok_embeddings.weight.data) - len(emb_orig) == n_new_dsus + 2 * use_modality_tokens
     LOGGER.info(f"Added {n_new_dsus} new DSU embeddings to the model (in memory)")
     if use_modality_tokens:
