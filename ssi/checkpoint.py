@@ -540,7 +540,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             _ = state_dict.pop(training.MODEL_KEY, None)
             _ = state_dict.pop(training.ADAPTER_KEY, None)
             _ = state_dict.pop(training.ADAPTER_CONFIG, None)
-            recipe_state_output_path = Path.joinpath(self.output_dir, RECIPE_STATE_DIRNAME, "recipe_state.pt")
+            recipe_state_output_path = self.output_dir / RECIPE_STATE_DIRNAME / "recipe_state.pt"
             recipe_state_output_path.parent.mkdir(parents=True, exist_ok=True)
             torch.save(state_dict, recipe_state_output_path)
             logger.info(
