@@ -2,7 +2,7 @@ import gc
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Protocol, Union
+from typing import Any, Dict
 
 import torch
 from omegaconf import DictConfig, ListConfig, OmegaConf
@@ -18,7 +18,6 @@ from torchtune.training.checkpointing._utils import (
     FormattedCheckpointFiles,
     get_path,
     ModelType,
-    RECIPE_STATE_DIRNAME,
     REPO_ID_FNAME,
     safe_torch_load,
     SAFETENSOR_INDEX_FNAME,
