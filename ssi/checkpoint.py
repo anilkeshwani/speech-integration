@@ -94,7 +94,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         self.checkpoint_dir = Path(checkpoint_dir)
         self.safe_serialization = safe_serialization
         self.model_type: ModelType = ModelType(model_type)
-        self.output_dir = Path(output_dir)
+        self.output_dir = Path(output_dir)  # idempotent
         self.recipe_checkpoint = Path(recipe_checkpoint) if recipe_checkpoint is not None else None
         self.adapter_checkpoint = Path(adapter_checkpoint) if adapter_checkpoint else None
         if isinstance(checkpoint_files, ListConfig):
