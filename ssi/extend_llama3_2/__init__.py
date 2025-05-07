@@ -143,6 +143,34 @@ def extend_config(
     LOGGER.info(f"Updated config.json with new bos_token_id, eos_token_id, and vocab_size: {config_json}")
 
 
+def extend_generation_config(
+    generation_config_json: Path,
+    bos_token_id: int,
+    eos_token_id: int,
+) -> None:
+    with open(generation_config_json, "r") as f:
+        config = json.load(f)
+    assert config.pop("bos_token_id") == 128_000
+    assert config.pop("eos_token_id") == 128_001
+    config["bos_token_id"] = bos_token_id
+    config["eos_token_id"] = eos_token_id
+    with open(generation_config_json, "w") as f:
+        json.dump(config, f, indent=2)
+    LOGGER.info("Updated generation_config.json with new bos_token_id and eos_token_id")
+
+
+def extend_params(params_json: Path, vocab_size: int, llama_config: ConfigLlama3_2) -> None:
+    base_vocab_size: int = llama_config._base_vocab_size_txt
+    special_tokens_size: int = llama_config._n_special_txt
+    with open(params_json, "r") as f:
+        config = json.load(f)
+    assert config.pop("vocab_size") == base_vocab_size + special_tokens_size
+    config["vocab_size"] = vocab_size
+    with open(params_json, "w") as f:
+        json.dump(config, f, indent=2)
+    LOGGER.info(f"Updated params.json with new vocab_size: {params_json}")
+
+
 def simple_setup_model(model_state_dict: dict[str, Any], device: str = "cpu") -> TransformerDecoder:
     """Set up and load a model with the given state_dict"""
     with torchtune.training.set_default_dtype(torch.float32), utils.get_device(device=device):

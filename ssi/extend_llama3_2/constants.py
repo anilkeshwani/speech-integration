@@ -15,6 +15,8 @@ LLAMA_3_2_3B_BASE_DIR = TORCHTUNE_BASE_MODELS_DIR / "Llama-3.2-3B"
 LLAMA_3_2_TOKENIZER_RELPATH = Path("original", "tokenizer.model")
 LLAMA_3_2_MODEL_RELPATH = Path("model.safetensors")
 LLAMA_3_2_CONFIG_RELPATH = Path("config.json")
+LLAMA_3_2_GENERATION_CONFIG_RELPATH = Path("generation_config.json")
+LLAMA_3_2_PARAMS_RELPATH = Path("original", "params.json")
 
 # Llama 3.2 tokenizer
 LLAMA_BOS_TOKEN = "<|begin_of_text|>"
