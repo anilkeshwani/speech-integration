@@ -521,8 +521,8 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         epoch: int,
         global_step: int,
         seed: int,
-        save_training_state=True,
-        adapter_only=False,
+        save_training_state: bool = True,
+        adapter_only: bool = False,
         optimizer_in_bwd: bool = False,  # TODO not implemented
         optim_ckpt_wrapper=None,  # TODO typing if/when implemented; not implemented
         output_dir: Path | None = None,
