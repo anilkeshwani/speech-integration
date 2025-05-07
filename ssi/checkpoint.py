@@ -525,6 +525,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         adapter_only=False,
         optimizer_in_bwd: bool = False,  # TODO not implemented
         optim_ckpt_wrapper=None,  # TODO typing if/when implemented; not implemented
+        output_dir: Path | None = None,
         ignore_suffixes: list[str] = SUFFIXES_TO_NOT_COPY,
     ) -> tuple[dict[str, Any], Path]:
         ckpt_dict: dict = {
@@ -538,15 +539,16 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                 ckpt_dict[training.OPT_KEY] = optim_ckpt_wrapper.state_dict()  # type: ignore # TODO
             else:
                 ckpt_dict[training.OPT_KEY] = optimizer_state_dict
-        output_dir_step = self.output_dir / f"epoch_{epoch}" / f"global_step_{global_step}"
+        if output_dir is None:
+            output_dir = self.output_dir / f"epoch_{epoch}" / f"global_step_{global_step}"
         self._save_checkpoint(
             ckpt_dict,
-            output_dir=output_dir_step,
+            output_dir=output_dir,
             save_training_state=save_training_state,
             adapter_only=adapter_only,
             ignore_suffixes=ignore_suffixes,
         )
-        return ckpt_dict, output_dir_step
+        return ckpt_dict, output_dir
 
 
 def resolve_checkpointer_output_dir(cfg: DictConfig, wandb_logger: WandBLogger) -> Path:
