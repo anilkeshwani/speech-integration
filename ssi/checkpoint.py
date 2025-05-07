@@ -430,6 +430,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         output_dir: Path,
         save_training_state: bool,
         adapter_only: bool,
+        ignore_suffixes=SUFFIXES_TO_NOT_COPY,
     ) -> None:
         # convert the state_dict back to hf format; do this in place
         if adapter_only:
@@ -500,7 +501,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                 )
 
         # Save all files in ckpt_dir except model weights and mapping -> facilitate inference
-        copy_files(self.checkpoint_dir, output_dir, ignore_suffixes=SUFFIXES_TO_NOT_COPY)
+        copy_files(self.checkpoint_dir, output_dir, ignore_suffixes=ignore_suffixes)
 
         # If the recipe state needs to be output, first remove the model state dict
         # and if it exists, remove the adapter state dict as well
