@@ -43,7 +43,7 @@ def setup_text_completion_data(
     if isinstance(cfg_dataset, ListConfig):
         raise NotImplementedError("Support for the shuffle parameter needs to be added to use ConcatDataset.")
     if cfg_dataset.get("packed", False):
-        # Strictly this doesn't have to affect CPT since we dont' need to change the collate
+        # Strictly this doesn't have to affect CPT since we don't need to change the collate
         # function (as for SFT) but raised for consistency / as a reminder
         raise NotImplementedError("Need to add a custom collate function to handle the PACKED case - not implemented.")
     dataset = TextCompletionDataset(tokenizer=model_tokenizer, **cfg_dataset.dataset)
