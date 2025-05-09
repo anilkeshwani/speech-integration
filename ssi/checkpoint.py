@@ -30,8 +30,7 @@ from torchtune.training.checkpointing._utils import (
 )
 from torchtune.training.metric_logging import WandBLogger
 
-import ssi.constants
-from ssi.constants import LLAMA_3_2_CONFIG_RELPATH
+from ssi.constants import EPOCHS_KEY, GLOBAL_STEP_KEY, LLAMA_3_2_CONFIG_RELPATH, MODEL_KEY, SEED_KEY
 
 
 logging.basicConfig(
@@ -538,10 +537,10 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         ignore_suffixes: list[str] = SUFFIXES_TO_NOT_COPY,
     ) -> tuple[dict[str, Any], Path]:
         ckpt_dict: dict = {
-            ssi.constants.MODEL_KEY: model_state_dict,
-            ssi.constants.EPOCHS_KEY: epoch,
-            ssi.constants.GLOBAL_STEP_KEY: global_step,
-            ssi.constants.SEED_KEY: seed,
+            MODEL_KEY: model_state_dict,
+            EPOCHS_KEY: epoch,
+            GLOBAL_STEP_KEY: global_step,
+            SEED_KEY: seed,
         }
         if optimizer_state_dict is not None:
             if optimizer_in_bwd:
