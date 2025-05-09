@@ -13,8 +13,9 @@ debug_mode: null
 extended_models_dir: /mnt/scratch-artemis/anilkeshwani/models/extended/
 base_model_name: Llama-3.2-1B-5000-dsus
 
-# DSUs
+# DSUs & Modality Tokens
 n_dsus: 5000
+use_modality_tokens: True
 
 # Tokenizer - config for setup_llama3_tokenizer -> Llama3Tokenizer
 tokenizer:

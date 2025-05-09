@@ -31,7 +31,9 @@ def setup_llama3_2_1b(
         dtype_default: torch.dtype = get_dtype(cfg.dtype)
     if isinstance(device_default, str):
         device_default: torch.device = get_device(cfg.device)
-    configllama3_2_1b.n_dsus = cfg.n_dsus  # NOTE set number of DSUs from config
+    # Speech-specific hyperparameter updates from Hydra YAML config
+    configllama3_2_1b.n_dsus = cfg.n_dsus  # set number of DSUs
+    configllama3_2_1b.modality_tokens = cfg.use_modality_tokens  # set modality tokens flag
     with training.set_default_dtype(dtype_default), device_default:
         model = llama3_2(**configllama3_2_1b.parameters)
     if cfg.compile:
