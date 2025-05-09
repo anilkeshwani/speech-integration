@@ -156,6 +156,7 @@ def train(cfg: DictConfig) -> None:
     steps_per_epoch = len(data_train) // cfg.gradient_accumulation_steps
     n_epochs = math.ceil(cfg.max_steps / steps_per_epoch)
     LOGGER.info(OmegaConf.to_yaml(cfg, resolve=True, sort_keys=False))
+    wandb_logger.log_config(cfg)  # log config after parameter resolution + overrides
     for epoch in range(epochs_run, n_epochs):
         sampler_train.set_epoch(epoch)  # distinct seed each epoch
         for i, batch in tqdm(enumerate(data_train), total=len(data_train)):
