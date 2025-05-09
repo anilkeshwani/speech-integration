@@ -114,18 +114,16 @@ The following command will extend the base model with the specified number of to
 
 ```bash
 python scripts/train_cpt.py \
-    checkpointer.config_json='/mnt/scratch-artemis/anilkeshwani/models/extended/Llama-3.2-1B-5000-dsus/config.json' \
     checkpointer.checkpoint_dir='/mnt/scratch-artemis/anilkeshwani/models/extended/Llama-3.2-1B-5000-dsus' \
-    checkpointer.checkpoint_files='["hf_model_0001_0.pt"]' # slightly weird syntax
+    checkpointer.checkpoint_files='["ft-model-00001-of-00001.safetensors"]' # slightly weird syntax
 ```
 
 ### Supervised Fine-tuning (SFT)
 
 ```
 python scripts/train_cpt.py \
-    checkpointer.config_json='/mnt/scratch-artemis/anilkeshwani/models/extended/Llama-3.2-1B-5000-dsus/config.json' \
     checkpointer.checkpoint_dir='/mnt/scratch-artemis/anilkeshwani/models/extended/Llama-3.2-1B-5000-dsus' \
-    checkpointer.checkpoint_files='["hf_model_0001_0.pt"]' # slightly weird syntax
+    checkpointer.checkpoint_files='["ft-model-00001-of-00001.safetensors"]' # slightly weird syntax
 ```
 
 ## Generation

@@ -64,7 +64,7 @@ def parse_args() -> Namespace:
     )
     args = parser.parse_args()
     if args.output_dir is None:
-        dirname = f"{args.input_dir.name}-{args.n_new_dsus}_dsus"
+        dirname = f"{args.input_dir.name}-{args.n_new_dsus}-dsus"
         if not args.use_modality_tokens:
             dirname += "-no_modality_tokens"
         args.output_dir = TORCHTUNE_EXTENDED_MODELS_DIR / dirname
