@@ -24,11 +24,22 @@ Install the package including development dependencies:
 ```bash
 conda create -n ssi python=3.10.6 -y &&
     conda activate ssi &&
+    pip install .["dev"] &&
+    pip install --no-dependencies git+https://github.com/anilkeshwani/speech-text-alignment.git
+```
+
+> [!NOTE] You may need to enter enter your SSH key passphrase for installation.
+
+Editable install:
+
+```bash
+conda create -n ssi python=3.10.6 -y &&
+    conda activate ssi &&
     pip install -e .["dev"] &&
     pip install --no-dependencies git+https://github.com/anilkeshwani/speech-text-alignment.git
 ```
 
-> [!NOTE] You need to enter enter your SSH key passphrase for installation of the uroman package installed via the `git@github.com:isi-nlp/uroman.git` public repository. The `sardalign` package in [anilkeshwani/speech-text-alignment](https://github.com/anilkeshwani/speech-text-alignment.git) depends on uroman. 
+> [!NOTE] A dedicated environment with a static install is recommended for use with Slurm jobs, which (AFAIK) use the environment and package as installed on execution start. This is recommended so intermediate - possibly breaking - changes in an editable project location do not cause run failures or code versioning issues. 
 
 ### Setup Extras
 
