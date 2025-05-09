@@ -13,15 +13,7 @@ from sardalign.utils import seed_everything
 from torchtune.training.checkpointing._utils import SUFFIXES_TO_NOT_COPY
 
 from ssi.checkpoint import FullModelHFCheckpointer
-from ssi.extend_llama3_2 import (
-    extend_config,
-    extend_generation_config,
-    extend_model,
-    extend_params,
-    extend_tiktoken,
-    simple_setup_model,
-)
-from ssi.extend_llama3_2.constants import (
+from ssi.constants import (
     LLAMA_3_2_1B_BASE_DIR,
     LLAMA_3_2_CONFIG_RELPATH,
     LLAMA_3_2_GENERATION_CONFIG_RELPATH,
@@ -31,6 +23,14 @@ from ssi.extend_llama3_2.constants import (
     LLAMA_EOS_TOKEN,
     SEED,
     TORCHTUNE_EXTENDED_MODELS_DIR,
+)
+from ssi.extend_llama3_2 import (
+    extend_config,
+    extend_generation_config,
+    extend_model,
+    extend_params,
+    extend_tiktoken,
+    simple_setup_model,
 )
 from ssi.llama_configs import configllama3_2_1b
 from ssi.tokenizer import setup_llama3_tokenizer

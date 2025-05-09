@@ -31,6 +31,7 @@ from torchtune.training.checkpointing._utils import (
 from torchtune.training.metric_logging import WandBLogger
 
 import ssi.constants
+from ssi.constants import LLAMA_3_2_CONFIG_RELPATH
 
 
 logging.basicConfig(
@@ -93,7 +94,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         self,
         checkpoint_dir: Path | str,
         checkpoint_files: list[str] | dict[str, str],
-        config_json: Path | str,
+        config_json: Path | str | None,
         output_dir: Path | str,
         recipe_checkpoint: Path | str | None = None,
         adapter_checkpoint: Path | str | None = None,
@@ -119,6 +120,8 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         # weight_map: state_dict key -> checkpoint mapping to partition state dict into output checkpoint files
         self._weight_map: dict[str, str] | None = None  # NOTE initialised to None; updated during checkpoint loading
 
+        if config_json is None:
+            config_json = self.checkpoint_dir / LLAMA_3_2_CONFIG_RELPATH
         self._config = json.loads(Path(config_json).read_text())  # gives model params needed for state dict conversion
 
         # repo_id necessary to save adapter config for HF compatibility. JSON produced and saved at download step.
