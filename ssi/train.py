@@ -22,6 +22,7 @@ from torchtune.training.precision import PRECISION_STR_TO_DTYPE
 from torchtune.utils import batch_to_device, get_device
 from tqdm import tqdm
 
+from ssi._version import __version__
 from ssi.checkpoint import FullModelHFCheckpointer, resolve_checkpointer_output_dir
 from ssi.constants import EPOCHS_KEY, MODEL_KEY, OPTIMIZER_KEY, SEED, SEED_KEY, STEPS_KEY, SUPPORTED_DTYPES
 from ssi.data import setup_sft_data, setup_text_completion_data
@@ -106,7 +107,7 @@ def train(cfg: DictConfig) -> None:
     training.set_seed(seed=SEED, debug_mode=cfg.debug_mode)
     DEVICE: torch.device = get_device(cfg.device)
     DTYPE: torch.dtype = get_dtype(cfg.dtype)
-    wandb_logger = WandBLogger(**cfg.wandb)
+    wandb_logger = WandBLogger(**cfg.wandb, tags=[__version__])
     if cfg.checkpointer.output_dir is None:
         cfg.checkpointer.output_dir = resolve_checkpointer_output_dir(cfg, wandb_logger)
         LOGGER.info(f"No checkpointer output dir provided. Resolved to: {cfg.checkpointer.output_dir!s}")
