@@ -1,4 +1,6 @@
-import random
+import logging
+import os
+import sys
 from enum import Enum
 from functools import partial
 from itertools import groupby, zip_longest
@@ -7,8 +9,7 @@ from typing import Any, Callable, Mapping
 
 import numpy as np
 from datasets import load_dataset
-from datasets.dataset_dict import IterableDatasetDict
-from datasets.iterable_dataset import IterableDataset
+from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
 from sardalign.constants import (
     ALIGNMENT_END_TIME_KEY,
     ALIGNMENT_START_TIME_KEY,
@@ -26,6 +27,16 @@ from torchtune.data._utils import truncate
 from torchtune.models.llama3 import Llama3Tokenizer
 
 from ssi.constants import SEED
+
+
+logging.basicConfig(
+    format=LOG_FORMAT,
+    datefmt=LOG_DATEFMT,
+    level=os.environ.get("LOGLEVEL", LOG_LEVEL).upper(),
+    stream=sys.stdout,
+)
+
+LOGGER = logging.getLogger(__name__)
 
 
 class CompletionSequenceType(Enum):
@@ -86,6 +97,7 @@ class TextCompletionDataset(Dataset):
         alignment_end_time_key: str | None = None,
         speech_tokens_key: str | None = None,
         filter_fn: Callable | None = None,
+        debug_mode: bool = False,
     ) -> None:
         self._tokenizer = tokenizer
         self._data = load_dataset(source, split=split)
@@ -119,6 +131,8 @@ class TextCompletionDataset(Dataset):
         if filter_fn is not None:
             self._data = self._data.filter(filter_fn)
 
+        self.debug_mode = debug_mode
+
     def __len__(self):
         return len(self._data)
 
@@ -134,7 +148,8 @@ class TextCompletionDataset(Dataset):
             use_modality_tokens=self.use_modality_tokens,
         )
 
-        print(f"Prompt: \n{prompt}")
+        if self.debug_mode:
+            LOGGER.debug(f"Prompt: \n{prompt}")
 
         # Tokenize
         tokens = self._tokenizer.encode(text=prompt, add_bos=True, add_eos=self.add_eos)
