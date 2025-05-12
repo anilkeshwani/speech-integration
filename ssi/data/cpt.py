@@ -21,7 +21,6 @@ from sardalign.constants import (
 )
 from sardalign.utils import dsu2pua
 from sardalign.utils.align import times_to_hubert_idxs as times_to_dsu_idxs
-from torch import Type
 from torch.utils.data import Dataset
 from torchtune.data._utils import truncate
 from torchtune.models.llama3 import Llama3Tokenizer
@@ -33,6 +32,8 @@ class CompletionSequenceType(Enum):
     INTERLEAVED = "interleaved"  # interleaved text-speech sequences
     CONCATENATED_TXT_DSU = "concatenated_txt_dsu"  # concatenated text and DSU sequences
     CONCATENATED_DSU_TXT = "concatenated_dsu_txt"  # concatenated DSU and text sequences
+
+    # Not implemented yet
     DSU_ONLY = "dsu_only"  # DSU-only sequences
     TEXT_ONLY = "text_only"  # text-only sequences (i.e. regular text completion)
     ALTERNATING = "alternating"  # alternating between text-only and DSU-only sequences
@@ -75,7 +76,8 @@ class TextCompletionDataset(Dataset):
         self,
         tokenizer: Llama3Tokenizer,
         source: str,
-        sequence_type: CompletionSequenceType,
+        split: str,
+        sequence_type: str,
         deduplicate: bool,
         use_modality_tokens: bool,
         add_eos: bool = True,
@@ -84,10 +86,9 @@ class TextCompletionDataset(Dataset):
         alignment_end_time_key: str | None = None,
         speech_tokens_key: str | None = None,
         filter_fn: Callable | None = None,
-        **load_dataset_kwargs: dict[str, Any],  # TODO make HF dataset-specific args explicit
     ) -> None:
         self._tokenizer = tokenizer
-        self._data = load_dataset(source, **load_dataset_kwargs)
+        self._data = load_dataset(source, split=split)
         self.add_eos = add_eos
 
         # dataset columns
@@ -100,7 +101,7 @@ class TextCompletionDataset(Dataset):
         if speech_tokens_key is None:
             speech_tokens_key = SPEECH_TOKENS_KEY
 
-        self.sequence_type = sequence_type
+        self.sequence_type = CompletionSequenceType(sequence_type)
         match self.sequence_type:
             case CompletionSequenceType.INTERLEAVED:
                 # TODO after all args are explicit, pass in specific kwargs and make partial

@@ -28,9 +28,12 @@ tokenizer:
 data:
   train:
     dataset:
-      source: anilkeshwani/MLS_english_train_strat_sample_aligned_hubert_interleaved # specified as a HF dataset
+      source: anilkeshwani/MLS_english_train_strat_sample_aligned_hubert # HF dataset repo
       column: text
       split: train
+      sequence_type: interleaved
+      deduplicate: False
+      use_modality_tokens: True
       add_eos: True
     dataloader:
       batch_size: 16
@@ -45,9 +48,12 @@ data:
     # **load_dataset_kwargs: Dict[str, Any]
   dev:
     dataset:
-      source: anilkeshwani/MLS_english_train_strat_sample_aligned_hubert_interleaved # specified as a HF dataset
+      source: anilkeshwani/MLS_english_train_strat_sample_aligned_hubert # HF dataset repo
       column: text
       split: dev
+      sequence_type: interleaved
+      deduplicate: False
+      use_modality_tokens: True
       add_eos: True
     dataloader:
       batch_size: 16 # TODO can we increase this?

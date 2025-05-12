@@ -33,8 +33,8 @@ conda create -n ssi python=3.10.6 -y &&
 Editable install:
 
 ```bash
-conda create -n ssi python=3.10.6 -y &&
-    conda activate ssi &&
+conda create -n ssi-dev python=3.10.6 -y &&
+    conda activate ssi-dev &&
     pip install -e .["dev"] &&
     pip install --no-dependencies git+https://github.com/anilkeshwani/speech-text-alignment.git
 ```
