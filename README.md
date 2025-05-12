@@ -131,10 +131,21 @@ python scripts/train_cpt.py \
     checkpointer.checkpoint_files='["ft-model-00001-of-00001.safetensors"]' # slightly weird syntax
 ```
 
-Run in Slurm on Sardine:
+#### Run in Slurm (e.g. on Sardine)
+
+First enable the correct Conda environment. Then run, for example:
 
 ```bash
-srun --partition a6000 --time=48:00:00 --gres=gpu:1 --qos=gpu-medium python scripts/train_cpt.py checkpointer.checkpoint_dir="${HOME}/hafh/models/extended/Llama-3.2-1B-5000-dsus" checkpointer.checkpoint_files="['ft-model-00001-of-00001.safetensors']" optimizer.lr=0.0002 lr_scheduler.num_warmup_steps=1000
+srun \
+    --partition a6000 \
+    --time=48:00:00 \
+    --gres=gpu:1 \
+    --qos=gpu-medium \
+    python scripts/train_cpt.py \
+        checkpointer.checkpoint_dir="${HOME}/hafh/models/extended/Llama-3.2-1B-5000-dsus" \
+        checkpointer.checkpoint_files="['ft-model-00001-of-00001.safetensors']" \
+        optimizer.lr=0.0002 \
+        lr_scheduler.num_warmup_steps=1000
 ```
 
 This is an example demo snippet. Note: Relies on the `hafh -> /mnt/scratch-artemis/anilkeshwani` symlink in the shared `${HOME}` across Artemis and Poseidon.
