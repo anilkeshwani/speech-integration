@@ -29,7 +29,6 @@ data:
   train:
     dataset:
       source: anilkeshwani/MLS_english_train_strat_sample_aligned_hubert # HF dataset repo
-      column: text
       split: train
       sequence_type: interleaved
       deduplicate: False
@@ -49,7 +48,6 @@ data:
   dev:
     dataset:
       source: anilkeshwani/MLS_english_train_strat_sample_aligned_hubert # HF dataset repo
-      column: text
       split: dev
       sequence_type: interleaved
       deduplicate: False
