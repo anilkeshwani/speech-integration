@@ -1,5 +1,4 @@
 import logging
-import os
 import sys
 from functools import partial
 from typing import Any, Callable
@@ -7,13 +6,10 @@ from typing import Any, Callable
 import torch
 import torch.nn.functional as F
 import torchtune.data
-from omegaconf import DictConfig, ListConfig, OmegaConf
-from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
+from omegaconf import DictConfig, ListConfig
 from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset, DistributedSampler
-from torchtune import config
-from torchtune.config._utils import _get_component_from_path
 from torchtune.data import padded_collate_packed
 from torchtune.data._common import CROSS_ENTROPY_IGNORE_IDX
 from torchtune.datasets import PackedDataset
@@ -25,13 +21,6 @@ from ssi.constants import SEED
 from ssi.data.cpt import TextCompletionDataset
 from ssi.data.sft import SFTDataset
 
-
-logging.basicConfig(
-    format=LOG_FORMAT,
-    datefmt=LOG_DATEFMT,
-    level=os.environ.get("LOGLEVEL", LOG_LEVEL).upper(),
-    stream=sys.stdout,
-)
 
 LOGGER = logging.getLogger(__name__)
 

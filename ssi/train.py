@@ -38,7 +38,7 @@ from ssi.tokenizer import setup_llama3_tokenizer
 logging.basicConfig(
     format=LOG_FORMAT,
     datefmt=LOG_DATEFMT,
-    level=os.environ.get("LOGLEVEL", LOG_LEVEL).upper(),
+    level=os.environ.get("LOG_LEVEL", LOG_LEVEL).upper(),
     stream=sys.stdout,
 )
 

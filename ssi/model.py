@@ -16,7 +16,7 @@ from ssi.llama_configs import ConfigLlama3_2, configllama3_2_1b
 
 
 logging.basicConfig(
-    format=LOG_FORMAT, datefmt=LOG_DATEFMT, level=os.environ.get("LOGLEVEL", LOG_LEVEL).upper(), stream=sys.stdout
+    format=LOG_FORMAT, datefmt=LOG_DATEFMT, level=os.environ.get("LOG_LEVEL", LOG_LEVEL).upper(), stream=sys.stdout
 )
 LOGGER = logging.getLogger(__name__)
 
