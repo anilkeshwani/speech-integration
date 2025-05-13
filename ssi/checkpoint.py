@@ -2,14 +2,12 @@ import gc
 import json
 import logging
 import os
-import sys
 from pathlib import Path
 from typing import Any, Dict
 
 import torch
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from safetensors.torch import save_file
-from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
 from torchtune import training
 from torchtune.models import convert_weights
 from torchtune.training.checkpointing._checkpointer import _CheckpointerInterface
@@ -32,13 +30,6 @@ from torchtune.training.metric_logging import WandBLogger
 
 from ssi.constants import EPOCHS_KEY, GLOBAL_STEP_KEY, LLAMA_3_2_CONFIG_RELPATH, MODEL_KEY, SEED_KEY
 
-
-logging.basicConfig(
-    format=LOG_FORMAT,
-    datefmt=LOG_DATEFMT,
-    level=os.environ.get("LOG_LEVEL", LOG_LEVEL).upper(),
-    stream=sys.stdout,
-)
 
 LOGGER = logging.getLogger(__name__)
 

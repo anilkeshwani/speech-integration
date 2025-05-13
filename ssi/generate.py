@@ -1,18 +1,14 @@
 import itertools
 import json
 import logging
-import os
-import sys
 import time
 from typing import Any
 
 import hydra
 import torch
 from omegaconf import DictConfig
-from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
 from torchtune import generation
 from torchtune.data._common import CROSS_ENTROPY_IGNORE_IDX
-from torchtune.modules import TransformerDecoder
 from torchtune.training import get_dtype
 from torchtune.utils import get_device
 from tqdm import tqdm
@@ -45,13 +41,6 @@ DEBUG_MODE: str | None = None
 ################################################################################
 # Preamble
 ################################################################################
-
-logging.basicConfig(
-    format=LOG_FORMAT,
-    datefmt=LOG_DATEFMT,
-    level=os.environ.get("LOG_LEVEL", LOG_LEVEL).upper(),
-    stream=sys.stdout,
-)
 
 LOGGER = logging.getLogger(__name__)
 

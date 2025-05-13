@@ -1,15 +1,11 @@
 import logging
-import os
-import sys
 from enum import Enum
 from functools import partial
 from itertools import groupby, zip_longest
-from tkinter.tix import TEXT
 from typing import Any, Callable, Mapping
 
 import numpy as np
 from datasets import load_dataset
-from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
 from sardalign.constants import (
     ALIGNMENT_END_TIME_KEY,
     ALIGNMENT_START_TIME_KEY,
@@ -28,13 +24,6 @@ from torchtune.models.llama3 import Llama3Tokenizer
 
 from ssi.constants import SEED
 
-
-logging.basicConfig(
-    format=LOG_FORMAT,
-    datefmt=LOG_DATEFMT,
-    level=os.environ.get("LOG_LEVEL", LOG_LEVEL).upper(),
-    stream=sys.stdout,
-)
 
 LOGGER = logging.getLogger(__name__)
 

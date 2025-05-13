@@ -1,11 +1,8 @@
 import logging
-import os
-import sys
 from typing import Any
 
 import torch
 from omegaconf import DictConfig
-from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
 from torchtune import training
 from torchtune.models.llama3_2 import llama3_2
 from torchtune.modules import TransformerDecoder
@@ -15,9 +12,6 @@ from torchtune.utils import get_device
 from ssi.llama_configs import ConfigLlama3_2, configllama3_2_1b
 
 
-logging.basicConfig(
-    format=LOG_FORMAT, datefmt=LOG_DATEFMT, level=os.environ.get("LOG_LEVEL", LOG_LEVEL).upper(), stream=sys.stdout
-)
 LOGGER = logging.getLogger(__name__)
 
 

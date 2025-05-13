@@ -1,23 +1,13 @@
 import logging
-import os
-import sys
 from typing import Callable
 
 import torch
-from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
 from torch.utils.data import DataLoader
 from torchtune.modules import TransformerDecoder
 from torchtune.utils import batch_to_device
 
 from ssi.loss import compute_loss
 
-
-logging.basicConfig(
-    format=LOG_FORMAT,
-    datefmt=LOG_DATEFMT,
-    level=os.environ.get("LOG_LEVEL", LOG_LEVEL).upper(),
-    stream=sys.stdout,
-)
 
 LOGGER = logging.getLogger(__name__)
 

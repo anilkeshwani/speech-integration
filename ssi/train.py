@@ -1,14 +1,11 @@
 import logging
 import math
-import os
-import sys
 import time
 from collections import defaultdict
 from typing import Any
 
 import torch
 from omegaconf import DictConfig, OmegaConf
-from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
 from torch import Tensor
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
@@ -34,13 +31,6 @@ from ssi.model import setup_llama3_2_1b
 from ssi.optimizer import setup_optimizer
 from ssi.tokenizer import setup_llama3_tokenizer
 
-
-logging.basicConfig(
-    format=LOG_FORMAT,
-    datefmt=LOG_DATEFMT,
-    level=os.environ.get("LOG_LEVEL", LOG_LEVEL).upper(),
-    stream=sys.stdout,
-)
 
 LOGGER = logging.getLogger(__name__)
 

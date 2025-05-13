@@ -1,31 +1,20 @@
 import base64
 import json
 import logging
-import os
-import sys
 from pathlib import Path
 from typing import Any
 
 import torch
 import torchtune.training
-from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
 from sardalign.constants import MODALITY_TOKEN_SPEECH, MODALITY_TOKEN_TEXT
 from sardalign.utils import dsu2pua, multivariate_normal_from_weights
 from torch import nn
 from torchtune import utils
-from torchtune.models.llama3 import Llama3Tokenizer
 from torchtune.models.llama3_2 import llama3_2_1b
 from torchtune.modules import TiedLinear, TransformerDecoder
 
 from ssi.llama_configs import ConfigLlama3_2
 
-
-logging.basicConfig(
-    format=LOG_FORMAT,
-    datefmt=LOG_DATEFMT,
-    level=os.environ.get("LOG_LEVEL", LOG_LEVEL).upper(),
-    stream=sys.stdout,
-)
 
 LOGGER = logging.getLogger(__name__)
 
