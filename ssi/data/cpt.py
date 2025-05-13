@@ -148,11 +148,14 @@ class TextCompletionDataset(Dataset):
             use_modality_tokens=self.use_modality_tokens,
         )
 
-        if self.debug_mode:
-            LOGGER.debug(f"Prompt: \n{prompt}")
-
         # Tokenize
         tokens = self._tokenizer.encode(text=prompt, add_bos=True, add_eos=self.add_eos)
+
+        if self.debug_mode:
+            LOGGER.debug(f"Prompt Length: {len(prompt)}")
+            LOGGER.debug(f"Tokens Length: {len(tokens)}")
+            LOGGER.debug(f"Prompt: \n{prompt}")
+            LOGGER.debug(f"Tokens: \n{tokens}")
 
         # Truncate if needed, but don't coerce EOS id
         if self._tokenizer.max_seq_len is not None:
