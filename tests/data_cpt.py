@@ -42,11 +42,8 @@ logging.basicConfig(
     datefmt=LOG_DATEFMT,
     level=os.environ.get("LOG_LEVEL", LOG_LEVEL).upper(),
     stream=sys.stdout,
+    force=True,  # NOTE torchtune.modules._export._position_embeddings (line 21) sets logging.basicConfig
 )
-
-ROOT_LOGGER = logging.getLogger()
-print(f"{ROOT_LOGGER.getEffectiveLevel() = }")
-exit()
 
 LOGGER = logging.getLogger(__name__)
 
@@ -245,19 +242,11 @@ def train(cfg: DictConfig) -> None:
             torch.cuda.empty_cache()  # Release all unoccupied cached memory; attempt to debug OOM
 
 
+################################################################################
 # Entrypoint
+################################################################################
 
-import hydra  # noqa E305
-
-
-logging.basicConfig(
-    format=LOG_FORMAT,
-    datefmt=LOG_DATEFMT,
-    level=os.environ.get("LOG_LEVEL", LOG_LEVEL).upper(),
-    stream=sys.stdout,
-)
-
-LOGGER = logging.getLogger(__name__)
+import hydra  # noqa: E402
 
 
 @hydra.main(config_path="../conf", config_name="cpt.yaml", version_base=None)
