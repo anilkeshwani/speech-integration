@@ -59,17 +59,12 @@ class TextCompletionDataset(Dataset):
             in the filepath in ``data_files``. See Hugging Face's ``load_dataset``
             (https://huggingface.co/docs/datasets/en/package_reference/loading_methods#datasets.load_dataset.path)
             for more details.
-        column (str): name of column in the sample that contains the text data. This is typically required
-            for Hugging Face datasets or tabular data. For local datasets with a single column
-            (e.g. unstructured txt files), use the default "text" which is used by Hugging Face datasets
-            when loaded into memory. Default is "text".
         add_eos (bool): Whether to add an EOS token to the end of the sequence. Default is True.
         filter_fn (Callable | None): callable used to filter the dataset prior to any pre-processing. See
             the Hugging Face `docs <https://huggingface.co/docs/datasets/v2.20.0/process#select-and-filter>`_ for more
             details.
-        **load_dataset_kwargs (dict[str, Any]): additional keyword arguments to pass to ``load_dataset``. See Hugging
-            Face's `API ref <https://huggingface.co/docs/datasets/en/package_reference/loading_methods#datasets.load_dataset>`_
-            for more details.
+        split (str): split of the dataset to load. Default is "train". See Hugging Face's
+            `load_dataset <https://huggingface.co/docs/datasets/en/package_reference/loading_methods#datasets.load_dataset>`_
     """
 
     def __init__(
