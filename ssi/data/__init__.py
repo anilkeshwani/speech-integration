@@ -12,13 +12,14 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset, DistributedSampler
 from torchtune.data import padded_collate_packed
 from torchtune.data._common import CROSS_ENTROPY_IGNORE_IDX
-from torchtune.datasets import PackedDataset
+
+# from ssi.data.cpt import TextCompletionDataset # removed the custom continuation dataset
+from torchtune.datasets import PackedDataset, TextCompletionDataset  # added back the torchtune continuation dataset
 from torchtune.models.llama3 import Llama3Tokenizer
 from torchtune.modules.loss import CEWithChunkedOutputLoss
 from torchtune.training import get_world_size_and_rank
 
 from ssi.constants import SEED
-from ssi.data.cpt import TextCompletionDataset
 from ssi.data.sft import SFTDataset
 
 

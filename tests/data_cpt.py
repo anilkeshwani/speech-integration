@@ -145,7 +145,7 @@ def train(cfg: DictConfig) -> None:
     if cfg.config_name == "sft.yaml":
         data_train, sampler_train = setup_sft_data(cfg_dataset=cfg.data.train, model_tokenizer=tokenizer)
         data_dev, sampler_dev = setup_sft_data(cfg_dataset=cfg.data.dev, model_tokenizer=tokenizer)
-    elif cfg.config_name == "cpt.yaml":
+    elif cfg.config_name == "cptdebug.yaml":
         data_train, sampler_train = setup_text_completion_data(cfg.data.train, tokenizer)
         data_dev, sampler_dev = setup_text_completion_data(cfg.data.dev, tokenizer)
     else:
@@ -165,6 +165,13 @@ def train(cfg: DictConfig) -> None:
         sampler_train.set_epoch(epoch)  # distinct seed each epoch
         for i, batch in tqdm(enumerate(data_train), total=len(data_train)):
             batch_to_device(batch, DEVICE)  # in-place
+            batch_shape = batch["tokens"].size()
+            LOGGER.debug("-" * 120)
+            LOGGER.debug(f"{batch_shape = }")
+            LOGGER.debug("-" * 120)
+            # these lines allow you to see if Torch will go OOM; in my experience, happens for > ~840 (bs=16)
+            if batch_shape[1] <= 800:
+                continue
             for tt, ttcnt in count_token_types(batch["tokens"], token_type_ranges, tokenizer.pad_id).items():
                 token_type_counts_total[tt] += ttcnt
             num_tokens_iter = (batch["labels"] != loss_fn.ignore_index).sum()
@@ -249,7 +256,7 @@ def train(cfg: DictConfig) -> None:
 import hydra  # noqa: E402
 
 
-@hydra.main(config_path="../conf", config_name="cpt.yaml", version_base=None)
+@hydra.main(config_path="../conf", config_name="cptdebug.yaml", version_base=None)
 def main(cfg):
     train(cfg)
 
