@@ -1,5 +1,6 @@
 import logging
 import math
+import os
 import time
 from collections import defaultdict
 from typing import Any
@@ -21,7 +22,16 @@ from tqdm import tqdm
 
 from ssi._version import __version__
 from ssi.checkpoint import FullModelHFCheckpointer, resolve_checkpointer_output_dir
-from ssi.constants import EPOCHS_KEY, MODEL_KEY, OPTIMIZER_KEY, SEED, SEED_KEY, STEPS_KEY, SUPPORTED_DTYPES
+from ssi.constants import (
+    DEBUGGING_TAG,
+    EPOCHS_KEY,
+    MODEL_KEY,
+    OPTIMIZER_KEY,
+    SEED,
+    SEED_KEY,
+    STEPS_KEY,
+    SUPPORTED_DTYPES,
+)
 from ssi.data import setup_sft_data, setup_text_completion_data
 from ssi.eval import compute_dataset_loss
 from ssi.llama_configs import ConfigLlama3_2
@@ -97,7 +107,10 @@ def train(cfg: DictConfig) -> None:
     training.set_seed(seed=SEED, debug_mode=cfg.debug_mode)
     DEVICE: torch.device = get_device(cfg.device)
     DTYPE: torch.dtype = get_dtype(cfg.dtype)
-    wandb_logger = WandBLogger(**cfg.wandb, tags=[__version__])
+    wandb_tags = [__version__]
+    if os.getenv("SLURM_JOB_QOS") == "gpu-debug":
+        wandb_tags += [DEBUGGING_TAG]
+    wandb_logger = WandBLogger(**cfg.wandb, tags=wandb_tags)
     if cfg.checkpointer.output_dir is None:
         cfg.checkpointer.output_dir = resolve_checkpointer_output_dir(cfg, wandb_logger)
         LOGGER.info(f"No checkpointer output dir provided. Resolved to: {cfg.checkpointer.output_dir!s}")

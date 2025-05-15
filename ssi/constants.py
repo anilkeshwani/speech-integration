@@ -57,6 +57,7 @@ RESERVED_BATCH_KEYS: set[str] = {"tokens", "mask", "labels"}
 ####################################################################################################
 
 SUPPORTED_DTYPES: set[torch.dtype] = {torch.float32, torch.bfloat16}
+DEBUGGING_TAG: str = "trial-run"  # W&B tag for trial runs
 
 ####################################################################################################
 # Constants - Checkpoints and Artefacts
