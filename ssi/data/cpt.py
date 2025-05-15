@@ -139,6 +139,7 @@ class TextCompletionDataset(Dataset):
 
         # Truncate if needed, but don't coerce EOS id
         if self._tokenizer.max_seq_len is not None:
+            # TODO -1 is odd and does not match the tokenize_messages method NOTE this is original torchtune code
             tokens = truncate(tokens, self._tokenizer.max_seq_len - 1)
 
         # No need to offset labels by 1 - happens in the recipe

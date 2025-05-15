@@ -24,7 +24,7 @@ use_modality_tokens: True
 # Tokenizer - config for setup_llama3_tokenizer -> Llama3Tokenizer
 tokenizer:
   path: ${extended_models_dir}/${base_model_name}/original/tokenizer.model
-  max_seq_len: null # NOTE max seq. length 128_000_000 returned by `llama model describe -m Llama3.2-1B`
+  max_seq_len: 768 # max sequence length for the tokenizer; with bs 16 keeping it under 800 is good; 768 = 512 + 256
   prompt_template: null
   verbose: True
 
