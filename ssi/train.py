@@ -156,6 +156,7 @@ def train(cfg: DictConfig) -> None:
     loss_running = 0.0
     token_type_counts_total = defaultdict(int)
     num_tokens_step = 0
+    max_seq_len_step = 0
     tokens_train_total: int = 0
     steps_per_epoch = len(data_train) // cfg.gradient_accumulation_steps
     n_epochs = math.ceil(cfg.max_steps / steps_per_epoch)
@@ -167,6 +168,7 @@ def train(cfg: DictConfig) -> None:
             batch_to_device(batch, DEVICE)  # in-place
             for tt, ttcnt in count_token_types(batch["tokens"], token_type_ranges, tokenizer.pad_id).items():
                 token_type_counts_total[tt] += ttcnt
+            max_seq_len_step = max(max_seq_len_step, batch["tokens"].size(1))
             num_tokens_iter = (batch["labels"] != loss_fn.ignore_index).sum()
             num_tokens_step += num_tokens_iter
             # loss is normalized -> multiply by number of tokens for renormalization later for grad. accum.
@@ -214,6 +216,7 @@ def train(cfg: DictConfig) -> None:
                         "tokens_per_second_per_gpu": num_tokens_step / dur_step,
                         "tokens_total": tokens_train_total,
                         "train_clock_time": (time.perf_counter() - t_train_start) / (60**2),
+                        "max_seq_len_step": max_seq_len_step,
                         **{f"n_tokens.{tt}": ttcnt for tt, ttcnt in token_type_counts_total.items()},
                     }
                     if cfg.clip_grad_norm is not None:
@@ -224,6 +227,7 @@ def train(cfg: DictConfig) -> None:
                 # reset step-level tracker variables
                 loss_running = 0.0
                 num_tokens_step = 0
+                max_seq_len_step = 0
                 t0 = time.perf_counter()
                 # Save checkpoint
                 if global_step != 0 and global_step % cfg.save_steps == 0:
