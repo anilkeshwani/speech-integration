@@ -7,13 +7,12 @@ from argparse import ArgumentParser, Namespace
 from pathlib import Path
 
 import jinja2
-from transformers.models.whisper.english_normalizer import BasicTextNormalizer
-from vllm import CompletionOutput, LLM, RequestOutput, SamplingParams
-from vllm.sequence import RequestMetrics
-
 from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
 from sardalign.constants import MODALITY_TOKEN_SPEECH, MODALITY_TOKEN_TEXT, SPEECH_TOKENS_KEY
 from sardalign.utils import dsu2pua, read_jsonl, write_jsonl
+from transformers.models.whisper.english_normalizer import BasicTextNormalizer
+from vllm import CompletionOutput, LLM, RequestOutput, SamplingParams
+from vllm.sequence import RequestMetrics
 
 
 logging.basicConfig(
@@ -21,6 +20,7 @@ logging.basicConfig(
     datefmt=LOG_DATEFMT,
     level=os.environ.get("LOG_LEVEL", LOG_LEVEL).upper(),
     stream=sys.stdout,
+    force=True,
 )
 
 LOGGER = logging.getLogger(__file__)
