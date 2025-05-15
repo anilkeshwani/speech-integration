@@ -81,7 +81,6 @@ class TextCompletionDataset(Dataset):
         alignment_end_time_key: str | None = None,
         speech_tokens_key: str | None = None,
         filter_fn: Callable | None = None,
-        debug_mode: bool = False,
     ) -> None:
         self._tokenizer = tokenizer
         self._data = load_dataset(source, split=split)
@@ -115,8 +114,6 @@ class TextCompletionDataset(Dataset):
         if filter_fn is not None:
             self._data = self._data.filter(filter_fn)
 
-        self.debug_mode = debug_mode
-
     def __len__(self):
         return len(self._data)
 
@@ -135,11 +132,10 @@ class TextCompletionDataset(Dataset):
         # Tokenize
         tokens = self._tokenizer.encode(text=prompt, add_bos=True, add_eos=self.add_eos)
 
-        if self.debug_mode:
-            LOGGER.debug(f"Prompt Length: {len(prompt)}")
-            LOGGER.debug(f"Tokens Length: {len(tokens)}")
-            LOGGER.debug(f"Prompt: \n{prompt}")
-            LOGGER.debug(f"Tokens: \n{tokens}")
+        LOGGER.debug(f"Prompt Length: {len(prompt)}")
+        LOGGER.debug(f"Tokens Length: {len(tokens)}")
+        LOGGER.debug(f"Prompt: \n{prompt}")
+        LOGGER.debug(f"Tokens: \n{tokens}")
 
         # Truncate if needed, but don't coerce EOS id
         if self._tokenizer.max_seq_len is not None:

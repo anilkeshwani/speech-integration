@@ -1,4 +1,6 @@
 defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
+  - override hydra/hydra_logging: custom
+  - override hydra/job_logging: custom
   - cpt
   - _self_
 

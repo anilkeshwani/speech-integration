@@ -1,3 +1,7 @@
+defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
+  - override hydra/hydra_logging: custom
+  - override hydra/job_logging: custom
+
 # Experiment management
 experiments_root_dir: /mnt/scratch-artemis/anilkeshwani/experiments
 output_dir: ${experiments_root_dir}/${base_model_name}
@@ -34,7 +38,6 @@ data:
       deduplicate: False
       use_modality_tokens: True
       add_eos: True
-      debug_mode: False # NOTE LOG_LEVEL="DEBUG" environment variable is required to enable debug mode
     dataloader:
       batch_size: 16
       drop_last: True
@@ -54,7 +57,6 @@ data:
       deduplicate: False
       use_modality_tokens: True
       add_eos: True
-      debug_mode: False # NOTE LOG_LEVEL="DEBUG" environment variable is required to enable debug mode
     dataloader:
       batch_size: 16
       drop_last: False

@@ -123,12 +123,23 @@ See `./scripts/extend_llama3_2.py --help` for details.
 
 ## Train
 
+> [!NOTE] To enable debugging, pass `hydra.verbose=true`. This sets the log level of all loggers to `DEBUG` as described in [Logging - Hydra docs](https://hydra.cc/docs/1.3/tutorials/basic/running_your_app/logging/). A string or list can be passed to set specific loggers' levels to `DEBUG`; see the documentation for details. This is useful for visualising debug output e.g. prompts constructed in the dataset to be echoed to the console. 
+
 ### Continued Pre-training (CPT)
 
 ```bash
 python scripts/train_cpt.py \
     checkpointer.checkpoint_dir='/mnt/scratch-artemis/anilkeshwani/models/extended/Llama-3.2-1B-5000-dsus' \
     checkpointer.checkpoint_files='["ft-model-00001-of-00001.safetensors"]' # slightly weird syntax
+```
+
+Example with debugging output:
+
+```bash
+python scripts/train_cpt.py \
+    checkpointer.checkpoint_dir='/mnt/scratch-artemis/anilkeshwani/models/extended/Llama-3.2-1B-5000-dsus' \
+    checkpointer.checkpoint_files='["ft-model-00001-of-00001.safetensors"]' \
+    hydra.verbose=true # results in e.g. prompts constructed in the dataset to be echoed to the console
 ```
 
 #### Run in Slurm (e.g. on Sardine)
