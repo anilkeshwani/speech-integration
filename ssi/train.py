@@ -242,5 +242,5 @@ def train(cfg: DictConfig) -> None:
                 if global_step >= cfg.max_steps:
                     LOGGER.info("Training completed.")
                     break
-            del batch  # Explicitly delete the batch to free memory; attempt to debug OOM
-            torch.cuda.empty_cache()  # Release all unoccupied cached memory; attempt to debug OOM
+            # del batch  # Explicitly delete the batch to free memory; attempt to debug OOM
+            # torch.cuda.empty_cache()  # Release all unoccupied cached memory; attempt to debug OOM
