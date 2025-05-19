@@ -107,7 +107,7 @@ def train(cfg: DictConfig) -> None:
     training.set_seed(seed=SEED, debug_mode=cfg.debug_mode)
     DEVICE: torch.device = get_device(cfg.device)
     DTYPE: torch.dtype = get_dtype(cfg.dtype)
-    wandb_tags = [__version__]
+    wandb_tags = [__version__, cfg.config_name]
     if os.getenv("SLURM_JOB_QOS") == "gpu-debug":
         wandb_tags += [DEBUGGING_TAG]
     wandb_logger = WandBLogger(**cfg.wandb, tags=wandb_tags)
