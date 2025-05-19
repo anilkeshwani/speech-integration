@@ -1,8 +1,8 @@
 defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
-  - override hydra/hydra_logging: custom
-  - override hydra/job_logging: custom
   - cpt
   - _self_
+  - override hydra/hydra_logging: custom
+  - override hydra/job_logging: custom
 
 model_name: Llama-3.2-1B-5000-dsus # NOTE this percolates down to output_dir as resolution is lazy
 
