@@ -165,9 +165,9 @@ This is an example demo snippet. Note: Relies on the `hafh -> /mnt/scratch-artem
 ### Supervised Fine-tuning (SFT)
 
 ```
-python scripts/train_cpt.py \
+python scripts/train_sft.py \
     checkpointer.checkpoint_dir='/mnt/scratch-artemis/anilkeshwani/models/extended/Llama-3.2-1B-5000-dsus' \
-    checkpointer.checkpoint_files='["ft-model-00001-of-00001.safetensors"]' # slightly weird syntax
+    checkpointer.checkpoint_files='["ft-model-00001-of-00001.safetensors"]'
 ```
 
 ## Generation
