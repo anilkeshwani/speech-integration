@@ -142,10 +142,10 @@ def train(cfg: DictConfig) -> None:
     if isinstance(loss_fn, CEWithChunkedOutputLoss):
         model.set_num_output_chunks(loss_fn.num_output_chunks)
     # TODO clean this up later -> use hydra.utils.instantiate (requires refactoring configs)
-    if cfg.config_name == "sft.yaml":
+    if cfg.config_name == "sft":
         data_train, sampler_train = setup_sft_data(cfg_dataset=cfg.data.train, model_tokenizer=tokenizer)
         data_dev, sampler_dev = setup_sft_data(cfg_dataset=cfg.data.dev, model_tokenizer=tokenizer)
-    elif cfg.config_name == "cpt.yaml":
+    elif cfg.config_name == "cpt":
         data_train, sampler_train = setup_text_completion_data(cfg.data.train, tokenizer)
         data_dev, sampler_dev = setup_text_completion_data(cfg.data.dev, tokenizer)
     else:
