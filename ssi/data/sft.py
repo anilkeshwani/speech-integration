@@ -156,10 +156,12 @@ class SFTDataset(Dataset):
         if "messages" in transformed_sample:
             validate_messages(transformed_sample["messages"])
 
+        # NOTE Llama3Tokenizer.__call__ actually `pop`s the messages key off so we need to log this before
+        LOGGER.debug(f"Messages: \n{transformed_sample['messages']}")
+
         # NOTE Reminder as of torchtune v0.5.0 tokenizer inference mode is difference between adding or omitting eos_id
         tokenized_dict = self._model_tokenizer(transformed_sample, inference=self._inference)
 
-        LOGGER.debug(f"Messages: \n{transformed_sample['messages']}")
         LOGGER.debug(f"Tokens: {tokenized_dict['tokens']}")
         LOGGER.debug(f"Mask: {tokenized_dict['mask']}")
 
