@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional
 
@@ -13,6 +14,9 @@ from torchtune.data._utils import load_image
 from torchtune.models.llama3 import Llama3Tokenizer
 
 from ssi.constants import RESERVED_BATCH_KEYS
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 class SFTDataset(Dataset):
@@ -154,6 +158,10 @@ class SFTDataset(Dataset):
 
         # NOTE Reminder as of torchtune v0.5.0 tokenizer inference mode is difference between adding or omitting eos_id
         tokenized_dict = self._model_tokenizer(transformed_sample, inference=self._inference)
+
+        LOGGER.debug(f"Messages: \n{transformed_sample['messages']}")
+        LOGGER.debug(f"Tokens: {tokenized_dict['tokens']}")
+        LOGGER.debug(f"Mask: {tokenized_dict['mask']}")
 
         if not ("tokens" in tokenized_dict and "mask" in tokenized_dict):
             keys_str = ", ".join(tokenized_dict.keys())
