@@ -18,3 +18,4 @@ torchtune==0.5.0 # keep strict
 torchvision==0.20.1
 tqdm==4.66.5
 wandb
+vllm
