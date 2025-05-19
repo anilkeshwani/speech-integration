@@ -2,6 +2,10 @@ defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
   - common
   - _self_
 
+# Tokenizer - config for setup_llama3_tokenizer -> Llama3Tokenizer
+tokenizer:
+  max_seq_len: 2048 # for SFT (vs CPT) need to increase max sequence length - otherwise we don't even see the GT text!
+
 data: # NOTE: arguments are to setup **function** not SFTDataset class
   train:
     dataset: # SFTDataset
