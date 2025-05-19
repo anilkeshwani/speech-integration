@@ -82,6 +82,6 @@ wandb:
   log_dir: ${output_dir}/wandb
   project: speech-integration
   entity: null # automatically set to username based on API key
-  group: null
+  group: ${config_name}
 log_interval: 1
 log_peak_memory_stats: False
