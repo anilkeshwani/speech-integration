@@ -2,24 +2,25 @@ defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
   - override hydra/hydra_logging: custom
   - override hydra/job_logging: custom
 
+# DSUs & Modality Tokens
+n_dsus: 5000
+use_modality_tokens: True
+
+# Base models directory
+extended_models_dir: /mnt/scratch-artemis/anilkeshwani/models/extended/
+base_model_name: Llama-3.2-1B-${n_dsus}-dsus
+
 # Experiment management
 experiments_root_dir: /mnt/scratch-artemis/anilkeshwani/experiments
-output_dir: ${experiments_root_dir}/${base_model_name}
 config_name: ${hydra:job.config_name} # name of the config file -> used to identify job type: {cpt, sft, etc.}
+output_dir: ${experiments_root_dir}/${base_model_name}-${config_name}
+
 # Debug Mode
 # `None` -> don't set any PyTorch global values
 # "default" or 0 -> don't error or warn on nondeterministic operations and additionally enable PyTorch CuDNN benchmark
 # "warn" or 1 -> warn on nondeterministic operations and disable PyTorch CuDNN benchmark
 # "error" or 2 -> error on nondeterministic operations and disable PyTorch CuDNN benchmark
 debug_mode: null
-
-# Base models directory
-extended_models_dir: /mnt/scratch-artemis/anilkeshwani/models/extended/
-base_model_name: Llama-3.2-1B-5000-dsus
-
-# DSUs & Modality Tokens
-n_dsus: 5000
-use_modality_tokens: True
 
 # Tokenizer - config for setup_llama3_tokenizer -> Llama3Tokenizer
 tokenizer:
@@ -49,6 +50,7 @@ lr_scheduler:
 # Performance optimizations
 optimizer_in_bwd: False # https://pytorch.org/tutorials/intermediate/optimizer_step_in_backward_tutorial.html
 compile: False # set it to True for better memory and performance
+
 # Memory management
 enable_activation_checkpointing: False # True reduces memory
 enable_activation_offloading: False # True reduces memory
