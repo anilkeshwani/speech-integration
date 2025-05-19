@@ -28,41 +28,6 @@ tokenizer:
   prompt_template: null
   verbose: True
 
-# Data
-data:
-  train:
-    dataset:
-      source: anilkeshwani/MLS_english_train_strat_sample_aligned_hubert # HF dataset repo
-      split: train
-      sequence_type: interleaved
-      deduplicate: False
-      use_modality_tokens: True
-      add_eos: True
-    dataloader:
-      batch_size: 16
-      drop_last: True
-    shuffle: True
-    packed: False # TODO packing performed a priori at training time and leads to CPU RAM overflow for e.g. MLS interleaved
-    # TODO clean up / describe the following fields (arguments)
-    # split_across_pack: True # set to True for CPT; set to False for SFT
-    # tokenizer: # set above
-    # NOTE Following arguments copied across from text_completion_dataset docstring for reference
-    # filter_fn: Optional[Callable] = None
-    # **load_dataset_kwargs: Dict[str, Any]
-  dev:
-    dataset:
-      source: anilkeshwani/MLS_english_train_strat_sample_aligned_hubert # HF dataset repo
-      split: dev
-      sequence_type: interleaved
-      deduplicate: False
-      use_modality_tokens: True
-      add_eos: True
-    dataloader:
-      batch_size: 16
-      drop_last: False
-    shuffle: False
-    packed: False
-
 # Optimization
 optimizer:
   lr: 2e-4
