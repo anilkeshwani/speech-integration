@@ -170,6 +170,17 @@ python scripts/train_sft.py \
     checkpointer.checkpoint_files='["ft-model-00001-of-00001.safetensors"]'
 ```
 
+```bash
+srun \
+    --partition a6000 \
+    --time=24:00:00 \
+    --gres=gpu:1 \
+    --qos=gpu-medium \
+    python scripts/train_sft.py \
+    checkpointer.checkpoint_dir='/mnt/scratch-artemis/anilkeshwani/models/extended/Llama-3.2-1B-5000-dsus' \
+    checkpointer.checkpoint_files='["ft-model-00001-of-00001.safetensors"]'
+```
+
 ## Generation
 
 Example call:
