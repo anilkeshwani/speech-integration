@@ -2,19 +2,21 @@ defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
   - sft
   - _self_
 
+model: /mnt/scratch-artemis/anilkeshwani/experiments/Llama-3.2-1B-5000-dsus-sft/genial-cosmos-430-id_77kbg01q/checkpoints/epoch_0/global_step_7000
+
 data: # NOTE: arguments are to setup **function** not SFTDataset class
   dev:
     dataset:
       inference: True
-      additional_keys:
-        - ID
+      # additional_keys:
+      #   - ID
     dataloader:
-      batch_size: 1
+      batch_size: 8
 
 # Precision
 dtype: fp32
 
-output_jsonl: ???
+# output_jsonl: ???
 
 # Generation arguments
 max_new_tokens: 300
@@ -28,11 +30,14 @@ top_k: 300
 
 enable_kv_cache: False # set to false for now; set to true for better performance
 
-# Checkpointing
-checkpointer:
-  checkpoint_dir: ???
-  checkpoint_files: ???
-  config_json: ???
-  output_dir: /tmp/nonsense # we don't need any checkpoint outputs
+# # Checkpointing - torchtune
+# checkpointer:
+#   checkpoint_dir: ???
+#   checkpoint_files: ???
+#   config_json: ???
+#   output_dir: /tmp/nonsense # we don't need any checkpoint outputs
+
+# Checkpointing - vLLM
+checkpointer: null
 
 observability: False
