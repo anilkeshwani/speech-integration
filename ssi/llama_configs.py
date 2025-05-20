@@ -1,5 +1,7 @@
 from dataclasses import asdict, dataclass
 
+from omegaconf import DictConfig
+
 
 @dataclass
 class ConfigLlama3_2:
@@ -38,6 +40,13 @@ class ConfigLlama3_2:
         if not isinstance(enable, bool):
             raise ValueError("modality_tokens must be boolean")
         self._modality_tokens = enable
+
+    def update_from_speech_cfg(self, cfg_speech: DictConfig) -> None:
+        """In-place update of speech-specific hyperparameters from DictConfig"""
+        if not isinstance(cfg_speech, DictConfig):
+            raise TypeError("cfg_speech must be a DictConfig object")
+        configllama3_2_1b.n_dsus = cfg_speech.n_dsus
+        configllama3_2_1b.modality_tokens = cfg_speech.use_modality_tokens
 
     @property
     def vocab_size(self) -> int:

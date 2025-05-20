@@ -9,7 +9,7 @@ from torchtune.modules import TransformerDecoder
 from torchtune.training import get_dtype
 from torchtune.utils import get_device
 
-from ssi.llama_configs import ConfigLlama3_2, configllama3_2_1b
+from ssi.llama_configs import ConfigLlama3_2
 
 
 LOGGER = logging.getLogger(__name__)
@@ -17,19 +17,17 @@ LOGGER = logging.getLogger(__name__)
 
 def setup_llama3_2_1b(
     cfg: DictConfig,
+    llama_config: ConfigLlama3_2,
     model_state_dict: dict[str, Any],
     dtype_default: torch.dtype | str = torch.get_default_dtype(),  # type: ignore
     device_default: torch.device | str = torch.get_default_device(),  # type: ignore
-) -> tuple[TransformerDecoder, ConfigLlama3_2]:
+) -> TransformerDecoder:
     if isinstance(dtype_default, str):
         dtype_default: torch.dtype = get_dtype(cfg.dtype)
     if isinstance(device_default, str):
         device_default: torch.device = get_device(cfg.device)
-    # Speech-specific hyperparameter updates from Hydra YAML config
-    configllama3_2_1b.n_dsus = cfg.n_dsus  # set number of DSUs
-    configllama3_2_1b.modality_tokens = cfg.use_modality_tokens  # set modality tokens flag
     with training.set_default_dtype(dtype_default), device_default:
-        model = llama3_2(**configllama3_2_1b.parameters)
+        model = llama3_2(**llama_config.parameters)
     if cfg.compile:
         training.compile_model(model)
     if cfg.enable_activation_checkpointing:
@@ -42,4 +40,4 @@ def setup_llama3_2_1b(
         activations_handling_ctx = training.get_act_offloading_ctx_manager(model, cfg.enable_activation_offloading)
     if cfg.enable_activation_checkpointing and (not cfg.enable_activation_offloading):
         LOGGER.warning("Activation checkpointing is enabled but activation offloading is not.")
-    return model, configllama3_2_1b
+    return model

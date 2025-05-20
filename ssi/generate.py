@@ -16,6 +16,7 @@ from tqdm import tqdm
 from ssi.checkpoint import FullModelHFCheckpointer
 from ssi.constants import MODEL_KEY
 from ssi.data import setup_sft_data
+from ssi.llama_configs import configllama3_2_1b
 from ssi.model import setup_llama3_2_1b
 from ssi.tokenizer import setup_llama3_tokenizer
 from ssi.utils import batch_to_device
@@ -55,8 +56,10 @@ def generate(cfg: DictConfig):
     custom_generate_next_token = None
     checkpointer = FullModelHFCheckpointer(**cfg.checkpointer)
     ckpt_dict = checkpointer.load_checkpoint()
-    model, llama_config = setup_llama3_2_1b(
+    configllama3_2_1b.update_from_speech_cfg(cfg.speech)  # in-place
+    model = setup_llama3_2_1b(
         cfg=cfg,
+        llama_config=configllama3_2_1b,
         model_state_dict=ckpt_dict[MODEL_KEY],
         dtype_default=DTYPE,
         device_default=DEVICE,

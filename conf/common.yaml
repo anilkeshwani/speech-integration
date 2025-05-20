@@ -2,13 +2,14 @@ defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
   - override hydra/hydra_logging: custom
   - override hydra/job_logging: custom
 
-# DSUs & Modality Tokens
-n_dsus: 5000
-use_modality_tokens: True
+# Speech-specific parameters - DSUs & Modality Tokens
+speech:
+  n_dsus: 5000
+  use_modality_tokens: True
 
 # Base models directory
 extended_models_dir: /mnt/scratch-artemis/anilkeshwani/models/extended/
-base_model_name: Llama-3.2-1B-${n_dsus}-dsus
+base_model_name: Llama-3.2-1B-${speech.n_dsus}-dsus
 
 # Experiment management
 experiments_root_dir: /mnt/scratch-artemis/anilkeshwani/experiments

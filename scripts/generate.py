@@ -37,7 +37,7 @@ from ssi.constants import (
 )
 from ssi.data import setup_sft_data, setup_text_completion_data
 from ssi.eval import compute_dataset_loss
-from ssi.llama_configs import ConfigLlama3_2
+from ssi.llama_configs import ConfigLlama3_2, configllama3_2_1b
 from ssi.loss import compute_loss
 from ssi.lr_schedule import setup_lr_scheduler
 from ssi.model import setup_llama3_2_1b
@@ -60,8 +60,10 @@ def generate(cfg: DictConfig) -> None:
         LOGGER.info(f"No checkpointer output dir provided. Resolved to: {cfg.checkpointer.output_dir!s}")
     checkpointer = FullModelHFCheckpointer(**cfg.checkpointer)  # TODO does this still create the output dir on init?
     ckpt_dict = checkpointer.load_checkpoint()
-    model, llama_config = setup_llama3_2_1b(
+    configllama3_2_1b.update_from_speech_cfg(cfg.speech)  # in-place
+    model = setup_llama3_2_1b(
         cfg=cfg,
+        llama_config=configllama3_2_1b,
         model_state_dict=ckpt_dict[MODEL_KEY],  # NOTE require model ckpt
         dtype_default=DTYPE,
         device_default=DEVICE,
