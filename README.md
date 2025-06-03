@@ -201,13 +201,13 @@ Structure of the outputs when making a _request_ with vLLM, for reference.
 
 ```python
 RequestOutput(
-        request_id=0, # <- NOTE
-    prompt="The capital of France is", # <- NOTE
-    prompt_token_ids=[1, 450, 7483, 310, 3444, 338], # <- NOTE
+    request_id=0,
+    prompt="The capital of France is",
+    prompt_token_ids=[1, 450, 7483, 310, 3444, 338],
     encoder_prompt=None,
     encoder_prompt_token_ids=None,
-    prompt_logprobs=None, # <- NOTE
-    outputs=[ # <- NOTE
+    prompt_logprobs=None,
+    outputs=[
         CompletionOutput(
                 index=0,
             text=" Paris.",
@@ -218,7 +218,7 @@ RequestOutput(
             stop_reason="\n",
         )
     ],
-    finished=True, # <- NOTE
+    finished=True,
     metrics=RequestMetrics(
             arrival_time=1728338377.7350004,
         last_token_time=1728338377.7350004,
