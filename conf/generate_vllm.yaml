@@ -1,0 +1,38 @@
+defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
+  - sft # TODO refactor inheritance?
+  - _self_
+
+checkpointer: null # TODO refactor
+
+generations_root_dir: /mnt/scratch-artemis/anilkeshwani/generations # TODO refactor to common root generations YAML
+
+model: ???
+output_dir: null
+output_filename: generations.jsonl
+
+data: # NOTE: arguments are to setup **function** not SFTDataset class
+  dev:
+    dataset:
+      inference: True
+      # additional_keys:
+      #   - ID
+    dataloader:
+      batch_size: 8
+
+tokenizer_decoding:
+  truncate_at_eos: True
+  skip_special_tokens: True
+
+sampling_params:
+  stop_token_ids: null # NOTE: stop_token_ids set in script (tokenizer stop tokens)
+  n: 1 # Number of output sequences to return for the given prompt
+  temperature: 0.0
+  top_p: 1 # default is 1; nucleus sampling probability set to 0.95 in vLLM docs; NOTE sum_k(prob) >= p
+  max_tokens: 512
+  presence_penalty: 0 # default: 0
+  frequency_penalty: 0 # default: 0
+  repetition_penalty: 1 # default: 1
+  # Aux. or currently unused parameters
+  top_k: -1 # Integer that controls the number of top tokens to consider. Set to -1 to consider all tokens.
+
+observability: False
