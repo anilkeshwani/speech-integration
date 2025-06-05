@@ -6,9 +6,14 @@ defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
 data:
   train:
     dataset:
-      source: anilkeshwani/MLS_english_train_strat_sample_aligned_hubert # HF dataset repo
+      source: anilkeshwani/mls-hubert_large_ll60k-layer_22 # HF dataset repo
       split: train
       sequence_type: interleaved
+      interleave_kwargs:
+        sampling_rate: ${speech.encoder.sampling_rate}
+        downsampling_ratio: ${speech.encoder.downsampling_ratio}
+        mean_seq_len_tokens: 39.43 # mean sequence length in tokens of the MLS en trainset stratified sample (25%)
+        binom_prob: 0.1 # fraction of sequence to make up subspans -> recall: binomial expectation = np
       deduplicate: False
       use_modality_tokens: True
       add_eos: True
@@ -25,9 +30,14 @@ data:
     # **load_dataset_kwargs: Dict[str, Any]
   dev:
     dataset:
-      source: anilkeshwani/MLS_english_train_strat_sample_aligned_hubert # HF dataset repo
+      source: anilkeshwani/MLS_english_train_strat_sample_aligned_hubert # whole validation set (25% is for train split)
       split: dev
       sequence_type: interleaved
+      interleave_kwargs:
+        sampling_rate: ${speech.encoder.sampling_rate}
+        downsampling_ratio: ${speech.encoder.downsampling_ratio}
+        mean_seq_len_tokens: 39.43 # mean sequence length in tokens of the MLS en trainset stratified sample (25%)
+        binom_prob: 0.1 # fraction of sequence to make up subspans -> recall: binomial expectation = np
       deduplicate: False
       use_modality_tokens: True
       add_eos: True

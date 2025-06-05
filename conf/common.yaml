@@ -6,6 +6,10 @@ defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
 speech:
   n_dsus: 5000
   use_modality_tokens: True
+  encoder:
+    # NOTE sampling rate and downsampling ratio are used to compute speech token-text token alignment (for interleaving)
+    sampling_rate: 16000 # sampling rate of audio input data to HuBERT ("model sampling rate")
+    downsampling_ratio: 320 # downsampling ratio for HuBERT i.e. 320 samples -> 1 token
 
 # Base models directory
 extended_models_dir: /mnt/scratch-artemis/anilkeshwani/models/extended/

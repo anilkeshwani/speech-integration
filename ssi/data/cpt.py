@@ -9,10 +9,8 @@ from datasets import load_dataset
 from sardalign.constants import (
     ALIGNMENT_END_TIME_KEY,
     ALIGNMENT_START_TIME_KEY,
-    HUBERT_DOWNSAMPLING_RATIO,
     MODALITY_TOKEN_SPEECH,
     MODALITY_TOKEN_TEXT,
-    SAMPLING_FREQ,
     SPEECH_TOKENS_KEY,
     TOKENIZED_KEY,
 )
@@ -41,10 +39,6 @@ class CompletionSequenceType(Enum):
 
 # Module-level pseudo-random number generator
 PRNG = np.random.default_rng(SEED)
-
-# Constants from sardalign (speech-text-alignment) in scripts/interleave.py
-MEAN_MLS_SEQ_LEN: float = 39.43  # mean sequence length (in tokens) of the MLS stratified sample; 25% of en trainset
-BINOM_PROB: float = 0.1  # fraction of sequence to make up subspans
 
 
 class TextCompletionDataset(Dataset):
@@ -81,6 +75,7 @@ class TextCompletionDataset(Dataset):
         alignment_end_time_key: str | None = None,
         speech_tokens_key: str | None = None,
         filter_fn: Callable | None = None,
+        interleave_kwargs: dict[str, Any] | None = None,
     ) -> None:
         self._tokenizer = tokenizer
         self._data = load_dataset(source, split=split)
@@ -99,12 +94,13 @@ class TextCompletionDataset(Dataset):
         self.sequence_type = CompletionSequenceType(sequence_type)
         match self.sequence_type:
             case CompletionSequenceType.INTERLEAVED:
-                # TODO after all args are explicit, pass in specific kwargs and make partial
-                self.prompt_fn = interleave
+                if not interleave_kwargs:
+                    raise ValueError("interleave_kwargs must be provided for interleaved sequence type")
+                self.prompt_fn = partial(interleave, **interleave_kwargs)
             case CompletionSequenceType.CONCATENATED_TXT_DSU:
-                self.prompt_fn = concat_txt_dsu
+                self.prompt_fn = partial(concatenate_speech_text, start_with_text=True)
             case CompletionSequenceType.CONCATENATED_DSU_TXT:
-                self.prompt_fn = concat_dsu_txt
+                self.prompt_fn = partial(concatenate_speech_text, start_with_text=False)
             case _:
                 raise ValueError(f"Unsupported sequence type: {self.sequence_type}")
 
@@ -148,8 +144,8 @@ class TextCompletionDataset(Dataset):
         return {"tokens": tokens, "labels": labels}
 
 
-def get_span_idxs_binomial(n: int, p: float, seq_len: int, seed: int = SEED) -> list[int]:
-    subspan_idxs = np.maximum(PRNG.binomial(n, p, size=seq_len), 1).cumsum()
+def get_span_idxs_binomial(n: int, p: float, seq_len: int) -> list[int]:
+    subspan_idxs = np.maximum(PRNG.binomial(n, p, size=seq_len), 1).cumsum()  # NOTE sample lower bounded to 1
     return [0] + subspan_idxs[subspan_idxs < seq_len].tolist() + [seq_len]
 
 
@@ -157,16 +153,18 @@ def interleave(
     sample: dict[str, Any],
     deduplicate: bool,
     use_modality_tokens: bool,
-    mean_seq_len: float = MEAN_MLS_SEQ_LEN,
-    binom_prob: float = BINOM_PROB,
-    seed: int = SEED,
+    *,
+    sampling_rate: int,
+    downsampling_ratio: int,
+    mean_seq_len_tokens: float,
+    binom_prob: float,
 ) -> str:
     start_with_text = PRNG.choice([True, False], p=[0.5, 0.5])
     tokens = sample[TOKENIZED_KEY]
     align_t_starts = sample[ALIGNMENT_START_TIME_KEY]
     align_t_ends = sample[ALIGNMENT_END_TIME_KEY]
     speech_tokens: list[int] = sample[SPEECH_TOKENS_KEY]
-    span_idxs = get_span_idxs_binomial(int(mean_seq_len), binom_prob, len(tokens), seed)
+    span_idxs = get_span_idxs_binomial(int(mean_seq_len_tokens), binom_prob, len(tokens))
     # idxs: list of 2-tuples of start and end indices of subspans e.g. [(0, 4), (11, 16), (21, 25), (28, 31)]
     idxs1, idxs2 = zip(span_idxs[:-1:2], span_idxs[1::2]), zip(span_idxs[1:-1:2], span_idxs[2::2])
     text_idxs, dsu_idxs = (idxs1, idxs2) if start_with_text else (idxs2, idxs1)
@@ -175,8 +173,8 @@ def interleave(
     for start_idx, end_idx in dsu_idxs:
         start_idx_hu, end_idx_hu = times_to_dsu_idxs(
             (align_t_starts[start_idx], align_t_ends[end_idx - 1]),
-            SAMPLING_FREQ,  # TODO parameterize BUT 16kHz should be the default/only supported SR
-            HUBERT_DOWNSAMPLING_RATIO,  # TODO parameterize for SpeechTokenizer, Mimi, etc.
+            sampling_rate,
+            downsampling_ratio,
         )
         sp_tkns_spn = speech_tokens[start_idx_hu:end_idx_hu]
         if deduplicate:
@@ -192,10 +190,11 @@ def interleave(
     return interleaved_segment
 
 
-def _concatenate_speech_text(
+def concatenate_speech_text(
     sample: dict[str, Any],
     deduplicate: bool,
     use_modality_tokens: bool,
+    *,
     start_with_text: bool,
 ) -> str:
     speech_tokens: list[int] = sample[SPEECH_TOKENS_KEY]
@@ -207,7 +206,3 @@ def _concatenate_speech_text(
         text = " ".join((MODALITY_TOKEN_TEXT, text))
         dsus_str = " ".join((MODALITY_TOKEN_SPEECH, dsus_str))  # NOTE includes a leading space
     return " ".join((text, dsus_str) if start_with_text else (dsus_str, text))
-
-
-concat_txt_dsu = partial(_concatenate_speech_text, start_with_text=True)
-concat_dsu_txt = partial(_concatenate_speech_text, start_with_text=False)
