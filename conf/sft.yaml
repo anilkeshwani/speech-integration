@@ -39,7 +39,7 @@ data: # NOTE: arguments are to setup **function** not SFTDataset class
       new_system_prompt: "You will act as an automatic speech recognition (ASR) system. Transcribe the speech tokens into English text."
       image_dir: null
       # SFTDataset kwargs passed to datasets.load_dataset
-      split: dev # <- NOTE different from train
+      split: validation # <- NOTE different from train
     dataloader:
       batch_size: 2
       drop_last: False

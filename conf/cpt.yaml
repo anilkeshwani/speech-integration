@@ -6,7 +6,7 @@ defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
 data:
   train:
     dataset:
-      source: anilkeshwani/mls-hubert_large_ll60k-layer_22 # HF dataset repo
+      source: anilkeshwani/mls-hubert_large_ll60k-layer_22
       split: train
       sequence_type: interleaved
       interleave_kwargs:
@@ -30,8 +30,8 @@ data:
     # **load_dataset_kwargs: Dict[str, Any]
   dev:
     dataset:
-      source: anilkeshwani/MLS_english_train_strat_sample_aligned_hubert # whole validation set (25% is for train split)
-      split: dev
+      source: anilkeshwani/mls-hubert_large_ll60k-layer_22
+      split: validation
       sequence_type: interleaved
       interleave_kwargs:
         sampling_rate: ${speech.encoder.sampling_rate}
