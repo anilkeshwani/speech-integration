@@ -77,7 +77,7 @@ checkpointer:
   model_type: "llama3_2"
   safe_serialization: True
 
-save_steps: 1000 # should be multiple of eval_steps
+save_steps: 2000 # should be multiple of eval_steps
 
 # Evaluation
 eval_steps: 250
