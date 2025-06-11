@@ -34,7 +34,6 @@ def compute_dataset_loss(
             LOGGER.info(
                 f"Epoch {epoch + 1:03d} | "
                 f"Global Step {global_step:0{len(str(steps_per_epoch))}d} | "  # TODO bad zero padding
-                f"Dev Iter {i_dev:0{len(str(steps_per_epoch))}d} / {steps_per_epoch} | "
                 f"Dev Batch {i_dev:0{len(str(len(data_dev)))}d} / {len(data_dev)} | "
                 f"Dev Loss (batch): {dev_loss_batch.item():.4f}"
             )
