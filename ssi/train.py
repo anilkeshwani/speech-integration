@@ -160,13 +160,14 @@ def train(cfg: DictConfig) -> None:
     num_tokens_step = 0
     max_seq_len_step = 0
     tokens_train_total: int = 0
-    steps_per_epoch = len(data_train) // cfg.gradient_accumulation_steps
+    batches_per_epoch = len(data_train)
+    steps_per_epoch = batches_per_epoch // cfg.gradient_accumulation_steps
     n_epochs = math.ceil(cfg.max_steps / steps_per_epoch)
     LOGGER.info(OmegaConf.to_yaml(cfg, resolve=True, sort_keys=False))
     wandb_logger.log_config(cfg)  # log config after parameter resolution + overrides
     for epoch in range(epochs_run, n_epochs):
         sampler_train.set_epoch(epoch)  # distinct seed each epoch
-        for i, batch in tqdm(enumerate(data_train), total=len(data_train)):
+        for i, batch in tqdm(enumerate(data_train), total=batches_per_epoch):
             batch_to_device(batch, DEVICE)  # in-place
             for tt, ttcnt in count_token_types(batch["tokens"], token_type_ranges, tokenizer.pad_id).items():
                 token_type_counts_total[tt] += ttcnt
@@ -193,7 +194,7 @@ def train(cfg: DictConfig) -> None:
                     " | ".join(
                         (
                             f"Epoch {epoch + 1:03d}",
-                            f"Iter {i:0{len(str(steps_per_epoch))}d} / {steps_per_epoch}",
+                            f"Iteration {i:0{len(str(batches_per_epoch))}d} / {batches_per_epoch}",
                             f"Global Step {global_step:0{len(str(steps_per_epoch))}d}",  # TODO bad zero padding
                             f"Loss: {loss_to_log:.4f}",
                             f"Tokens (num_tokens_step): {num_tokens_step}",
