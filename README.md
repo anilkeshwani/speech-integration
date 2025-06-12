@@ -148,9 +148,7 @@ hydra.verbose=true # results in e.g. prompts constructed in the dataset to be ec
 
 #### Run in Slurm (e.g. on Sardine)
 
-**First enable the correct Conda environment.** 
-
-Then run, for example:
+In the below example call, the Conda environment used is `ssi-v1.8.1`. Specify the appropriate Conda environment to `conda run` under the `-n` option.
 
 ```bash
 srun \
@@ -158,12 +156,19 @@ srun \
     --time=48:00:00 \
     --gres=gpu:1 \
     --qos=gpu-medium \
-    python scripts/train_cpt.py \
+    conda run --live-stream -n ssi-v1.8.1 python scripts/train_cpt.py \
         checkpointer.checkpoint_dir="${HOME}/hafh/models/extended/Llama-3.2-1B-5000-dsus" \
-        checkpointer.checkpoint_files="['ft-model-00001-of-00001.safetensors']" 
+        checkpointer.checkpoint_files="['ft-model-00001-of-00001.safetensors']" \
+        optimizer.lr=0.0002 \
+        lr_scheduler.num_warmup_steps=1000 \
+        speech.deduplicate=false \
+        data=cpt_speechtokenizer
 ```
 
-This is an example demo snippet. Note: Relies on the `hafh -> /mnt/scratch-artemis/anilkeshwani` symlink in the shared `${HOME}` across Artemis and Poseidon.
+Notes:
+- Relies on the `hafh -> /mnt/scratch-artemis/anilkeshwani` symlink in the shared `${HOME}` across Artemis and Poseidon.
+- Remember to pass `--live-stream` (or equivalently `--no-capture-output`) to prevent buffering/capture of stdout/stderr (standard out/standard error)
+                        
 
 ### Supervised Fine-tuning (SFT)
 
