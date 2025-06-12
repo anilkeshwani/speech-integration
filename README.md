@@ -128,24 +128,29 @@ See `./scripts/extend_llama3_2.py --help` for details.
 
 ### Continued Pre-training (CPT)
 
-```bash
-python scripts/train_cpt.py \
-    checkpointer.checkpoint_dir='/mnt/scratch-artemis/anilkeshwani/models/extended/Llama-3.2-1B-5000-dsus' \
-    checkpointer.checkpoint_files='["ft-model-00001-of-00001.safetensors"]' # slightly weird syntax
-```
-
-Example with debugging output:
+Example call using SpeechTokenizer-encoded (RVQ 0) speech tokens:
 
 ```bash
 python scripts/train_cpt.py \
     checkpointer.checkpoint_dir='/mnt/scratch-artemis/anilkeshwani/models/extended/Llama-3.2-1B-5000-dsus' \
     checkpointer.checkpoint_files='["ft-model-00001-of-00001.safetensors"]' \
-    hydra.verbose=true # results in e.g. prompts constructed in the dataset to be echoed to the console
+    optimizer.lr=0.0002 \
+    lr_scheduler.num_warmup_steps=1000 \
+    speech.deduplicate=false \
+    data=cpt_speechtokenizer
+```
+
+To enable debugging output with Hydra, append:
+
+```bash
+hydra.verbose=true # results in e.g. prompts constructed in the dataset to be echoed to the console
 ```
 
 #### Run in Slurm (e.g. on Sardine)
 
-First enable the correct Conda environment. Then run, for example:
+**First enable the correct Conda environment.** 
+
+Then run, for example:
 
 ```bash
 srun \
@@ -155,31 +160,14 @@ srun \
     --qos=gpu-medium \
     python scripts/train_cpt.py \
         checkpointer.checkpoint_dir="${HOME}/hafh/models/extended/Llama-3.2-1B-5000-dsus" \
-        checkpointer.checkpoint_files="['ft-model-00001-of-00001.safetensors']" \
-        optimizer.lr=0.0002 \
-        lr_scheduler.num_warmup_steps=1000
+        checkpointer.checkpoint_files="['ft-model-00001-of-00001.safetensors']" 
 ```
 
 This is an example demo snippet. Note: Relies on the `hafh -> /mnt/scratch-artemis/anilkeshwani` symlink in the shared `${HOME}` across Artemis and Poseidon.
 
 ### Supervised Fine-tuning (SFT)
 
-```
-python scripts/train_sft.py \
-    checkpointer.checkpoint_dir='/mnt/scratch-artemis/anilkeshwani/models/extended/Llama-3.2-1B-5000-dsus' \
-    checkpointer.checkpoint_files='["ft-model-00001-of-00001.safetensors"]'
-```
-
-```bash
-srun \
-    --partition a6000 \
-    --time=24:00:00 \
-    --gres=gpu:1 \
-    --qos=gpu-medium \
-    python scripts/train_sft.py \
-    checkpointer.checkpoint_dir='/mnt/scratch-artemis/anilkeshwani/models/extended/Llama-3.2-1B-5000-dsus' \
-    checkpointer.checkpoint_files='["ft-model-00001-of-00001.safetensors"]'
-```
+Specify the call as for CPT but using `scripts/train_sft.py` in place of `scripts/train_cpt.py`.
 
 ## Generation
 
@@ -192,6 +180,8 @@ python ssi/generate.py \
     checkpointer.checkpoint_files='["hf_model_0001_1.pt"]' \
     output_jsonl='generated-playful-morning-global-step-053862.jsonl'
 ```
+
+---
 
 # Notes 
 

@@ -1,5 +1,5 @@
 defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
-  - common
+  - cpt
   - _self_
 
 # Tokenizer - config for setup_llama3_tokenizer -> Llama3Tokenizer
