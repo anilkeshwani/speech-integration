@@ -2,7 +2,6 @@ defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
   - common
   - _self_
 
-# Data
 data:
   train:
     dataset:
@@ -10,36 +9,30 @@ data:
       split: train
       sequence_type: interleaved
       interleave_kwargs:
-        sampling_rate: ${speech.encoder.sampling_rate}
-        downsampling_ratio: ${speech.encoder.downsampling_ratio}
+        sampling_rate: 16000 # sampling rate of audio input data to HuBERT ("model sampling rate")
+        downsampling_ratio: 320 # downsampling ratio for HuBERT i.e. 320 samples -> 1 token
         mean_seq_len_tokens: 39.43 # mean sequence length in tokens of the MLS en trainset stratified sample (25%)
         binom_prob: 0.1 # fraction of sequence to make up subspans -> recall: binomial expectation = np
-      deduplicate: False
-      use_modality_tokens: True
+      deduplicate: ${speech.deduplicate}
+      use_modality_tokens: ${speech.use_modality_tokens}
       add_eos: True
     dataloader:
       batch_size: 16
       drop_last: True
     shuffle: True
     packed: False # TODO packing performed a priori at training time and leads to CPU RAM overflow for e.g. MLS interleaved
-    # TODO clean up / describe the following fields (arguments)
-    # split_across_pack: True # set to True for CPT; set to False for SFT
-    # tokenizer: # set above
-    # NOTE Following arguments copied across from text_completion_dataset docstring for reference
-    # filter_fn: Optional[Callable] = None
-    # **load_dataset_kwargs: Dict[str, Any]
   dev:
     dataset:
       source: anilkeshwani/mls-hubert_large_ll60k-layer_22
       split: validation
       sequence_type: interleaved
       interleave_kwargs:
-        sampling_rate: ${speech.encoder.sampling_rate}
-        downsampling_ratio: ${speech.encoder.downsampling_ratio}
+        sampling_rate: 16000 # sampling rate of audio input data to HuBERT ("model sampling rate")
+        downsampling_ratio: 320 # downsampling ratio for HuBERT i.e. 320 samples -> 1 token
         mean_seq_len_tokens: 39.43 # mean sequence length in tokens of the MLS en trainset stratified sample (25%)
         binom_prob: 0.1 # fraction of sequence to make up subspans -> recall: binomial expectation = np
-      deduplicate: False
-      use_modality_tokens: True
+      deduplicate: ${speech.deduplicate}
+      use_modality_tokens: ${speech.use_modality_tokens}
       add_eos: True
     dataloader:
       batch_size: 16
