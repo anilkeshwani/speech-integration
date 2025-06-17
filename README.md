@@ -172,7 +172,19 @@ Notes:
 
 ### Supervised Fine-tuning (SFT)
 
-Specify the call as for CPT but using `scripts/train_sft.py` in place of `scripts/train_cpt.py`.
+Specify the call as for CPT but using `scripts/train_sft.py` in place of `scripts/train_cpt.py` and specify an appropriate SFT/IT dataset config group e.g. `data=sft_hubert`.
+
+Example call:
+
+```bash
+python scripts/train_sft.py \
+    checkpointer.checkpoint_dir='/mnt/scratch-artemis/anilkeshwani/models/extended/Llama-3.2-1B-5000-dsus' \
+    checkpointer.checkpoint_files='["ft-model-00001-of-00001.safetensors"]' \
+    optimizer.lr=0.0002 \
+    lr_scheduler.num_warmup_steps=1000 \
+    speech.deduplicate=false \
+    data=sft_hubert
+```
 
 ## Generation
 

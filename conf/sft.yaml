@@ -1,47 +1,6 @@
 defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
-  - cpt
-  - _self_
+  - common
+  - data: ???
 
-# Tokenizer - config for setup_llama3_tokenizer -> Llama3Tokenizer
 tokenizer:
-  max_seq_len: 2048 # for SFT (vs CPT) need to increase max sequence length - otherwise we don't even see the GT text!
-
-data: # NOTE: arguments are to setup **function** not SFTDataset class
-  train:
-    dataset: # SFTDataset
-      source: anilkeshwani/MLS_english_train_strat_sample_aligned_hubert
-      # model_tokenizer taken from code
-      inference: False # False for training, False for validation loss, toggled to True in code for validation inference
-      filter_fn: null
-      train_on_input: True # set to true to prevent forgetting; will hyperparam. search over this
-      column_map:
-        input: speech_tokens
-        output: transcript
-      new_system_prompt: "You will act as an automatic speech recognition (ASR) system. Transcribe the speech tokens into English text."
-      image_dir: null
-      # SFTDataset kwargs passed to datasets.load_dataset
-      split: train
-    dataloader:
-      batch_size: 2
-      drop_last: True
-    shuffle: True # passed to DistributedSampler
-    packed: False # passed to pack_dataset to create a PackedDataset
-  dev:
-    dataset: # SFTDataset
-      source: anilkeshwani/MLS_english_train_strat_sample_aligned_hubert
-      # model_tokenizer taken from code
-      inference: False # False for training, False for validation loss, toggled to True in code for validation inference
-      filter_fn: null
-      train_on_input: True # set to true to prevent forgetting; will hyperparam. search over this
-      column_map:
-        input: speech_tokens
-        output: transcript
-      new_system_prompt: "You will act as an automatic speech recognition (ASR) system. Transcribe the speech tokens into English text."
-      image_dir: null
-      # SFTDataset kwargs passed to datasets.load_dataset
-      split: validation # <- NOTE different from train
-    dataloader:
-      batch_size: 2
-      drop_last: False
-    shuffle: False # passed to DistributedSampler <- NOTE different from train
-    packed: False # passed to pack_dataset to create a PackedDataset
+  max_seq_len: 2048 # increased max sequence length for SFT (vs CPT)

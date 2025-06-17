@@ -1,0 +1,38 @@
+train:
+  dataset: # SFTDataset
+    source: anilkeshwani/mls-hubert_large_ll60k-layer_22
+    # model_tokenizer taken from code
+    inference: False # False for training, False for validation loss, toggled to True in code for validation inference
+    filter_fn: null
+    train_on_input: True # set to true to prevent forgetting; will hyperparam. search over this
+    column_map:
+      input: speech_tokens
+      output: transcript
+    new_system_prompt: "You will act as an automatic speech recognition (ASR) system. Transcribe the speech tokens into English text."
+    image_dir: null
+    # SFTDataset kwargs passed to datasets.load_dataset
+    split: train
+  dataloader:
+    batch_size: 2
+    drop_last: True
+  shuffle: True # passed to DistributedSampler
+  packed: False # passed to pack_dataset to create a PackedDataset
+dev:
+  dataset: # SFTDataset
+    source: anilkeshwani/mls-hubert_large_ll60k-layer_22
+    # model_tokenizer taken from code
+    inference: False # False for training, False for validation loss, toggled to True in code for validation inference
+    filter_fn: null
+    train_on_input: True # set to true to prevent forgetting; will hyperparam. search over this
+    column_map:
+      input: speech_tokens
+      output: transcript
+    new_system_prompt: "You will act as an automatic speech recognition (ASR) system. Transcribe the speech tokens into English text."
+    image_dir: null
+    # SFTDataset kwargs passed to datasets.load_dataset
+    split: validation # <- NOTE different from train
+  dataloader:
+    batch_size: 2
+    drop_last: False
+  shuffle: False # passed to DistributedSampler <- NOTE different from train
+  packed: False # passed to pack_dataset to create a PackedDataset
