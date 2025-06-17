@@ -2,7 +2,7 @@ defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
   - sft
   - _self_
 
-model: /mnt/scratch-artemis/anilkeshwani/experiments/Llama-3.2-1B-5000-dsus-sft/genial-cosmos-430-id_77kbg01q/checkpoints/epoch_0/global_step_7000
+model: ???
 
 data: # NOTE: arguments are to setup **function** not SFTDataset class
   dev:
