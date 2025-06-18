@@ -60,8 +60,6 @@ MODEL = (
     "checkpoints/epoch_0/global_step_2000"
 )
 
-...
-
 
 def generate(cfg: DictConfig) -> None:
     # TODO timestamp / this + add a YAML or JSON with the config so we know the generation/sampling parameters
@@ -77,10 +75,9 @@ def generate(cfg: DictConfig) -> None:
     special_int2str = {v: k for k, v in special_tokens.items()}
     # NOTE SFT dataset - Used for generation for now for flexibility - we can modify the system prompt and template
     #      dataset columns via a PromptTemplate class, which can be specified as a dictionary in the YAML
-    # TODO dev -> test
     data = DataLoader(
-        SFTDataset(model_tokenizer=tokenizer, **cfg.data.dev.dataset),
-        batch_size=cfg.data.dev.dataloader.batch_size,
+        SFTDataset(model_tokenizer=tokenizer, **cfg.data.test.dataset),
+        batch_size=cfg.vllm_batch_size,
         collate_fn=lambda batch: [TokensPrompt(prompt_token_ids=sample["tokens"]) for sample in batch],
         shuffle=False,
         drop_last=False,

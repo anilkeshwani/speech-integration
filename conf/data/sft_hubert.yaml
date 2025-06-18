@@ -17,6 +17,7 @@ train:
     drop_last: True
   shuffle: True # passed to DistributedSampler
   packed: False # passed to pack_dataset to create a PackedDataset
+
 dev:
   dataset: # SFTDataset
     source: anilkeshwani/mls-hubert_large_ll60k-layer_22
@@ -35,4 +36,27 @@ dev:
     batch_size: 2
     drop_last: False
   shuffle: False # passed to DistributedSampler <- NOTE different from train
+  packed: False # passed to pack_dataset to create a PackedDataset
+
+test:
+  dataset: # SFTDataset
+    source: anilkeshwani/mls-hubert_large_ll60k-layer_22
+    # model_tokenizer taken from code
+    inference: True # NOTE inference flag set to True for test dataset -> no GT transcript + no EOS token appended
+    filter_fn: null
+    train_on_input: True # set to true to prevent forgetting; will hyperparam. search over this
+    column_map:
+      input: speech_tokens
+      output: transcript
+    new_system_prompt: "You will act as an automatic speech recognition (ASR) system. Transcribe the speech tokens into English text."
+    image_dir: null
+    # SFTDataset kwargs passed to datasets.load_dataset
+    split: test
+    # # NOTE Add dataset.additional_keys if required; current WER computation relies on sample order -> ID not required
+    # additional_keys:
+    #   - ID
+  dataloader:
+    batch_size: 2
+    # NOTE drop_last not used - hard coded to False for testing
+  # Note shuffle not used - hard coded to False for testing
   packed: False # passed to pack_dataset to create a PackedDataset

@@ -1,22 +1,17 @@
 defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
-  - sft # TODO refactor inheritance?
+  - common
+  # - data: ???
 
-checkpointer: null # TODO refactor
+tokenizer:
+  max_seq_len: 2048
 
-generations_root_dir: /mnt/scratch-artemis/anilkeshwani/generations # TODO refactor to common root generations YAML
+generations_root_dir: /mnt/scratch-artemis/anilkeshwani/generations
 
 model: ???
 output_dir: null
 output_filename: generations.jsonl
 
-data: # NOTE: arguments are to setup **function** not SFTDataset class
-  dev:
-    dataset:
-      inference: True
-      # additional_keys:
-      #   - ID
-    dataloader:
-      batch_size: 8
+vllm_batch_size: 8
 
 tokenizer_decoding:
   truncate_at_eos: True
