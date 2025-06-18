@@ -11,6 +11,11 @@ train:
     deduplicate: ${speech.deduplicate}
     use_modality_tokens: ${speech.use_modality_tokens}
     add_eos: True
+    # Optional parameters passed to TextCompletionDataset to specify non-standard dataset keys (i.e. columns HF dataset)
+    tokenized_key: null # if null -> fall back to default key in sardalign.constants
+    alignment_start_time_key: null # if null -> fall back to default key in sardalign.constants
+    alignment_end_time_key: null # if null -> fall back to default key in sardalign.constants
+    speech_tokens_key: null # if null -> fall back to default key in sardalign.constants
   dataloader:
     batch_size: 16
     drop_last: True
@@ -29,6 +34,11 @@ dev:
     deduplicate: ${speech.deduplicate}
     use_modality_tokens: ${speech.use_modality_tokens}
     add_eos: True
+    # Optional parameters passed to TextCompletionDataset to specify non-standard dataset keys (i.e. columns HF dataset)
+    tokenized_key: null # if null -> fall back to default key in sardalign.constants
+    alignment_start_time_key: null # if null -> fall back to default key in sardalign.constants
+    alignment_end_time_key: null # if null -> fall back to default key in sardalign.constants
+    speech_tokens_key: null # if null -> fall back to default key in sardalign.constants
   dataloader:
     batch_size: 16
     drop_last: False
