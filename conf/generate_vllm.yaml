@@ -1,6 +1,5 @@
 defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
   - sft # TODO refactor inheritance?
-  - _self_
 
 checkpointer: null # TODO refactor
 
