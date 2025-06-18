@@ -148,7 +148,7 @@ hydra.verbose=true # results in e.g. prompts constructed in the dataset to be ec
 
 #### Run in Slurm (e.g. on Sardine)
 
-In the below example call, the Conda environment used is `ssi-v1.8.1`. Specify the appropriate Conda environment to `conda run` under the `-n` option.
+In the below example call, the Conda environment used is `ssi-latest`. Specify the appropriate Conda environment to `conda run` under the `-n` option.
 
 ```bash
 srun \
@@ -156,7 +156,7 @@ srun \
     --time=48:00:00 \
     --gres=gpu:1 \
     --qos=gpu-medium \
-    conda run --live-stream -n ssi-v1.8.1 python scripts/train_cpt.py \
+    conda run --live-stream -n ssi-latest python scripts/train_cpt.py \
         checkpointer.checkpoint_dir="${HOME}/hafh/models/extended/Llama-3.2-1B-5000-dsus" \
         checkpointer.checkpoint_files="['ft-model-00001-of-00001.safetensors']" \
         optimizer.lr=0.0002 \
