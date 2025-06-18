@@ -63,18 +63,8 @@ device: cuda
 # Reduced precision
 dtype: bf16
 
-# Checkpointing
-checkpointer:
-  checkpoint_dir: ???
-  checkpoint_files: ???
-  config_json: null # if null -> resolved to ${checkpointer.checkpoint_dir}  / LLAMA_3_2_CONFIG_RELPATH
-  output_dir: null # if null -> resolved to ${output_dir}/${wandb_run_name}-id_{wandb_run_id}/checkpoints
-  recipe_checkpoint: null
-  adapter_checkpoint: null
-  model_type: "llama3_2"
-  safe_serialization: True
-
-save_steps: 2000 # should be multiple of eval_steps
+# Checkpointing period - should be multiple of eval_steps
+save_steps: 2000
 
 # Evaluation
 eval_steps: 250
