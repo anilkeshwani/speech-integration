@@ -81,7 +81,7 @@ eval_steps: 250
 
 # Logging
 wandb:
-  log_dir: ${output_dir}/wandb
+  log_dir: ${output_dir}
   project: speech-integration
   entity: null # automatically set to username based on API key
   group: ${config_name}

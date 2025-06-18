@@ -54,6 +54,15 @@ def validate_generate_vllm_config(cfg: DictConfig) -> None:
         raise NotImplementedError("Sampling multiple sequences per prompt (sampling_params.n > 1) is not supported.")
 
 
+MODEL = (
+    "/mnt/scratch-artemis/anilkeshwani/experiments/"
+    "Llama-3.2-1B-5000-dsus-cpt/absurd-sound-475-id_cqjfkkwf/"
+    "checkpoints/epoch_0/global_step_2000"
+)
+
+...
+
+
 def generate(cfg: DictConfig) -> None:
     # TODO timestamp / this + add a YAML or JSON with the config so we know the generation/sampling parameters
     # TODO change to output just the text, stop reason and maybe prompt?
