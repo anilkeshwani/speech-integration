@@ -20,6 +20,9 @@ lr_scheduler:
 # Training duration in **steps** (not iterations; i.e. factoring in grad. accum.)
 max_steps: 100000 # -> Set very high; typically higher than Slurm time limit (3 days == 72 hours)
 
+# Logging interval
+log_interval: 1
+
 # Evaluation period
 eval_steps: 250
 
