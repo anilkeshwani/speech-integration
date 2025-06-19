@@ -1,6 +1,6 @@
 defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
   - common
-  # - data: ???
+  - data: ???
 
 tokenizer:
   max_seq_len: 2048
