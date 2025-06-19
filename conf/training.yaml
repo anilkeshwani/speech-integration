@@ -1,0 +1,38 @@
+# Optimization
+optimizer:
+  lr: 2e-4
+  betas: [0.9, 0.999]
+  eps: 1e-8
+  weight_decay: 0.01
+  amsgrad: False
+  fused: True
+gradient_accumulation_steps: 4
+clip_grad_norm: null
+
+# Fuse optimizer step into backward pass
+optimizer_in_bwd: False # https://pytorch.org/tutorials/intermediate/optimizer_step_in_backward_tutorial.html
+
+# Learning rate scheduler
+lr_scheduler:
+  num_warmup_steps: 1000
+  num_cycles: 0.5
+
+# Training duration in **steps** (not iterations; i.e. factoring in grad. accum.)
+max_steps: 100000 # -> Set very high; typically higher than Slurm time limit (3 days == 72 hours)
+
+# Evaluation period
+eval_steps: 250
+
+# Checkpointing period - should be multiple of eval_steps
+save_steps: 2000
+
+# Checkpointer initialization
+checkpointer:
+  checkpoint_dir: ???
+  checkpoint_files: ???
+  config_json: null # if null -> resolved to ${checkpointer.checkpoint_dir}  / LLAMA_3_2_CONFIG_RELPATH
+  output_dir: null # if null -> resolved to ${output_dir}/${wandb_run_name}-id_{wandb_run_id}/checkpoints
+  recipe_checkpoint: null
+  adapter_checkpoint: null
+  model_type: "llama3_2"
+  safe_serialization: True

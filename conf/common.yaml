@@ -17,13 +17,6 @@ experiments_root_dir: /mnt/scratch-artemis/anilkeshwani/experiments
 config_name: ${hydra:job.config_name} # name of the config file -> used to identify job type: {cpt, sft, etc.}
 output_dir: ${experiments_root_dir}/${base_model_name}-${config_name}
 
-# Debug Mode
-# `None` -> don't set any PyTorch global values
-# "default" or 0 -> don't error or warn on nondeterministic operations and additionally enable PyTorch CuDNN benchmark
-# "warn" or 1 -> warn on nondeterministic operations and disable PyTorch CuDNN benchmark
-# "error" or 2 -> error on nondeterministic operations and disable PyTorch CuDNN benchmark
-debug_mode: null
-
 # Tokenizer - config for setup_llama3_tokenizer -> Llama3Tokenizer
 tokenizer:
   path: ${extended_models_dir}/${base_model_name}/original/tokenizer.model
@@ -31,31 +24,8 @@ tokenizer:
   prompt_template: null
   verbose: True
 
-# Optimization
-optimizer:
-  lr: 2e-4
-  betas: [0.9, 0.999]
-  eps: 1e-8
-  weight_decay: 0.01
-  amsgrad: False
-  fused: True
-gradient_accumulation_steps: 4
-clip_grad_norm: null
-# Training duration in **steps** (not iterations; i.e. factoring in grad. accum.)
-max_steps: 100000 # -> Set very high; typically higher than Slurm time limit (3 days == 72 hours)
-
-# Learning rate scheduler
-lr_scheduler:
-  num_warmup_steps: 1000
-  num_cycles: 0.5
-
-# Performance optimizations
-optimizer_in_bwd: False # https://pytorch.org/tutorials/intermediate/optimizer_step_in_backward_tutorial.html
-compile: False # set it to True for better memory and performance
-
-# Memory management
-enable_activation_checkpointing: False # True reduces memory
-enable_activation_offloading: False # True reduces memory
+# Torch compile
+compile: False
 
 # Training environment
 device: cuda
@@ -63,13 +33,7 @@ device: cuda
 # Reduced precision
 dtype: bf16
 
-# Checkpointing period - should be multiple of eval_steps
-save_steps: 2000
-
-# Evaluation
-eval_steps: 250
-
-# Logging
+# Weights and Biases (W&B) logging
 wandb:
   log_dir: ${output_dir}
   project: speech-integration
@@ -77,3 +41,14 @@ wandb:
   group: ${config_name}
 log_interval: 1
 log_peak_memory_stats: False
+
+# Memory management
+enable_activation_checkpointing: False # True reduces memory
+enable_activation_offloading: False # True reduces memory
+
+# Debug Mode
+# `None` -> don't set any PyTorch global values
+# "default" or 0 -> don't error or warn on nondeterministic operations and additionally enable PyTorch CuDNN benchmark
+# "warn" or 1 -> warn on nondeterministic operations and disable PyTorch CuDNN benchmark
+# "error" or 2 -> error on nondeterministic operations and disable PyTorch CuDNN benchmark
+debug_mode: null

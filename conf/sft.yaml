@@ -1,6 +1,6 @@
 defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
   - common
-  - checkpointer
+  - training
   - data: ???
 
 tokenizer:
