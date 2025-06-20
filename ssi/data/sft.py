@@ -1,4 +1,5 @@
 import logging
+from itertools import groupby
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional
 
@@ -109,6 +110,7 @@ class SFTDataset(Dataset):
         source: str,
         model_tokenizer: Llama3Tokenizer,
         inference: bool = False,
+        deduplicate: bool,
         filter_fn: Optional[Callable] = None,
         train_on_input: bool,
         column_map: Optional[dict[str, str]] = None,
@@ -132,6 +134,7 @@ class SFTDataset(Dataset):
         if filter_fn is not None:
             self._data = self._data.filter(filter_fn)
         self._inference = inference
+        self._deduplicate = deduplicate
         self.additional_keys = additional_keys
 
     @property
@@ -144,6 +147,16 @@ class SFTDataset(Dataset):
             raise ValueError("inference must be a boolean.")
         self._inference = value
 
+    @property
+    def deduplicate(self) -> bool:
+        return self._deduplicate
+
+    @deduplicate.setter
+    def deduplicate(self, value: bool) -> None:
+        if not isinstance(value, bool):
+            raise ValueError("deduplicate must be a boolean.")
+        self._deduplicate = value
+
     def __len__(self):
         return len(self._data)
 
@@ -152,7 +165,7 @@ class SFTDataset(Dataset):
         return self._prepare_sample(sample) | {k: sample[k] for k in self.additional_keys}
 
     def _prepare_sample(self, sample: Mapping[str, Any]) -> dict[str, Any]:
-        transformed_sample = self._message_transform(sample, self._inference)
+        transformed_sample = self._message_transform(sample, self._deduplicate, self._inference)
         if "messages" in transformed_sample:
             validate_messages(transformed_sample["messages"])
 
@@ -242,7 +255,7 @@ class InputOutputToMessages:
             )
         self.image_dir = image_dir
 
-    def __call__(self, sample: Mapping[str, Any], inference: bool) -> Mapping[str, Any]:
+    def __call__(self, sample: Mapping[str, Any], deduplicate: bool, inference: bool) -> Mapping[str, Any]:
         is_multimodal = "image" in sample or ("image" in self.column_map and self.column_map["image"] in sample)
         if is_multimodal:
             image_path = sample[self.column_map["image"]]
@@ -261,7 +274,10 @@ class InputOutputToMessages:
                 {"type": "text", "content": sample[self.column_map["input"]]},
             ]
         else:
-            content = [{"type": "text", "content": "".join(map(dsu2pua, sample[self.column_map["input"]]))}]
+            sp_tkns = sample[self.column_map["input"]]
+            if deduplicate:
+                sp_tkns = [k for k, g in groupby(sp_tkns)]
+            content = [{"type": "text", "content": "".join(map(dsu2pua, sp_tkns))}]
         if inference:
             output_content = [{"type": "text", "content": ""}]  # NOTE return empty output for inference i.e. generation
         else:

@@ -3,6 +3,7 @@ train:
     source: anilkeshwani/mls-hubert_large_ll60k-layer_22
     # model_tokenizer taken from code
     inference: False # False for training, False for validation loss, toggled to True in code for validation inference
+    deduplicate: ${speech.deduplicate}
     filter_fn: null
     train_on_input: True # set to true to prevent forgetting; will hyperparam. search over this
     column_map:
@@ -23,6 +24,7 @@ dev:
     source: anilkeshwani/mls-hubert_large_ll60k-layer_22
     # model_tokenizer taken from code
     inference: False # False for training, False for validation loss, toggled to True in code for validation inference
+    deduplicate: ${speech.deduplicate}
     filter_fn: null
     train_on_input: True # set to true to prevent forgetting; will hyperparam. search over this
     column_map:
@@ -43,6 +45,7 @@ test:
     source: anilkeshwani/mls-hubert_large_ll60k-layer_22
     # model_tokenizer taken from code
     inference: True # NOTE inference flag set to True for test dataset -> no GT transcript + no EOS token appended
+    deduplicate: ${speech.deduplicate}
     filter_fn: null
     train_on_input: True # set to true to prevent forgetting; will hyperparam. search over this
     column_map:
