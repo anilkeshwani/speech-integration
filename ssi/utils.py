@@ -2,8 +2,12 @@ import os
 import pdb
 import sys
 import traceback
+from hashlib import sha256
+from pathlib import Path
+from typing import Any
 
 import torch
+from omegaconf import DictConfig, OmegaConf
 from torchtune.utils._import_guard import _SUPPORTS_FLEX_ATTENTION
 
 
@@ -11,6 +15,35 @@ if _SUPPORTS_FLEX_ATTENTION:
     from torch.nn.attention.flex_attention import BlockMask
 else:
     BlockMask = torch.Tensor
+
+
+def parse_model_path(model_dir: Path, experiments_root_dir: Path) -> dict[str, Any]:
+    if not model_dir.is_relative_to(experiments_root_dir):
+        raise ValueError(
+            f"Model directory must be in the experiments root directory. "
+            f"Got model_dir: {model_dir}. experiments_root_dir: {experiments_root_dir}"
+        )
+    model_training, wandb_dir, _, epoch_dir, global_step_dir = model_dir.relative_to(experiments_root_dir).parts
+    *wandb_run_name_parts, wandb_run_id_prefixed = wandb_dir.split("-")
+    wandb_run_name = "-".join(wandb_run_name_parts)
+    wandb_run_id = wandb_run_id_prefixed.removeprefix("id_")
+    *base_model_parts, training_type = model_training.split("-")
+    base_model_name = "-".join(base_model_parts)
+    epoch = int(epoch_dir.removeprefix("epoch_"))
+    global_step = int(global_step_dir.removeprefix("global_step_"))
+    return {
+        "base_model_name": base_model_name,
+        "training_type": training_type,
+        "wandb_run_id": wandb_run_id,
+        "wandb_run_name": wandb_run_name,
+        "epoch": epoch,
+        "global_step": global_step,
+    }
+
+
+def hash_cfg(cfg: DictConfig, length: int = 7) -> str:
+    """Compute truncated SHA-256 hex hash of resolved and sorted DictConfig"""
+    return sha256(OmegaConf.to_yaml(cfg, resolve=True, sort_keys=True).encode()).hexdigest()[:length]
 
 
 def info_excepthook(type, value, tb):
