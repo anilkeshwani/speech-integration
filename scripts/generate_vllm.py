@@ -2,75 +2,88 @@
 
 import json
 import logging
-import time
-from collections import defaultdict
 from pathlib import Path
-from typing import Any
 
 import hydra
 import torch
+import wandb
 from omegaconf import DictConfig, OmegaConf
-from torch.utils.data import DataLoader, Dataset, DistributedSampler
+from torch.utils.data import DataLoader
 from torchtune import training
-from torchtune.modules.loss import CEWithChunkedOutputLoss
-from torchtune.training import get_dtype, scale_grads
-from torchtune.training.lr_schedulers import get_lr
-from torchtune.training.precision import PRECISION_STR_TO_DTYPE
-from torchtune.utils import batch_to_device, get_device
 from tqdm import tqdm
 from vllm import CompletionOutput, LLM, RequestOutput, SamplingParams
 from vllm.inputs.data import TokensPrompt
 from vllm.sequence import RequestMetrics
+from wandb.apis.public.runs import Run
 
 from ssi._version import __version__
 from ssi.constants import SEED
-from ssi.data import setup_sft_data
 from ssi.data.sft import SFTDataset
-from ssi.llama_configs import configllama3_2_1b
 from ssi.tokenizer import setup_llama3_tokenizer
-from ssi.train import count_token_types, get_token_type_ranges, validate_train_cfg
+from ssi.utils import hash_cfg, parse_model_path
 
 
 LOGGER = logging.getLogger(__name__)
 
 
 def resolve_gen_output_dir(cfg) -> str:
-    if not Path(cfg.model).is_relative_to(cfg.experiments_root_dir):
-        raise ValueError(
-            f"Model dir {cfg.model} must be relative to experiment directory {cfg.experiments_root_dir}. "
-            "Consider setting output dir manually in the config."
-        )
-    model_relpath = Path(cfg.model).relative_to(cfg.experiments_root_dir)
-    _day, _time = time.strftime("%Y-%m-%d"), time.strftime("%H-%M-%S")
-    return str(Path(cfg.generations_root_dir, model_relpath, _day, _time).resolve())
+    # Only used for automatic resolution of null generation output directory; user can always choose to pass value
+    example_model_dir = (
+        "/mnt/scratch-artemis/anilkeshwani/experiments/"
+        "Llama-3.2-1B-5000-dsus-cpt/absurd-sound-475-id_cqjfkkwf/"
+        "checkpoints/epoch_0/global_step_2000"
+    )
+    model_dir = Path(cfg.model).resolve(strict=True)
+    if not model_dir.is_relative_to(cfg.experiments_root_dir):
+        raise ValueError("Could not resolve null output_dir. Model {cfg.model} not in {cfg.experiments_root_dir}")
+    if model_dir.parts[-3] != "checkpoints":
+        raise ValueError(f"Could not resolve null output_dir. Expect model directory of form: {example_model_dir}.")
+    model_relpath = model_dir.relative_to(cfg.experiments_root_dir)
+    ...
 
 
-def validate_generate_vllm_config(cfg: DictConfig) -> None:
+def validate_generate_config(cfg: DictConfig) -> None:
     missing_keys = OmegaConf.missing_keys(cfg)
     if missing_keys:
         raise ValueError(f"Missing keys in config: {missing_keys}")
 
-    if cfg.sampling_params.n != 1:  # NOTE eval regime under greedy decoding and top k=1 -> relax later if needed
+    # NOTE Constraint due to downstream WER eval regime under greedy decoding and top k=1 - relax later if needed
+    if cfg.sampling_params.n != 1:
         raise NotImplementedError("Sampling multiple sequences per prompt (sampling_params.n > 1) is not supported.")
 
+    # NOTE Model directory constrained to be in the experiments root directory to allow standardised parsing of
+    #      model directory to get: W&B run ID, model name, training type, epoch, and global step
+    if not Path(cfg.model).is_relative_to(cfg.experiments_root_dir):
+        raise NotImplementedError(
+            "Script only supports models in the experiments root directory. "
+            f"Got model: {cfg.model}. Experiments root directory set to: {cfg.experiments_root_dir}"
+        )
 
-MODEL = (
-    "/mnt/scratch-artemis/anilkeshwani/experiments/"
-    "Llama-3.2-1B-5000-dsus-cpt/absurd-sound-475-id_cqjfkkwf/"
-    "checkpoints/epoch_0/global_step_2000"
-)
+
+def sanitize_wandb_run_json_config(run_json_config: dict) -> dict:
+    """W&B format for top-level keys: {"key": {"desc": <str>, "value": <any>}}; "_wandb" field holds run metadata"""
+    return {k: v["value"] for k, v in run_json_config.items() if k != "_wandb"}
+
+
+def extract_run_cfg(run: Run) -> DictConfig:
+    return OmegaConf.create(sanitize_wandb_run_json_config(json.loads(run.json_config)))
+
+
+def parse_train_repo_id(cfg: DictConfig) -> dict[str, str]:
+    train_repo_id: str = cfg.data.train.dataset.source  # e.g. anilkeshwani/mls-speechtokenizer-rvq_0
+    owner, train_dataset_name = train_repo_id.split("/")
+    dataset, speech_encoder, encoder_layer = train_dataset_name.split("-")
+    return {"dataset": dataset, "speech_encoder": speech_encoder, "encoder_layer": encoder_layer, "repo_owner": owner}
 
 
 def generate(cfg: DictConfig) -> None:
-    # TODO timestamp / this + add a YAML or JSON with the config so we know the generation/sampling parameters
-    # TODO change to output just the text, stop reason and maybe prompt?
-    # TODO add MLS ID
+    validate_generate_config(cfg)
+    training.set_seed(seed=SEED, debug_mode=cfg.debug_mode)  # torch, numpy, random + cuDNN deterministic if debug_mode
     if cfg.get("output_dir") is None:
         cfg.output_dir = resolve_gen_output_dir(cfg)  # type: ignore
-    output_dir = Path(cfg.output_dir)
-    # TODO contains additional checks on optimizer_in_bwd, enable_activation_checkpointing, enable_activation_offloading
-    validate_train_cfg(cfg)
-    training.set_seed(seed=SEED, debug_mode=cfg.debug_mode)  # TODO does this actually implement reproducibility?
+    # TODO add MLS ID i.e. test dataset additional_keys functionality
+    if cfg.sampling_params.stop_token_ids is None:
+        cfg.sampling_params.stop_token_ids = [tokenizer.eom_id, tokenizer.eot_id, tokenizer.eos_id]
     tokenizer, special_tokens = setup_llama3_tokenizer(**cfg.tokenizer)
     special_int2str = {v: k for k, v in special_tokens.items()}
     # NOTE SFT dataset - Used for generation for now for flexibility - we can modify the system prompt and template
@@ -82,18 +95,33 @@ def generate(cfg: DictConfig) -> None:
         shuffle=False,
         drop_last=False,
     )
-    # vLLM: Sampling Settings & Model Instantiation
-    if cfg.sampling_params.stop_token_ids is None:
-        cfg.sampling_params.stop_token_ids = [tokenizer.eom_id, tokenizer.eot_id, tokenizer.eos_id]
-    sampling_params = SamplingParams(**cfg.sampling_params)
+    # vLLM SamplingParams & LLM initialization
     llm = LLM(model=cfg.model, skip_tokenizer_init=True)
+    sampling_params = SamplingParams(**cfg.sampling_params)
+    # Set up configuration-specific output directory
+    cfg_hash = hash_cfg(cfg)
+    output_dir = Path(cfg.output_dir) / cfg_hash
     output_dir.mkdir(parents=True, exist_ok=True)
     # Write generation parameters to a YAML file and log to console
-    with open(output_dir / "generation_config.yaml", "w") as f:
-        f.write(OmegaConf.to_yaml(cfg, resolve=True, sort_keys=False))
-    LOGGER.info(OmegaConf.to_yaml(cfg, resolve=True, sort_keys=False))
+    cfg_yaml_unsorted = OmegaConf.to_yaml(cfg, resolve=True, sort_keys=False)
+    with open(output_dir / cfg.generation_config_filename, "w") as f:
+        f.write(cfg_yaml_unsorted)
+    LOGGER.info(cfg_yaml_unsorted)
+    # Obtain model metadata from the model path and W&B run config
+    model_metadata = parse_model_path(Path(cfg.model), Path(cfg.experiments_root_dir))
+    wandb_api = wandb.Api()
+    wandb_run = wandb_api.run(f"{cfg.wandb.entity}/{cfg.wandb.project}/{model_metadata['wandb_run_id']}")
+    wandb_run_cfg = extract_run_cfg(wandb_run)
+    # model_base_name_clash = model_metadata["model_base_name"] != wandb_run_cfg.base_model_name
+    # training_type_clash = model_metadata["training_type"] != wandb_run_cfg.config_name
+    # if any((model_base_name_clash, training_type_clash)):
+    #     raise AssertionError("Model metadata does not match W&B run config.")
+    # Obtain training data metadata -> filter test sets used for generation based on speech encoder and encoder layer
+    train_data_metadata = parse_train_repo_id(wandb_run_cfg)
+    # Use Hydra Compose API to
     # Generate
     with open(output_dir / cfg.output_filename, "w") as f:
+        # TODO optionally refactor this to delegate batching to vLLM per their docs (generate all prompts upfront)
         for i, prompt_token_ids in enumerate(tqdm(data)):
             outputs: list[RequestOutput] = llm.generate(prompt_token_ids, sampling_params, use_tqdm=False)
             model_generations_s: list[list[CompletionOutput]] = [output.outputs for output in outputs]
@@ -119,7 +147,7 @@ def generate(cfg: DictConfig) -> None:
     LOGGER.info(f"Wrote outputs to {cfg.output_dir!s}")
 
 
-@hydra.main(config_path="../conf", config_name="generate_vllm", version_base=None)
+@hydra.main(config_path="../conf", config_name="generate", version_base=None)
 def main(cfg):
     generate(cfg)
 

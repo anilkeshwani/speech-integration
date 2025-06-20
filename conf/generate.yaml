@@ -1,15 +1,21 @@
 defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
   - common
-  - data: ???
+  - data: null # null as sentinel value -> load test data via hydra compose
 
 tokenizer:
-  max_seq_len: 2048
-
-generations_root_dir: /mnt/scratch-artemis/anilkeshwani/generations
+  max_seq_len: null # null implies no truncation by the tokenizer; can set to match training e.g. 768, 2048, or else
 
 model: ???
-output_dir: null
-output_filename: generations.jsonl
+
+# We're in the middle of replacing these...
+# output_dir: null
+# output_filename: generations.jsonl
+# generation_config_filename: generation_config.yaml
+
+gen:
+  output_dir: null
+  output_filename: generations.jsonl
+  output_config_filename: generation_config.yaml
 
 vllm_batch_size: 8
 
