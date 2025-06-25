@@ -1,3 +1,4 @@
+import json
 import os
 import pdb
 import sys
@@ -9,6 +10,7 @@ from typing import Any
 import torch
 from omegaconf import DictConfig, OmegaConf
 from torchtune.utils._import_guard import _SUPPORTS_FLEX_ATTENTION
+from wandb.apis.public.runs import Run
 
 
 if _SUPPORTS_FLEX_ATTENTION:
@@ -17,7 +19,8 @@ else:
     BlockMask = torch.Tensor
 
 
-def parse_model_path(model_dir: Path, experiments_root_dir: Path) -> dict[str, Any]:
+def _parse_model_path(model_dir: Path, experiments_root_dir: Path) -> dict[str, Any]:
+    """Parse a canonical model directory path according to internal conventions."""
     if not model_dir.is_relative_to(experiments_root_dir):
         raise ValueError(
             f"Model directory must be in the experiments root directory. "
@@ -44,6 +47,33 @@ def parse_model_path(model_dir: Path, experiments_root_dir: Path) -> dict[str, A
 def hash_cfg(cfg: DictConfig, length: int = 7) -> str:
     """Compute truncated SHA-256 hex hash of resolved and sorted DictConfig"""
     return sha256(OmegaConf.to_yaml(cfg, resolve=True, sort_keys=True).encode()).hexdigest()[:length]
+
+
+def sanitize_wandb_run_json_config(run_json_config: dict) -> dict:
+    """W&B format for top-level keys: {"key": {"desc": <str>, "value": <any>}}; "_wandb" field holds run metadata"""
+    return {k: v["value"] for k, v in run_json_config.items() if k != "_wandb"}
+
+
+def extract_wandb_run_cfg(run: Run) -> DictConfig:
+    """Extract a sanitised configuration from a W&B Run (wandb.apis.public.runs.Run) object."""
+    return OmegaConf.create(sanitize_wandb_run_json_config(json.loads(run.json_config)))
+
+
+def parse_hf_repo_id(repo_id: str) -> dict[str, str]:
+    """Parse a Hugging Face Repo ID and return a dictionary of metadata.
+
+    Arguments:
+        repo_id (str): The Hugging Face repository ID in the format "owner/<dataset>-<speech_encoder>-<encoder_layer>".
+
+    Returns:
+        dict[str, str]: A dictionary containing fields for dataset, speech_encoder, encoder_layer, repo_owner.
+
+    Example:
+        >>> parse_repo_id("anilkeshwani/mls-speechtokenizer-rvq_0")
+    """
+    owner, train_dataset_name = repo_id.split("/")
+    dataset, speech_encoder, encoder_layer = train_dataset_name.split("-")
+    return {"dataset": dataset, "speech_encoder": speech_encoder, "encoder_layer": encoder_layer, "repo_owner": owner}
 
 
 def info_excepthook(type, value, tb):
