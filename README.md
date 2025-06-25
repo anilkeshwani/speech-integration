@@ -132,12 +132,12 @@ Example call using SpeechTokenizer-encoded (RVQ 0) speech tokens:
 
 ```bash
 python scripts/train_cpt.py \
-    checkpointer.checkpoint_dir='/mnt/scratch-artemis/anilkeshwani/models/extended/Llama-3.2-1B-5000-dsus' \
+    checkpointer.checkpoint_dir="$(realpath "${HOME}/hafh/models/extended/Llama-3.2-1B-5000-dsus")" \
     checkpointer.checkpoint_files='["ft-model-00001-of-00001.safetensors"]' \
     optimizer.lr=0.0002 \
-    lr_scheduler.num_warmup_steps=1000 \
-    speech.deduplicate=false \
-    data=cpt_speechtokenizer
+    lr_scheduler.num_warmup_steps=0 \
+    speech.deduplicate=true \
+    data=cpt/mls-speechtokenizer-rvq_0
 ```
 
 To enable debugging output with Hydra, append:
@@ -157,12 +157,12 @@ srun \
     --gres=gpu:1 \
     --qos=gpu-medium \
     conda run --live-stream -n ssi-latest python scripts/train_cpt.py \
-        checkpointer.checkpoint_dir="${HOME}/hafh/models/extended/Llama-3.2-1B-5000-dsus" \
-        checkpointer.checkpoint_files="['ft-model-00001-of-00001.safetensors']" \
+        checkpointer.checkpoint_dir="$(realpath "${HOME}/hafh/models/extended/Llama-3.2-1B-5000-dsus")" \
+        checkpointer.checkpoint_files='["ft-model-00001-of-00001.safetensors"]' \
         optimizer.lr=0.0002 \
-        lr_scheduler.num_warmup_steps=1000 \
-        speech.deduplicate=false \
-        data=cpt_speechtokenizer
+        lr_scheduler.num_warmup_steps=0 \
+        speech.deduplicate=true \
+        data=cpt/mls-speechtokenizer-rvq_0
 ```
 
 Notes:
@@ -178,12 +178,12 @@ Example call:
 
 ```bash
 python scripts/train_sft.py \
-    checkpointer.checkpoint_dir='/mnt/scratch-artemis/anilkeshwani/models/extended/Llama-3.2-1B-5000-dsus' \
+    checkpointer.checkpoint_dir="$(realpath "${HOME}/hafh/models/extended/Llama-3.2-1B-5000-dsus")" \
     checkpointer.checkpoint_files='["ft-model-00001-of-00001.safetensors"]' \
     optimizer.lr=0.0002 \
     lr_scheduler.num_warmup_steps=1000 \
-    speech.deduplicate=false \
-    data=sft_hubert
+    speech.deduplicate=true \
+    data=cpt/mls-speechtokenizer-rvq_0
 ```
 
 ## Generation
