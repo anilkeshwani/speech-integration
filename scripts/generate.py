@@ -77,7 +77,7 @@ def generate(cfg: DictConfig) -> Path:
     # NOTE SFT dataset - Used for generation for now for flexibility - we can modify the system prompt and template
     #      dataset columns via a PromptTemplate class, which can be specified as a dictionary in the YAML
     data = DataLoader(
-        SFTDataset(model_tokenizer=tokenizer, **cfg.data.test.dataset),
+        SFTDataset(model_tokenizer=tokenizer, **cfg.data.test.dataset),  # TODO generation hard-coded to use test set
         batch_size=cfg.vllm_batch_size,
         collate_fn=lambda batch: [TokensPrompt(prompt_token_ids=sample["tokens"]) for sample in batch],
         shuffle=False,
