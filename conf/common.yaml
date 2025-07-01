@@ -4,7 +4,7 @@ defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
 
 # Speech-specific parameters - DSUs & Modality Tokens
 speech:
-  n_dsus: 5000
+  n_dsus: ???
   use_modality_tokens: True
   deduplicate: ???
 
