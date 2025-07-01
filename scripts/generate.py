@@ -89,8 +89,10 @@ def generate(cfg: DictConfig) -> Path:
     llm = LLM(model=cfg.model, skip_tokenizer_init=True)
     sampling_params = SamplingParams(**cfg.sampling_params)
     # Set up dataset- and configuration-specific output directory
-    cfg_hash = hash_cfg(cfg)
-    gen_output_dir = Path(cfg.gen.output_dir) / cfg.data.test.dataset.source / cfg_hash
+    _owner, test_dataset_name = (cfg.data.test.dataset.source).split("/")  # e.g. anilkeshwani/mls-speechtokenizer-rvq_0
+    gen_output_dir = Path(cfg.gen.output_dir) / test_dataset_name
+    if cfg.gen.use_cfg_hash_subdir:
+        gen_output_dir = gen_output_dir / hash_cfg(cfg)
     gen_output_dir.mkdir(parents=True, exist_ok=True)
     # Write generation parameters to a YAML file and log to console
     cfg_yaml_nosort = OmegaConf.to_yaml(cfg, resolve=True, sort_keys=False)

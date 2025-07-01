@@ -11,6 +11,7 @@ gen:
   output_dir: null
   output_filename: generations.jsonl
   output_config_filename: generation_config.yaml
+  use_cfg_hash_subdir: False
 
 vllm_batch_size: 8
 
