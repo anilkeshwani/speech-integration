@@ -46,3 +46,7 @@ python scripts/generate.py \
     speech.n_dsus=5000 \
     data=sft/mls-hubert_large_ll60k-layer_22
 ```
+
+## Extra
+
+There is a hacky script, [generation_launcher.sh](/snippets/generation_launcher.sh), to launch generation for all checkpoints in a given training run (for a given epoch) under [snippets](/snippets)
