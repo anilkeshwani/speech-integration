@@ -5,7 +5,9 @@ import logging
 from pathlib import Path
 
 import hydra
-from omegaconf import DictConfig, OmegaConf
+from hydra.core.global_hydra import GlobalHydra
+from hydra.core.hydra_config import HydraConfig
+from omegaconf import DictConfig, OmegaConf, open_dict
 from torch.utils.data import DataLoader
 from torchtune import training
 from tqdm import tqdm
@@ -14,13 +16,16 @@ from vllm.inputs.data import TokensPrompt
 from vllm.sequence import RequestMetrics
 
 from ssi._version import __version__
-from ssi.constants import SEED
+from ssi.constants import SEED, TORCHTUNE_CONFIG_FILENAME
 from ssi.data.sft import SFTDataset
 from ssi.tokenizer import setup_llama3_tokenizer
 from ssi.utils import hash_cfg
 
 
 LOGGER = logging.getLogger(__name__)
+
+# Constants (module-specific)
+TEST_CONFIG_GROUPS_SUBDIR: str = "data/sft"  # extracted to ease modification if conf/ directory structure changes
 
 
 def _resolve_gen_output_dir(cfg) -> str:
@@ -74,34 +79,34 @@ def generate(cfg: DictConfig) -> Path:
         cfg.gen.output_dir = _resolve_gen_output_dir(cfg)
     tokenizer, special_tokens = setup_llama3_tokenizer(**cfg.tokenizer)
     special_int2str = {v: k for k, v in special_tokens.items()}
+    # Set stop token IDs (in sampling_params) from tokenizer if not specified in config
+    if cfg.sampling_params.stop_token_ids is None:
+        cfg.sampling_params.stop_token_ids = [tokenizer.eom_id, tokenizer.eot_id, tokenizer.eos_id]
+    # Set dataset- and configuration-specific output directory - NOTE only after all config parameters are resolved
+    _owner, test_dataset_name = (cfg.data.test.dataset.source).split("/")  # e.g. anilkeshwani/mls-speechtokenizer-rvq_0
+    gen_output_dir = Path(cfg.gen.output_dir) / test_dataset_name
+    if cfg.gen.use_cfg_hash_subdir:
+        gen_output_dir = gen_output_dir / hash_cfg(cfg)
+    gen_output_dir.mkdir(parents=True, exist_ok=False)  # NOTE fail early if output directory already exists
+    # Write generation parameters to a YAML file and log to console
+    cfg_yaml_nosort = OmegaConf.to_yaml(cfg, resolve=True, sort_keys=False)
+    with open(gen_output_dir / cfg.gen.output_config_filename, "x") as f:
+        f.write(cfg_yaml_nosort)
+    LOGGER.info(cfg_yaml_nosort)
     # NOTE SFT dataset - Used for generation for now for flexibility - we can modify the system prompt and template
     #      dataset columns via a PromptTemplate class, which can be specified as a dictionary in the YAML
     data = DataLoader(
-        SFTDataset(model_tokenizer=tokenizer, **cfg.data.test.dataset),  # TODO generation hard-coded to use test set
+        SFTDataset(model_tokenizer=tokenizer, **cfg.data.test.dataset),  # NOTE generation hard-coded to use test set
         batch_size=cfg.vllm_batch_size,
         collate_fn=lambda batch: [TokensPrompt(prompt_token_ids=sample["tokens"]) for sample in batch],
         shuffle=False,
         drop_last=False,
     )
-    # vLLM SamplingParams & LLM initialization
-    if cfg.sampling_params.stop_token_ids is None:
-        cfg.sampling_params.stop_token_ids = [tokenizer.eom_id, tokenizer.eot_id, tokenizer.eos_id]
+    # vLLM SamplingParams & LLM initialization; NOTE deferred to allow early fail in open if output file exists
     llm = LLM(model=cfg.model, skip_tokenizer_init=True)
     sampling_params = SamplingParams(**cfg.sampling_params)
-    # Set up dataset- and configuration-specific output directory
-    _owner, test_dataset_name = (cfg.data.test.dataset.source).split("/")  # e.g. anilkeshwani/mls-speechtokenizer-rvq_0
-    gen_output_dir = Path(cfg.gen.output_dir) / test_dataset_name
-    if cfg.gen.use_cfg_hash_subdir:
-        gen_output_dir = gen_output_dir / hash_cfg(cfg)
-    gen_output_dir.mkdir(parents=True, exist_ok=True)
-    # Write generation parameters to a YAML file and log to console
-    cfg_yaml_nosort = OmegaConf.to_yaml(cfg, resolve=True, sort_keys=False)
-    with open(gen_output_dir / cfg.gen.output_config_filename, "x") as f:  # TODO put early check for output existence
-        f.write(cfg_yaml_nosort)
-    LOGGER.info(cfg_yaml_nosort)
-
     # Generate
-    with open(gen_output_dir / cfg.gen.output_filename, "x") as f:  # TODO put early check for output existence
+    with open(gen_output_dir / cfg.gen.output_filename, "x") as f:
         # TODO optionally refactor this to delegate batching to vLLM per their docs (generate all prompts upfront)
         for i, prompt_token_ids in enumerate(tqdm(data)):
             outputs: list[RequestOutput] = llm.generate(prompt_token_ids, sampling_params, use_tqdm=False)
@@ -131,6 +136,32 @@ def generate(cfg: DictConfig) -> Path:
 
 @hydra.main(config_path="../conf", config_name="generate", version_base=None)
 def main(cfg):
+    global_hydra = GlobalHydra.instance()
+    if not global_hydra.is_initialized():
+        raise RuntimeError("Hydra not initialized.")
+
+    if cfg.train_config is None:
+        cfg.train_config = Path(cfg.model).parents[1] / TORCHTUNE_CONFIG_FILENAME  # per internal ckpt convention
+
+    train_cfg = OmegaConf.load(cfg.train_config)
+
+    if cfg.speech.n_dsus is None:
+        cfg.speech.n_dsus = train_cfg.speech.n_dsus
+    if cfg.speech.deduplicate is None:
+        cfg.speech.deduplicate = train_cfg.speech.deduplicate
+
+    # NOTE cfg.speech options must be resolved before cfg.data due to interpolation in cfg.data fields
+    if cfg.get("data") is None:
+        config_sources = HydraConfig.get().runtime.config_sources  # calls HydraConfig.instance
+        config_source_main = Path([s.path for s in config_sources if s.provider == "main"].pop())
+        _owner, train_dataset = (train_cfg.data.train.dataset.source).split("/")  # HF repo ID
+        test_config_groups = global_hydra.config_loader().get_group_options(TEST_CONFIG_GROUPS_SUBDIR)
+        if train_dataset not in test_config_groups:
+            raise RuntimeError("Cannot find test dataset config.")
+        cfg_data_path = (config_source_main / TEST_CONFIG_GROUPS_SUBDIR / train_dataset).with_suffix(".yaml")
+        with open_dict(cfg):  # temporarily remove struct flag -> allow addition of new keys
+            cfg.data = OmegaConf.load(cfg_data_path)
+
     generate(cfg)
 
 
