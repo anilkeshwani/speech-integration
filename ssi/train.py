@@ -15,7 +15,6 @@ from torchtune import training
 from torchtune.modules.loss import CEWithChunkedOutputLoss
 from torchtune.training import get_dtype, scale_grads
 from torchtune.training.lr_schedulers import get_lr
-from torchtune.training.metric_logging import WandBLogger
 from torchtune.training.precision import PRECISION_STR_TO_DTYPE
 from torchtune.utils import batch_to_device, get_device
 from tqdm import tqdm
@@ -37,6 +36,7 @@ from ssi.eval import compute_dataset_loss
 from ssi.llama_configs import ConfigLlama3_2, configllama3_2_1b
 from ssi.loss import compute_loss
 from ssi.lr_schedule import setup_lr_scheduler
+from ssi.metric_logging import WandBLoggerPatched as WandBLogger
 from ssi.model import setup_llama3_2_1b
 from ssi.optimizer import setup_optimizer
 from ssi.tokenizer import setup_llama3_tokenizer
@@ -164,6 +164,7 @@ def train(cfg: DictConfig) -> None:
     steps_per_epoch = batches_per_epoch // cfg.gradient_accumulation_steps
     n_epochs = math.ceil(cfg.max_steps / steps_per_epoch)
     LOGGER.info(OmegaConf.to_yaml(cfg, resolve=True, sort_keys=False))
+    wandb_logger.log_config(cfg)  # log config after parameter resolution + overrides
     for epoch in range(epochs_run, n_epochs):
         sampler_train.set_epoch(epoch)  # distinct seed each epoch
         for i, batch in tqdm(enumerate(data_train), total=batches_per_epoch):  # type: ignore

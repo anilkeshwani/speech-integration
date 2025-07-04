@@ -79,3 +79,6 @@ LLAMA_3_2_PARAMS_RELPATH = Path("original", "params.json")
 # Llama 3.2 tokenizer
 LLAMA_BOS_TOKEN = "<|begin_of_text|>"
 LLAMA_EOS_TOKEN = "<|end_of_text|>"
+
+# Torchtune config
+TORCHTUNE_CONFIG_FILENAME = "torchtune_config.yaml"  # used by WandBLoggerPatched
