@@ -83,8 +83,8 @@ def generate(cfg: DictConfig) -> Path:
     if cfg.sampling_params.stop_token_ids is None:
         cfg.sampling_params.stop_token_ids = [tokenizer.eom_id, tokenizer.eot_id, tokenizer.eos_id]
     # Set dataset- and configuration-specific output directory - NOTE only after all config parameters are resolved
-    _owner, test_dataset_name = (cfg.data.test.dataset.source).split("/")  # e.g. anilkeshwani/mls-speechtokenizer-rvq_0
-    gen_output_dir = Path(cfg.gen.output_dir) / test_dataset_name
+    _owner, gen_dataset_name = (cfg.data[cfg.gen.split].dataset.source).split("/")  # HF repo ID format
+    gen_output_dir = Path(cfg.gen.output_dir) / gen_dataset_name / cfg.gen.split
     if cfg.gen.use_cfg_hash_subdir:
         gen_output_dir = gen_output_dir / hash_cfg(cfg)
     gen_output_dir.mkdir(parents=True, exist_ok=False)  # NOTE fail early if output directory already exists
@@ -96,7 +96,7 @@ def generate(cfg: DictConfig) -> Path:
     # NOTE SFT dataset - Used for generation for now for flexibility - we can modify the system prompt and template
     #      dataset columns via a PromptTemplate class, which can be specified as a dictionary in the YAML
     data = DataLoader(
-        SFTDataset(model_tokenizer=tokenizer, **cfg.data.test.dataset),  # NOTE generation hard-coded to use test set
+        SFTDataset(model_tokenizer=tokenizer, **cfg.data[cfg.gen.split].dataset),
         batch_size=cfg.vllm_batch_size,
         collate_fn=lambda batch: [TokensPrompt(prompt_token_ids=sample["tokens"]) for sample in batch],
         shuffle=False,
