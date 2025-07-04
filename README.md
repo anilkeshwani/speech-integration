@@ -178,12 +178,13 @@ Example call:
 
 ```bash
 python scripts/train_sft.py \
-    checkpointer.checkpoint_dir="$(realpath "${HOME}/hafh/models/extended/Llama-3.2-1B-5000-dsus")" \
+    checkpointer.checkpoint_dir="$(realpath "${HOME}/hafh/models/extended/Llama-3.2-1B-1024-dsus")" \
     checkpointer.checkpoint_files='["ft-model-00001-of-00001.safetensors"]' \
     optimizer.lr=0.0002 \
     lr_scheduler.num_warmup_steps=1000 \
+    speech.n_dsus=1024 \
     speech.deduplicate=true \
-    data=cpt/mls-speechtokenizer-rvq_0
+    data=sft/mls-speechtokenizer-rvq_0
 ```
 
 ## Generation
