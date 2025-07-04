@@ -19,7 +19,7 @@ for file in $(find "${dir}" -mindepth 1 -maxdepth 1 -type d -exec stat --format=
         echo "Skipping wandb directory: ${file}"
         continue
     fi
-    echo "Processing directory: ${file#"${EXP_DIR}"}"
+    echo "Launching Slurm generation job for model: ${file#"${EXP_DIR}"}"
     # Create a new tmux window for each generation task w/ checkpoint directory (minus experiment dir) as window name
     tmux new-window -d -t ${TMUX_SESSION_NAME} -n "generation-${file}" -- bash -c "
         srun --partition a6000 --time=${SLURM_TIME} --qos=${SLURM_QOS} --gres=gpu:1 \
