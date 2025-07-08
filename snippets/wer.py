@@ -1,21 +1,19 @@
+#!/usr/bin/env python
+
 import json
 import logging
+from argparse import ArgumentParser, Namespace
 from pathlib import Path
 
-import hydra
 from datasets import load_dataset
 from evaluate import load
-from omegaconf import DictConfig, OmegaConf
 from whisper_normalizer.english import EnglishTextNormalizer
 
 
 LOGGER = logging.getLogger(__name__)
 
-
-def validate_wer_config(cfg: DictConfig) -> None:
-    missing_keys = OmegaConf.missing_keys(cfg)
-    if missing_keys:
-        raise ValueError(f"Missing keys in config: {missing_keys}")
+HF_REPO_OWNER = "anilkeshwani"
+TRANSCRIPTS_COLNAME = "transcript"
 
 
 def extract_texts_from_generations_jsonl(generations_jsonl: Path) -> list[str]:
@@ -31,31 +29,38 @@ def extract_texts_from_generations_jsonl(generations_jsonl: Path) -> list[str]:
     return texts
 
 
-def ref_from_hf_dataset(cfg_dataset: DictConfig) -> list[str]:
-    ds = load_dataset(cfg_dataset.source, split=cfg_dataset.split)
-    return list(ds[cfg_dataset.column_map.output])  # "output" maps to the GT text
+def ref_from_generation_path(generations_jsonl: Path) -> list[str]:
+    split, repo_name = [par.name for par in generations_jsonl.parents[:2]]
+    ds = load_dataset(f"{HF_REPO_OWNER}/{repo_name}", split=split)
+    return list(ds[TRANSCRIPTS_COLNAME])  # GT text
 
 
-@hydra.main(version_base=None, config_path="../conf", config_name="wer")
-def main(cfg: DictConfig) -> None:
+def main(args: Namespace) -> None:
     wer_metric = load("wer")
-    generations_jsonl = Path(cfg.generations_jsonl)
+    generations_jsonl = Path(args.generations_jsonl)
     generated = extract_texts_from_generations_jsonl(generations_jsonl)
-    reference = ref_from_hf_dataset(cfg.data.dev.dataset)
-    if cfg.normalizer == "whisper":
+    reference = ref_from_generation_path(args.generations_jsonl)
+    if args.normalizer == "whisper":
         english_normalizer = EnglishTextNormalizer()  # TODO update for other languages
         generated = [english_normalizer(text) for text in generated]
         reference = [english_normalizer(text) for text in reference]
-    elif cfg.normalizer is None:
+    elif args.normalizer is None:
         LOGGER.info("No normalizer specified, skipping text normalization.")
     else:
-        raise NotImplementedError(f"Unsupported normalizer: {cfg.normalizer}. Supported: 'whisper' or None (null).")
+        raise NotImplementedError(f"Unsupported normalizer: {args.normalizer}. Supported: 'whisper' or None (null).")
     wer = wer_metric.compute(predictions=generated, references=reference)
     wer_json = generations_jsonl.parent / "wer.json"
-    with open(wer_json, "w") as f:
+    with open(wer_json, "x") as f:
         json.dump({"wer": wer}, f, indent=4)
     LOGGER.info(f"WER: {wer:.3f}. Saved to {wer_json!s}")
 
 
+def parse_args() -> Namespace:
+    parser = ArgumentParser(description="Compute WER from generated text.")
+    parser.add_argument("generations_jsonl", type=Path, help="Path to the JSONL file containing generations.")
+    parser.add_argument("--normalizer", type=str, default="whisper", help="Text normalizer. Default: 'whisper'")
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    main()
+    main(parse_args())
