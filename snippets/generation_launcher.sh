@@ -9,11 +9,15 @@ CONDA_ENV='ssi-dev'            # Conda environment to use for generation
 SLURM_TIME='01:00:00'
 SLURM_QOS='gpu-short'
 
-# Command line argument (mandatory)
-dir="$1" # directory containing HF model directories; HINT usually has basename epoch_0 or epoch_{N} for some N
+# # Command line argument (mandatory)
+# dir="$1" # directory containing HF model directories; HINT usually has basename epoch_0 or epoch_{N} for some N
 
+# # Iterate over directories sorted by creation time - apparently find is safer than ls
+# for file in $(find "${dir}" -mindepth 1 -maxdepth 1 -type d -exec stat --format='%W %n' {} + | sort -n | awk '{print $2}'); do
+
+idx_job=0 # index for job naming
 # Iterate over directories sorted by creation time - apparently find is safer than ls
-for file in $(find "${dir}" -mindepth 1 -maxdepth 1 -type d -exec stat --format='%W %n' {} + | sort -n | awk '{print $2}'); do
+for file in $(find "${EXP_DIR}" -type d -name 'global_step*' -exec stat --format='%W %n' {} + | grep -v 'generations' | sort -n | awk '{print $2}'); do
     # Skip the wandb/ directory
     if [[ "$(basename "${file}")" == "wandb" ]]; then
         echo "Skipping wandb directory: ${file}"
@@ -28,4 +32,9 @@ for file in $(find "${dir}" -mindepth 1 -maxdepth 1 -type d -exec stat --format=
                 model=${file}
         exec bash"
     sleep 1 # sleep to not overwhelm Slurm or tmux
+    idx_job=$((idx_job + 1))
+    if ((idx_job % 4 == 0)); then
+        echo "Launched ${idx_job} generation jobs, sleeping for 20 minutes..."
+        sleep 1200 # sleep to not overwhelm Slurm or tmux
+    fi
 done
