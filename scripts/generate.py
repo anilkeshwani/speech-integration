@@ -141,7 +141,7 @@ def main(cfg):
         raise RuntimeError("Hydra not initialized.")
 
     if cfg.train_config is None:
-        cfg.train_config = Path(cfg.model).parents[1] / TORCHTUNE_CONFIG_FILENAME  # per internal ckpt convention
+        cfg.train_config = Path(cfg.model) / TORCHTUNE_CONFIG_FILENAME  # path per monkeypatched WandBLoggerPatched
 
     train_cfg = OmegaConf.load(cfg.train_config)
 
