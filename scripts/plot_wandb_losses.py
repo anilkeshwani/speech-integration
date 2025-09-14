@@ -45,12 +45,33 @@ def fetch_wandb_run(run_id=None, entity=None, project=None):
     return api.run(f"{entity}/{project}/{run_id}")
 
 
+def extract_run_metadata(run):
+    """Extract learning rate, warmup steps, and dataset from run config."""
+    config = run.config
+
+    # Extract learning rate
+    lr = config.get("optimizer", {}).get("lr", "Unknown")
+
+    # Extract warmup steps
+    warmup_steps = config.get("lr_scheduler", {}).get("num_warmup_steps", "Unknown")
+
+    # Extract dataset
+    dataset_source = "Unknown"
+    if "data" in config and "train" in config["data"] and "dataset" in config["data"]["train"]:
+        dataset_source = config["data"]["train"]["dataset"].get("source", "Unknown")
+
+    return lr, warmup_steps, dataset_source
+
+
 def plot_losses(run, output_dir, ext="png"):
     """Plot dev_loss and loss from W&B run history and save to file."""
     history = run.history(keys=["dev_loss", "loss"])
-    breakpoint()
     steps = history["step"] if "step" in history else range(len(history))
-    plt.figure(figsize=(10, 6))
+
+    # Extract metadata
+    lr, warmup_steps, dataset = extract_run_metadata(run)
+
+    plt.figure(figsize=(12, 8))
     if "loss" in history:
         plt.plot(steps, history["loss"], label="loss")
     if "dev_loss" in history:
@@ -59,10 +80,25 @@ def plot_losses(run, output_dir, ext="png"):
     plt.ylabel("Loss")
     plt.title(f"Losses for W&B run: {run.name}")
     plt.legend()
+
+    # Add metadata text box in the plot
+    metadata_text = f"LR: {lr}\nWarmup Steps: {warmup_steps}\nDataset: {dataset}"
+    plt.text(
+        0.98,
+        0.85,
+        metadata_text,
+        transform=plt.gca().transAxes,
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.8),
+        verticalalignment="top",
+        horizontalalignment="right",
+        fontsize=10,
+    )
+
     plt.tight_layout()
     out_path = Path(output_dir) / f"run_losses_plot.{ext}"
     plt.savefig(str(out_path))
     print(f"Plot saved to {out_path}")
+    print(f"Run metadata - LR: {lr}, Warmup Steps: {warmup_steps}, Dataset: {dataset}")
     plt.close()
 
 
