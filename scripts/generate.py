@@ -16,7 +16,13 @@ from vllm.inputs.data import TokensPrompt
 from vllm.sequence import RequestMetrics
 
 from ssi._version import __version__
-from ssi.constants import SEED, TORCHTUNE_CONFIG_FILENAME
+from ssi.constants import (
+    N_DSUS_DEFAULT,
+    SEED,
+    SPEECH_DEDUPLICATE_DEFAULT,
+    SUPPORTED_DATASETS,
+    TORCHTUNE_CONFIG_FILENAME,
+)
 from ssi.data.sft import SFTDataset
 from ssi.tokenizer import setup_llama3_tokenizer
 from ssi.utils import hash_cfg
@@ -88,6 +94,9 @@ def generate(cfg: DictConfig) -> Path:
     if cfg.gen.use_cfg_hash_subdir:
         gen_output_dir = gen_output_dir / hash_cfg(cfg)
     gen_output_dir.mkdir(parents=True, exist_ok=False)  # NOTE fail early if output directory already exists
+    if not cfg.data[cfg.gen.split].dataset.inference:
+        cfg.data[cfg.gen.split].dataset.inference = True
+        LOGGER.warning("Auto-setting dataset to inference mode.")
     # Write generation parameters to a YAML file and log to console
     cfg_yaml_nosort = OmegaConf.to_yaml(cfg, resolve=True, sort_keys=False)
     with open(gen_output_dir / cfg.gen.output_config_filename, "x") as f:
@@ -140,24 +149,51 @@ def main(cfg):
     if not global_hydra.is_initialized():
         raise RuntimeError("Hydra not initialized.")
 
-    if cfg.train_config is None:
-        cfg.train_config = Path(cfg.model) / TORCHTUNE_CONFIG_FILENAME  # path per monkeypatched WandBLoggerPatched
+    if cfg.train_yaml is None:
+        train_cfg_canon = Path(cfg.model) / TORCHTUNE_CONFIG_FILENAME  # per monkeypatch WandBLoggerPatched
+        train_cfg_imputed = Path(cfg.model).parents[1] / TORCHTUNE_CONFIG_FILENAME  # imputed post hoc from W&B
+        if train_cfg_canon.exists():
+            train_cfg = OmegaConf.load(train_cfg_canon)
+            LOGGER.info(f"Loaded training config from {train_cfg_canon!s}")
+        elif train_cfg_imputed.exists():
+            train_cfg = OmegaConf.load(train_cfg_imputed)
+            LOGGER.warning(f"Loaded training config from {train_cfg_imputed!s}")
+        else:
+            raise RuntimeError(
+                f"Could not find training config file {TORCHTUNE_CONFIG_FILENAME} at the following locations:\n"
+                f"  - {train_cfg_canon}\n"
+                f"  - {train_cfg_imputed}\n"
+                "Explicitly pass the path to the YAML file containing the training configuration."
+            )
 
-    train_cfg = OmegaConf.load(cfg.train_config)
-
+    # Set speech-related config params from training config if unset; fall back to defaults for backwards compatibility
     if cfg.speech.n_dsus is None:
-        cfg.speech.n_dsus = train_cfg.speech.n_dsus
+        if "speech" in train_cfg:
+            cfg.speech.n_dsus = train_cfg.speech.n_dsus
+            LOGGER.info(f"Auto-setting cfg.speech.n_dsus to {cfg.speech.n_dsus} from training config.")
+        else:
+            cfg.speech.n_dsus = N_DSUS_DEFAULT
+            LOGGER.warning(f"Defaulting cfg.speech.n_dsus to default value of {N_DSUS_DEFAULT}.")
     if cfg.speech.deduplicate is None:
-        cfg.speech.deduplicate = train_cfg.speech.deduplicate
+        if "speech" in train_cfg:
+            cfg.speech.deduplicate = train_cfg.speech.deduplicate
+            LOGGER.info(f"Auto-setting cfg.speech.deduplicate to {cfg.speech.deduplicate} from training config.")
+        else:
+            cfg.speech.deduplicate = SPEECH_DEDUPLICATE_DEFAULT
+            LOGGER.warning(f"Defaulting cfg.speech.deduplicate to default value of {SPEECH_DEDUPLICATE_DEFAULT}.")
 
     # NOTE cfg.speech options must be resolved before cfg.data due to interpolation in cfg.data fields
     if cfg.get("data") is None:
         config_sources = HydraConfig.get().runtime.config_sources  # calls HydraConfig.instance
         config_source_main = Path([s.path for s in config_sources if s.provider == "main"].pop())
         _owner, train_dataset = (train_cfg.data.train.dataset.source).split("/")  # HF repo ID
+        if train_dataset == "MLS_english_train_strat_sample_aligned_hubert":
+            raise NotImplementedError("Legacy MLS dataset deprecated. Supported datasets: " f"{SUPPORTED_DATASETS}")
+        if train_dataset.split("-")[0] not in SUPPORTED_DATASETS:
+            raise RuntimeError(f"Unsupported dataset for generation: {train_dataset}")
         test_config_groups = global_hydra.config_loader().get_group_options(TEST_CONFIG_GROUPS_SUBDIR)
         if train_dataset not in test_config_groups:
-            raise RuntimeError("Cannot find test dataset config.")
+            raise RuntimeError(f"Cannot find test dataset config {train_dataset} amongst {test_config_groups}.")
         cfg_data_path = (config_source_main / TEST_CONFIG_GROUPS_SUBDIR / train_dataset).with_suffix(".yaml")
         with open_dict(cfg):  # temporarily remove struct flag -> allow addition of new keys
             cfg.data = OmegaConf.load(cfg_data_path)

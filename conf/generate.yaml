@@ -12,7 +12,7 @@ tokenizer:
   max_seq_len: null # null implies no truncation by the tokenizer; can set to match training e.g. 768, 2048, or else
 
 model: ???
-train_config: null # training config YAML; null resolves to model/../../torchtune_config.yaml per internal convention
+train_yaml: null # training config YAML; null resolves to model/../../torchtune_config.yaml per internal convention
 
 gen:
   output_dir: null
