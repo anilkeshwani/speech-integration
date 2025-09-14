@@ -25,7 +25,9 @@ HF_OWNER: str = "anilkeshwani"  # Hugging Face owner for datasets and models
 SUPPORTED_DTYPES: set[torch.dtype] = {torch.float32, torch.bfloat16}
 
 # W&B
-DEBUGGING_TAG: str = "trial-run"  # W&B tag for trial runs
+DEBUGGING_TAG: str = "trial-run"  # W&B tag for trial runs run under qos-debug Slurm QoS
+WANDB_ENTITY_DEFAULT: str = "anilkeshwani"
+WANDB_PROJECT_DEFAULT: str = "speech-integration"
 
 # Defaults used before these became experimentation parameters
 N_DSUS_DEFAULT: int = 5_000  # Default number of DSUs
