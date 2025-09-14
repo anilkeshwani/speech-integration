@@ -30,14 +30,14 @@ Specify the call as for CPT but using `scripts/train_sft.py` in place of `script
 Example call:
 
 ```bash
-python scripts/train_sft.py \
-    checkpointer.checkpoint_dir="$(realpath "${HOME}/hafh/models/extended/Llama-3.2-1B-1024-dsus")" \
+conda run --live-stream -n ssi-latest python scripts/train_sft.py \
+    checkpointer.checkpoint_dir="$(realpath "${HOME}/hafh/models/extended/Llama-3.2-1B-2048-dsus")" \
     checkpointer.checkpoint_files='["ft-model-00001-of-00001.safetensors"]' \
     optimizer.lr=0.0002 \
     lr_scheduler.num_warmup_steps=1000 \
-    speech.n_dsus=1024 \
     speech.deduplicate=true \
-    data=sft/mls-speechtokenizer-rvq_0
+    speech.n_dsus=2048 \
+    data=sft/mls-mimi-srvq_0
 ```
 
 ## Running with Slurm (e.g. on Sardine)
@@ -52,13 +52,14 @@ srun \
     --time=48:00:00 \
     --gres=gpu:1 \
     --qos=gpu-medium \
-    conda run --live-stream -n ssi-latest python scripts/train_cpt.py \
-        checkpointer.checkpoint_dir="$(realpath "${HOME}/hafh/models/extended/Llama-3.2-1B-5000-dsus")" \
+    conda run --live-stream -n ssi-latest python scripts/train_sft.py \
+        checkpointer.checkpoint_dir="$(realpath "${HOME}/hafh/models/extended/Llama-3.2-1B-2048-dsus")" \
         checkpointer.checkpoint_files='["ft-model-00001-of-00001.safetensors"]' \
         optimizer.lr=0.0002 \
-        lr_scheduler.num_warmup_steps=0 \
+        lr_scheduler.num_warmup_steps=1000 \
         speech.deduplicate=true \
-        data=cpt/mls-speechtokenizer-rvq_0
+        speech.n_dsus=2048 \
+        data=sft/mls-mimi-srvq_0
 ```
 
 Notes:
