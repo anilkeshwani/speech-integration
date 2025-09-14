@@ -6,6 +6,7 @@ from typing import Any, Callable, Mapping, Optional
 import datasets
 import numpy as np
 from datasets import load_dataset
+from sardalign.constants import MODALITY_TOKEN_SPEECH, MODALITY_TOKEN_TEXT
 from sardalign.utils import dsu2pua
 from torch.utils.data import Dataset
 from torchtune.data import Message
@@ -111,6 +112,7 @@ class SFTDataset(Dataset):
         model_tokenizer: Llama3Tokenizer,
         inference: bool = False,
         deduplicate: bool,
+        use_modality_tokens: bool,
         filter_fn: Optional[Callable] = None,
         train_on_input: bool,
         column_map: Optional[dict[str, str]] = None,
@@ -135,6 +137,7 @@ class SFTDataset(Dataset):
             self._data = self._data.filter(filter_fn)
         self._inference = inference
         self._deduplicate = deduplicate
+        self._use_modality_tokens = use_modality_tokens
         self.additional_keys = additional_keys
 
     @property
@@ -154,8 +157,18 @@ class SFTDataset(Dataset):
     @deduplicate.setter
     def deduplicate(self, value: bool) -> None:
         if not isinstance(value, bool):
-            raise ValueError("deduplicate must be a boolean.")
+            raise TypeError("deduplicate must be a boolean.")
         self._deduplicate = value
+
+    @property
+    def use_modality_tokens(self) -> bool:
+        return self._use_modality_tokens
+
+    @use_modality_tokens.setter
+    def use_modality_tokens(self, value: bool) -> None:
+        if not isinstance(value, bool):
+            raise TypeError("use_modality_tokens must be a boolean.")
+        self._use_modality_tokens = value
 
     def __len__(self):
         return len(self._data)
@@ -165,7 +178,12 @@ class SFTDataset(Dataset):
         return self._prepare_sample(sample) | {k: sample[k] for k in self.additional_keys}
 
     def _prepare_sample(self, sample: Mapping[str, Any]) -> dict[str, Any]:
-        transformed_sample = self._message_transform(sample, self._deduplicate, self._inference)
+        transformed_sample = self._message_transform(
+            sample,
+            deduplicate=self._deduplicate,
+            use_modality_tokens=self._use_modality_tokens,
+            inference=self._inference,
+        )
         if "messages" in transformed_sample:
             validate_messages(transformed_sample["messages"])
 
@@ -255,7 +273,14 @@ class InputOutputToMessages:
             )
         self.image_dir = image_dir
 
-    def __call__(self, sample: Mapping[str, Any], deduplicate: bool, inference: bool) -> Mapping[str, Any]:
+    def __call__(
+        self,
+        sample: Mapping[str, Any],
+        *,
+        deduplicate: bool,
+        use_modality_tokens: bool,
+        inference: bool,
+    ) -> Mapping[str, Any]:
         is_multimodal = "image" in sample or ("image" in self.column_map and self.column_map["image"] in sample)
         if is_multimodal:
             image_path = sample[self.column_map["image"]]
@@ -277,7 +302,11 @@ class InputOutputToMessages:
             sp_tkns = sample[self.column_map["input"]]
             if deduplicate:
                 sp_tkns = [k for k, g in groupby(sp_tkns)]
-            content = [{"type": "text", "content": "".join(map(dsu2pua, sp_tkns))}]
+            sp_span = "".join(map(dsu2pua, sp_tkns))
+            if use_modality_tokens:
+                # NOTE assumes text follows -> reasonable given following tokens are next message header
+                sp_span = MODALITY_TOKEN_SPEECH + sp_span + MODALITY_TOKEN_TEXT
+            content = [{"type": "text", "content": sp_span}]
         if inference:
             output_content = [{"type": "text", "content": ""}]  # NOTE return empty output for inference i.e. generation
         else:
