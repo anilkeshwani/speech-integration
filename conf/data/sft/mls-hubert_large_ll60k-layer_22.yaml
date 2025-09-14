@@ -11,6 +11,7 @@ train:
       output: transcript
     new_system_prompt: "You will act as an automatic speech recognition (ASR) system. Transcribe the speech tokens into English text."
     image_dir: null
+    use_modality_tokens: ${speech.use_modality_tokens}
     # SFTDataset kwargs passed to datasets.load_dataset
     split: train
   dataloader:
@@ -32,6 +33,7 @@ dev:
       output: transcript
     new_system_prompt: "You will act as an automatic speech recognition (ASR) system. Transcribe the speech tokens into English text."
     image_dir: null
+    use_modality_tokens: ${speech.use_modality_tokens}
     # SFTDataset kwargs passed to datasets.load_dataset
     split: validation # <- NOTE different from train
   dataloader:
@@ -53,6 +55,7 @@ test:
       output: transcript
     new_system_prompt: "You will act as an automatic speech recognition (ASR) system. Transcribe the speech tokens into English text."
     image_dir: null
+    use_modality_tokens: ${speech.use_modality_tokens}
     # SFTDataset kwargs passed to datasets.load_dataset
     split: test
     # # NOTE Add dataset.additional_keys if required; current WER computation relies on sample order -> ID not required
