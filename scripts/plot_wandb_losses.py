@@ -10,9 +10,9 @@ Requires:
     wandb
     matplotlib
 """
-import os
 import re
 import sys
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import wandb
@@ -20,12 +20,10 @@ import wandb
 
 def extract_run_info(path):
     """Extract W&B run name and run id from the given path."""
-    # Example path:
-    # /mnt/scratch-artemis/anilkeshwani/experiments/Llama-3.2-1B-5000-dsus-sft/hopeful-sound-525-id_5plc1ikb/generations
-    parts = os.path.normpath(path).split(os.sep)
-    if len(parts) < 2:
+    p = Path(path)
+    if len(p.parts) < 2:
         raise ValueError("Path too short to extract run info.")
-    run_name = parts[-2]
+    run_name = p.parts[-2]
     # Try to extract run id from run_name (e.g., hopeful-sound-525-id_5plc1ikb)
     match = re.search(r"id_([a-zA-Z0-9]+)", run_name)
     run_id = match.group(1) if match else None
@@ -66,8 +64,8 @@ def plot_losses(run, output_dir, ext="png"):
     plt.title(f"Losses for W&B run: {run.name}")
     plt.legend()
     plt.tight_layout()
-    out_path = os.path.join(output_dir, f"run_losses_plot.{ext}")
-    plt.savefig(out_path)
+    out_path = Path(output_dir) / f"run_losses_plot.{ext}"
+    plt.savefig(str(out_path))
     print(f"Plot saved to {out_path}")
     plt.close()
 
