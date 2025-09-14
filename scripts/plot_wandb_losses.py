@@ -13,14 +13,27 @@ Requires:
 
 import argparse
 import json
+import logging
 import os
 import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import wandb
+from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
 
 from ssi.constants import WANDB_ENTITY_DEFAULT, WANDB_PROJECT_DEFAULT
+
+
+logging.basicConfig(
+    format=LOG_FORMAT,
+    datefmt=LOG_DATEFMT,
+    level=os.environ.get("LOG_LEVEL", LOG_LEVEL).upper(),
+    stream=sys.stdout,
+    force=True,
+)
+
+LOGGER = logging.getLogger(__name__)
 
 
 def extract_run_info(generations_dir: Path):
@@ -56,7 +69,7 @@ def extract_wer_data(generations_dir: Path, dataset: str, split: str = "dev") ->
                     if wer_value is not None:
                         wer_data.append((step_num, wer_value))
         except (ValueError, json.JSONDecodeError, KeyError) as e:
-            print(f"Warning: Could not parse WER data from {step_dir}: {e}")
+            LOGGER.warning(f"Could not parse WER data from {step_dir}: {e}")
 
     # Sort by step number
     wer_data.sort(key=lambda x: x[0])
@@ -132,10 +145,10 @@ def plot_losses(run: wandb.apis.public.Run, output_dir: str, generations_dir: Pa
     plt.tight_layout()
     out_path = Path(output_dir) / f"run_losses_plot.{ext}"
     plt.savefig(str(out_path))
-    print(f"Plot saved to {out_path}")
-    print(f"Run metadata - LR: {lr}, Warmup Steps: {warmup_steps}, Dataset: {dataset}")
+    LOGGER.info(f"Plot saved to {out_path}")
+    LOGGER.info(f"Run metadata - LR: {lr}, Warmup Steps: {warmup_steps}, Dataset: {dataset}")
     if wer_data:
-        print(f"Found {len(wer_data)} WER data points")
+        LOGGER.info(f"Found {len(wer_data)} WER data points")
     plt.close()
 
 
@@ -152,14 +165,14 @@ def main():
     args = parser.parse_args()
 
     run_name, run_id = extract_run_info(args.experiment_path)
-    print(f"Extracted run_name: {run_name}, run_id: {run_id}")
+    LOGGER.info(f"Extracted run_name: {run_name}, run_id: {run_id}")
     entity = os.environ.get("WANDB_ENTITY", WANDB_ENTITY_DEFAULT)
     project = os.environ.get("WANDB_PROJECT", WANDB_PROJECT_DEFAULT)
     output_dir = args.output_dir or str(Path(args.experiment_path).parent)
     try:
         run = fetch_wandb_run(run_id=run_id, entity=entity, project=project)
     except Exception as e:
-        print(f"Error fetching W&B run: {e}")
+        LOGGER.error(f"Error fetching W&B run: {e}")
         sys.exit(1)
     plot_losses(run, output_dir, args.experiment_path, args.ext)
 
