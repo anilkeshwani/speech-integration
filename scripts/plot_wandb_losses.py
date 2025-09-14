@@ -4,7 +4,7 @@ Plot dev_loss and train_loss metrics from a W&B training run given a path like:
 /mnt/scratch-artemis/anilkeshwani/experiments/Llama-3.2-1B-5000-dsus-sft/hopeful-sound-525-id_5plc1ikb/generations
 
 Usage:
-    python scripts/plot_wandb_losses.py /path/to/experiment/run/generations
+    python scripts/plot_wandb_losses.py /path/to/experiment/run/generations /path/to/output_dir [ext]
 
 Requires:
     wandb
@@ -52,8 +52,8 @@ def fetch_wandb_run(run_id=None, run_name=None, entity=None, project=None):
         raise ValueError("Must provide run_id or run_name.")
 
 
-def plot_losses(run):
-    """Plot dev_loss and train_loss from W&B run history."""
+def plot_losses(run, output_dir, ext="png"):
+    """Plot dev_loss and train_loss from W&B run history and save to file."""
     history = run.history(keys=["dev_loss", "train_loss"])
     steps = history["step"] if "step" in history else range(len(history))
     plt.figure(figsize=(10, 6))
@@ -66,14 +66,21 @@ def plot_losses(run):
     plt.title(f"Losses for W&B run: {run.name}")
     plt.legend()
     plt.tight_layout()
-    plt.show()
+    out_path = os.path.join(output_dir, f"run_losses_plot.{ext}")
+    plt.savefig(out_path)
+    print(f"Plot saved to {out_path}")
+    plt.close()
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python scripts/plot_wandb_losses.py /path/to/experiment/run/generations")
+    if len(sys.argv) < 3:
+        print(
+            "Usage: python scripts/plot_wandb_losses.py /path/to/experiment/run/generations /path/to/output_dir [ext]"
+        )
         sys.exit(1)
     path = sys.argv[1]
+    output_dir = sys.argv[2]
+    ext = sys.argv[3] if len(sys.argv) > 3 else "png"
     run_name, run_id = extract_run_info(path)
     print(f"Extracted run_name: {run_name}, run_id: {run_id}")
     # You may need to set your W&B entity and project below
@@ -84,7 +91,7 @@ def main():
     except Exception as e:
         print(f"Error fetching W&B run: {e}")
         sys.exit(1)
-    plot_losses(run)
+    plot_losses(run, output_dir, ext)
 
 
 if __name__ == "__main__":
