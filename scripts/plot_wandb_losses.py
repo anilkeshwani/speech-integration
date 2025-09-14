@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import wandb
 from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
 
@@ -106,57 +107,78 @@ def plot_losses(run: wandb.apis.public.Run, output_dir: str, generations_dir: Pa
     # Extract WER data
     wer_data = extract_wer_data(generations_dir, dataset=ds_name)
     wer_steps, wer_values = zip(*wer_data) if wer_data else ([], [])
+    # Convert WER to percentage
+    wer_values_pct = [v * 100 for v in wer_values] if wer_values else []
 
-    fig, ax1 = plt.subplots(figsize=(12, 8))
+    # Create both linear and log scale plots
+    for scale_type in ["linear", "log"]:
+        fig, ax1 = plt.subplots(figsize=(12, 8))
 
-    # Plot losses on primary y-axis
-    lines = []
-    if "loss" in history:
-        line1 = ax1.plot(steps, history["loss"], label="loss", color="blue")
-        lines.extend(line1)
-    if "dev_loss" in history:
-        line2 = ax1.plot(steps, history["dev_loss"], label="dev_loss", color="orange")
-        lines.extend(line2)
-    ax1.set_xlabel("Step")
-    ax1.set_ylabel("Loss", color="black")
-    ax1.tick_params(axis="y")
+        # Plot losses on primary y-axis
+        lines = []
+        if "loss" in history:
+            line1 = ax1.plot(steps, history["loss"], label="loss", color="blue")
+            lines.extend(line1)
+        if "dev_loss" in history:
+            line2 = ax1.plot(steps, history["dev_loss"], label="dev_loss", color="orange")
+            lines.extend(line2)
+        ax1.set_xlabel("Step")
+        ax1.set_ylabel("Loss", color="black")
+        ax1.tick_params(axis="y")
 
-    # Plot WER on secondary y-axis
-    if wer_data:
-        ax2 = ax1.twinx()
-        scat = ax2.scatter(wer_steps, wer_values, color="red", alpha=0.7, s=30, label="WER")
-        ax2.set_ylabel("WER", color="red")
-        ax2.tick_params(axis="y", labelcolor="red")
+        # Set log scale if requested
+        if scale_type == "log":
+            ax1.set_yscale("log")
+            # Use explicit number formatting instead of scientific notation
+            ax1.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: f"{x:.3g}"))
 
-        # Combine all legend elements
-        labels = [l.get_label() for l in lines] + ["WER"]
-        ax1.legend(lines + [scat], labels, loc="upper right")
-    else:
-        ax1.legend(loc="upper right")
+        # Plot WER on secondary y-axis
+        if wer_data:
+            ax2 = ax1.twinx()
+            scat = ax2.scatter(wer_steps, wer_values_pct, color="red", alpha=0.7, s=30, label="WER")
+            ax2.set_ylabel("Word Error Rate (%)", color="red")
+            ax2.tick_params(axis="y", labelcolor="red")
 
-    plt.title(f"Losses and WER for W&B run: {run.name}")
+            # Set log scale for WER axis if requested
+            if scale_type == "log":
+                ax2.set_yscale("log")
+                # Use explicit number formatting for WER axis too
+                ax2.yaxis.set_major_formatter(
+                    ticker.FuncFormatter(lambda x, p: f"{x:.3g}")
+                )  # Combine all legend elements
+            labels = [line.get_label() for line in lines] + ["WER"]
+            ax1.legend(lines + [scat], labels, loc="upper right")
+        else:
+            ax1.legend(loc="upper right")
 
-    # Add metadata text box in the plot
-    metadata_text = "\n".join((f"LR: {lr}", f"Warmup Steps: {warmup_steps}", f"Dataset: {dataset}"))
-    plt.text(
-        0.98,
-        0.85,
-        metadata_text,
-        transform=ax1.transAxes,
-        bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.8),
-        verticalalignment="top",
-        horizontalalignment="right",
-        fontsize=10,
-    )
+        title_suffix = " (Log Scale)" if scale_type == "log" else ""
+        plt.title(f"Losses and WER for W&B run: {run.name}{title_suffix}")
 
-    plt.tight_layout()
-    out_path = Path(output_dir) / f"run_losses_plot.{ext}"
-    plt.savefig(str(out_path))
-    LOGGER.info(f"Plot saved to {out_path}")
+        # Add metadata text box in the plot
+        metadata_text = "\n".join((f"LR: {lr}", f"Warmup Steps: {warmup_steps}", f"Dataset: {dataset}"))
+        plt.text(
+            0.98,
+            0.85,
+            metadata_text,
+            transform=ax1.transAxes,
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.8),
+            verticalalignment="top",
+            horizontalalignment="right",
+            fontsize=10,
+        )
+
+        plt.tight_layout()
+
+        # Save with appropriate filename
+        filename_suffix = "_log" if scale_type == "log" else ""
+        out_path = Path(output_dir) / f"run_losses_plot{filename_suffix}.{ext}"
+        plt.savefig(str(out_path))
+        LOGGER.info(f"Plot saved to {out_path}")
+        plt.close()
+
     LOGGER.info(f"Run metadata - LR: {lr}, Warmup Steps: {warmup_steps}, Dataset: {dataset}")
     if wer_data:
         LOGGER.info(f"Found {len(wer_data)} WER data points")
-    plt.close()
 
 
 def main():
