@@ -32,10 +32,10 @@ sampling_params:
   n: 1 # Number of output sequences to return for the given prompt
   temperature: 0.0
   top_p: 1 # default is 1; nucleus sampling probability set to 0.95 in vLLM docs; NOTE sum_k(prob) >= p
-  max_tokens: 512
+  max_tokens: 256
   presence_penalty: 0 # default: 0
   frequency_penalty: 0 # default: 0
-  repetition_penalty: 1 # default: 1
+  repetition_penalty: 1 # default: 1; can try >1 to penalize, <1 to encourage; works by reweighting logits
   # Aux. or currently unused parameters
   top_k: -1 # Integer that controls the number of top tokens to consider. Set to -1 to consider all tokens.
 
