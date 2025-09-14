@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import json
 import logging
 import os
@@ -38,6 +40,8 @@ def extract_texts_from_generations_jsonl(generations_jsonl: Path) -> list[str]:
 
 
 def ref_from_hf_dataset(dataset: str, split: str, gt_transcript_colname: str = "transcript") -> list[str]:
+    if split == "dev":
+        split = "validation"
     repo_id = HF_OWNER + "/" + dataset
     ds = load_dataset(repo_id, split=split)
     return list(ds[gt_transcript_colname])
@@ -66,8 +70,10 @@ def main(args: Namespace) -> None:
     if args.dataset is None:
         args.dataset = args.generations_jsonl.parents[1].name
         assert args.dataset.split("-")[0] in SUPPORTED_DATASETS
+        LOGGER.info(f"Inferred dataset from path: {args.dataset}")
     if args.split is None:
         args.split = args.generations_jsonl.parent.name
+        LOGGER.info(f"Inferred split from path: {args.split}")
     generated = extract_texts_from_generations_jsonl(args.generations_jsonl)
     reference = ref_from_hf_dataset(args.dataset, args.split, args.gt_transcript_colname)
     if args.normalizer == "whisper":
