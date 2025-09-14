@@ -6,6 +6,7 @@ import os
 import sys
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
+from pprint import pformat
 
 from datasets import load_dataset
 from evaluate import load
@@ -65,7 +66,9 @@ def parse_args() -> Namespace:
 def main(args: Namespace) -> None:
     wer_json = args.generations_jsonl.parent / "wer.json"
     if wer_json.exists():
-        raise FileExistsError(f"Output WER JSON already exists: {wer_json}")
+        with open(wer_json, "r") as f:
+            _wer_json_contents = pformat(json.load(f))
+        raise FileExistsError(f"Output WER JSON already exists: {wer_json} with contents: " + _wer_json_contents)
     wer_metric = load("wer")
     if args.dataset is None:
         args.dataset = args.generations_jsonl.parents[1].name
