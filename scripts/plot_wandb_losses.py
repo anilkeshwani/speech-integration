@@ -110,22 +110,29 @@ def plot_losses(run: wandb.apis.public.Run, output_dir: str, generations_dir: Pa
     fig, ax1 = plt.subplots(figsize=(12, 8))
 
     # Plot losses on primary y-axis
+    lines = []
     if "loss" in history:
-        ax1.plot(steps, history["loss"], label="loss", color="blue")
+        line1 = ax1.plot(steps, history["loss"], label="loss", color="blue")
+        lines.extend(line1)
     if "dev_loss" in history:
-        ax1.plot(steps, history["dev_loss"], label="dev_loss", color="orange")
+        line2 = ax1.plot(steps, history["dev_loss"], label="dev_loss", color="orange")
+        lines.extend(line2)
     ax1.set_xlabel("Step")
     ax1.set_ylabel("Loss", color="black")
     ax1.tick_params(axis="y")
-    ax1.legend(loc="upper left")
 
     # Plot WER on secondary y-axis
     if wer_data:
         ax2 = ax1.twinx()
-        ax2.scatter(wer_steps, wer_values, color="red", alpha=0.7, s=30, label="WER")
+        scat = ax2.scatter(wer_steps, wer_values, color="red", alpha=0.7, s=30, label="WER")
         ax2.set_ylabel("WER", color="red")
         ax2.tick_params(axis="y", labelcolor="red")
-        ax2.legend(loc="upper right")
+
+        # Combine all legend elements
+        labels = [l.get_label() for l in lines] + ["WER"]
+        ax1.legend(lines + [scat], labels, loc="upper right")
+    else:
+        ax1.legend(loc="upper right")
 
     plt.title(f"Losses and WER for W&B run: {run.name}")
 
