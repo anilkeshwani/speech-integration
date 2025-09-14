@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+import sardalign.constants  # imported to check consistency of SEED; possibly other constants in future
 import torch
 
 
@@ -8,29 +9,27 @@ import torch
 # Constants - Keys from sardalign.constants
 ####################################################################################################
 
-from sardalign.constants import SEED  # isort: skip # noqa: E402
-
-assert SEED == 42831
-
-####################################################################################################
-# Constants - General
-####################################################################################################
-
-SUPPORTED_DTYPES: set[torch.dtype] = {torch.float32, torch.bfloat16}
-DEBUGGING_TAG: str = "trial-run"  # W&B tag for trial runs
-
+SEED: int = 42_831
+assert SEED == sardalign.constants.SEED
 
 ####################################################################################################
-# Constants - Supported Models, Datasets, Hugging Face defaults etc.
+# Constants
+# Includes Supported Models, Datasets, Hugging Face, Defaults etc.
 ####################################################################################################
 
 # Supported datasets per naming convention on Hugging Face: https://huggingface.co/anilkeshwani
 SUPPORTED_DATASETS: set[str] = {"mls", "voxpopuli", "librispeech", "gigaspeech"}
-
 # Supported speech encoder-layer representation combinations per Hugging Face: https://huggingface.co/anilkeshwani
 SUPPORTED_SPEECH_ENCODERS: set[str] = {"hubert_large_ll60k-layer_22", "speechtokenizer-rvq_0"}
-
 HF_OWNER: str = "anilkeshwani"  # Hugging Face owner for datasets and models
+SUPPORTED_DTYPES: set[torch.dtype] = {torch.float32, torch.bfloat16}
+
+# W&B
+DEBUGGING_TAG: str = "trial-run"  # W&B tag for trial runs
+
+# Defaults used before these became experimentation parameters
+N_DSUS_DEFAULT: int = 5_000  # Default number of DSUs
+SPEECH_DEDUPLICATE_DEFAULT: bool = False  # Default for speech deduplication
 
 ####################################################################################################
 # Constants - Checkpoints and Artefacts
