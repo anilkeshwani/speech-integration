@@ -10,7 +10,6 @@ Requires:
     wandb
     matplotlib
 """
-import re
 import sys
 from pathlib import Path
 
@@ -23,10 +22,10 @@ def extract_run_info(path):
     p = Path(path)
     if len(p.parts) < 2:
         raise ValueError("Path too short to extract run info.")
-    run_name = p.parts[-2]
-    # Try to extract run id from run_name (e.g., hopeful-sound-525-id_5plc1ikb)
-    match = re.search(r"id_([a-zA-Z0-9]+)", run_name)
-    run_id = match.group(1) if match else None
+    run_dir = p.parts[-2]
+    if "-id_" not in run_dir:
+        raise ValueError("Run directory does not match expected format '<run_name>-id_<run_id>'")
+    run_name, run_id = run_dir.split("-id_")
     return run_name, run_id
 
 
