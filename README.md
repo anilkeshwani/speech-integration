@@ -245,6 +245,16 @@ python scripts/generate.py \
     data=sft/mls-hubert_large_ll60k-layer_22
 ```
 
+## Generation inside Slurm
+
+```
+srun --partition a6000 --time=01:00:00 --gres=gpu:1 --qos=gpu-short \
+  conda run -n ssi-dev --live-stream \
+    ./scripts/generate.py \
+      gen.split=dev \
+      model=/mnt/scratch-artemis/anilkeshwani/experiments/Llama-3.2-1B-5000-dsus-sft/hopeful-sound-525-id_5plc1ikb/checkpoints/epoch_0/global_step_80000
+```
+
 ## Generation: Extras
 
 There is a hacky script, [generation_launcher.sh](/snippets/generation_launcher.sh), to launch generation for all checkpoints in a given training run (for a given epoch) under [snippets](/snippets)
