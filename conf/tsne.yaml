@@ -1,0 +1,15 @@
+defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
+  - common
+  - training
+
+# standard value overrides for parameters not used in embedding visualisation script
+tokenizer:
+  max_seq_len: null
+speech:
+  deduplicate: null
+
+# repurpose output_dir for saving t-SNE plots
+output_dir: ???
+
+tsne:
+  perplexities: [5, 30, 50] # list of perplexity values to try for t-SNE
