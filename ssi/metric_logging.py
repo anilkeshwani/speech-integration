@@ -23,7 +23,7 @@ class WandBLoggerPatched(WandBLogger):
             self._wandb.config.update(resolved, allow_val_change=self.config_allow_val_change)
             try:
                 output_config_fname = Path(config.checkpointer.output_dir, TORCHTUNE_CONFIG_FILENAME)
-                OmegaConf.save(config, output_config_fname)
+                OmegaConf.save(config, output_config_fname, resolve=True)
 
                 LOGGER.info(f"Logging {output_config_fname} to W&B under Files")
                 self._wandb.save(output_config_fname, base_path=output_config_fname.parent)
