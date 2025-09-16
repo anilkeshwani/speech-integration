@@ -2,6 +2,7 @@ import gc
 import json
 import logging
 import os
+from ast import Not
 from pathlib import Path
 from typing import Any, Dict
 
@@ -526,8 +527,10 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         optimizer_in_bwd: bool = False,  # TODO not implemented
         optim_ckpt_wrapper=None,  # TODO typing if/when implemented; not implemented
         output_dir: Path | None = None,
-        ignore_suffixes: list[str] = SUFFIXES_TO_NOT_COPY,
+        ignore_suffixes: list[str] | None = None,
     ) -> tuple[dict[str, Any], Path]:
+        if ignore_suffixes is None:
+            ignore_suffixes = SUFFIXES_TO_NOT_COPY + ["torchtune_config.yaml"]
         ckpt_dict: dict = {
             MODEL_KEY: model_state_dict,
             EPOCHS_KEY: epoch,
@@ -536,6 +539,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         }
         if optimizer_state_dict is not None:
             if optimizer_in_bwd:
+                raise NotImplementedError("optimizer_in_bwd=True not implemented yet")
                 ckpt_dict[training.OPT_KEY] = optim_ckpt_wrapper.state_dict()  # type: ignore # TODO
             else:
                 ckpt_dict[training.OPT_KEY] = optimizer_state_dict
