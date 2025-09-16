@@ -1,6 +1,0 @@
-defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
-  - generate
-
-normalizer: whisper # normalizer to use for the WER calculation: whisper, null
-
-generations_jsonl: ???
