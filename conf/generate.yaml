@@ -19,7 +19,7 @@ gen:
   output_filename: generations.jsonl
   output_config_filename: generation_config.yaml
   use_cfg_hash_subdir: False
-  split: test # dataset split to generate; can be train, validation or test; default is test
+  split: dev # dataset split to generate; can be train, validation or test; default is dev (validation)
 
 vllm_batch_size: 8
 
