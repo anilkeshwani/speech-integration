@@ -150,37 +150,28 @@ def main(cfg):
         raise RuntimeError("Hydra not initialized.")
 
     if cfg.train_yaml is None:
-        train_cfg_canon = Path(cfg.model) / TORCHTUNE_CONFIG_FILENAME  # per monkeypatch WandBLoggerPatched
-        train_cfg_imputed = Path(cfg.model).parents[1] / TORCHTUNE_CONFIG_FILENAME  # imputed post hoc from W&B
-        if train_cfg_canon.exists():
-            train_cfg = OmegaConf.load(train_cfg_canon)
-            LOGGER.info(f"Loaded training config from {train_cfg_canon!s}")
-        elif train_cfg_imputed.exists():
-            train_cfg = OmegaConf.load(train_cfg_imputed)
-            LOGGER.warning(f"Loaded training config from {train_cfg_imputed!s}")
+        train_yaml_rundir = Path(cfg.model).parents[1] / TORCHTUNE_CONFIG_FILENAME
+        if train_yaml_rundir.exists() and "id_" in train_yaml_rundir.parents[1].name:  # NOTE "id_" hacky informal check
+            train_cfg = OmegaConf.load(train_yaml_rundir)
+            LOGGER.warning(f"Loaded training config from {train_yaml_rundir!s}")
         else:
             raise RuntimeError(
-                f"Could not find training config file {TORCHTUNE_CONFIG_FILENAME} at the following locations:\n"
-                f"  - {train_cfg_canon}\n"
-                f"  - {train_cfg_imputed}\n"
-                "Explicitly pass the path to the YAML file containing the training configuration."
+                f"No training config specified and no config at inferred fallback path: {train_yaml_rundir!s}"
             )
 
-    # Set speech-related config params from training config if unset; fall back to defaults for backwards compatibility
+    # Set speech-related config params from training config if unset; raise if still unset
     if cfg.speech.n_dsus is None:
-        if "speech" in train_cfg:
+        if "speech" in train_cfg and train_cfg.speech.n_dsus is not None:
             cfg.speech.n_dsus = train_cfg.speech.n_dsus
             LOGGER.info(f"Auto-setting cfg.speech.n_dsus to {cfg.speech.n_dsus} from training config.")
         else:
-            cfg.speech.n_dsus = N_DSUS_DEFAULT
-            LOGGER.warning(f"Defaulting cfg.speech.n_dsus to default value of {N_DSUS_DEFAULT}.")
+            raise ValueError("cfg.speech.n_dsus must be specified in either training or generation config.")
     if cfg.speech.deduplicate is None:
-        if "speech" in train_cfg:
+        if "speech" in train_cfg and train_cfg.speech.deduplicate is not None:
             cfg.speech.deduplicate = train_cfg.speech.deduplicate
             LOGGER.info(f"Auto-setting cfg.speech.deduplicate to {cfg.speech.deduplicate} from training config.")
         else:
-            cfg.speech.deduplicate = SPEECH_DEDUPLICATE_DEFAULT
-            LOGGER.warning(f"Defaulting cfg.speech.deduplicate to default value of {SPEECH_DEDUPLICATE_DEFAULT}.")
+            raise ValueError("cfg.speech.deduplicate must be specified in either training or generation config.")
 
     # NOTE cfg.speech options must be resolved before cfg.data due to interpolation in cfg.data fields
     if cfg.get("data") is None:
