@@ -19,6 +19,7 @@ class WandBLoggerPatched(WandBLogger):
             config (DictConfig): Configuration to log to disk and W&B.
         """
         if self._wandb.run:
+            # Construction of resolved config and call to self._wandb.config.update from base class (impl. torchtune)
             resolved = OmegaConf.to_container(config, resolve=True)
             self._wandb.config.update(resolved, allow_val_change=self.config_allow_val_change)
             try:
