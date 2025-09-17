@@ -8,12 +8,12 @@ from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from pprint import pformat
 
-from datasets import load_dataset
 from evaluate import load
 from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
 from whisper_normalizer.english import EnglishTextNormalizer
 
-from ssi.constants import HF_OWNER, SUPPORTED_DATASETS
+from ssi.constants import SUPPORTED_DATASETS
+from ssi.utils import extract_texts_from_generations_jsonl, ref_from_hf_dataset
 
 
 logging.basicConfig(
@@ -25,27 +25,6 @@ logging.basicConfig(
 )
 
 LOGGER = logging.getLogger(__name__)
-
-
-def extract_texts_from_generations_jsonl(generations_jsonl: Path) -> list[str]:
-    texts = []
-    with open(generations_jsonl, "r") as f:
-        for line in f:
-            data = json.loads(line)
-            is_single_generation = len(data["outputs"]) == 1
-            if is_single_generation:
-                texts.append(data.pop("outputs").pop(0).pop("text"))
-            else:
-                raise NotImplementedError("Multiple generations per prompt are not supported by this script.")
-    return texts
-
-
-def ref_from_hf_dataset(dataset: str, split: str, gt_transcript_colname: str = "transcript") -> list[str]:
-    if split == "dev":
-        split = "validation"
-    repo_id = HF_OWNER + "/" + dataset
-    ds = load_dataset(repo_id, split=split)
-    return list(ds[gt_transcript_colname])
 
 
 def parse_args() -> Namespace:

@@ -8,15 +8,48 @@ from pathlib import Path
 from typing import Any
 
 import torch
+from datasets import load_dataset
 from omegaconf import DictConfig, OmegaConf
 from torchtune.utils._import_guard import _SUPPORTS_FLEX_ATTENTION
 from wandb.apis.public.runs import Run
+
+from ssi.constants import HF_OWNER
 
 
 if _SUPPORTS_FLEX_ATTENTION:
     from torch.nn.attention.flex_attention import BlockMask
 else:
     BlockMask = torch.Tensor
+
+################################################################################
+# ASR / WER Eval
+################################################################################
+
+
+def extract_texts_from_generations_jsonl(generations_jsonl: Path) -> list[str]:
+    texts = []
+    with open(generations_jsonl, "r") as f:
+        for line in f:
+            data = json.loads(line)
+            is_single_generation = len(data["outputs"]) == 1
+            if is_single_generation:
+                texts.append(data.pop("outputs").pop(0).pop("text"))
+            else:
+                raise NotImplementedError("Multiple generations per prompt are not supported by this script.")
+    return texts
+
+
+def ref_from_hf_dataset(dataset: str, split: str, gt_transcript_colname: str = "transcript") -> list[str]:
+    if split == "dev":
+        split = "validation"
+    repo_id = HF_OWNER + "/" + dataset
+    ds = load_dataset(repo_id, split=split)
+    return list(ds[gt_transcript_colname])
+
+
+################################################################################
+# General
+################################################################################
 
 
 def _parse_model_path(model_dir: Path, experiments_root_dir: Path) -> dict[str, Any]:
