@@ -165,7 +165,10 @@ conda run --live-stream -n ssi-latest python scripts/train_sft.py \
     lr_scheduler.num_warmup_steps=1000 \
     speech.deduplicate=true \
     speech.n_dsus=2048 \
-    data=sft/mls-mimi-srvq_0
+    data=sft/mls-mimi-srvq_0 \
+    gradient_accumulation_steps=1 \
+    data.train.dataloader.batch_size=32 \
+    save_steps=10000
 ```
 
 ## Running with Slurm (e.g. on Sardine)
