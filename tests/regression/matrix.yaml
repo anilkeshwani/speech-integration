@@ -1,0 +1,133 @@
+version: 1
+
+defaults:
+  base_env:
+    WANDB_MODE: offline
+    TOKENIZERS_PARALLELISM: "false"
+  required_env:
+    - SSI_TEST_MODEL_DIR
+  base_overrides:
+    - speech.n_dsus=5000
+    - speech.deduplicate=false
+    - checkpointer.checkpoint_dir=${oc.env:SSI_TEST_MODEL_DIR}
+    - 'checkpointer.checkpoint_files=["model.safetensors"]'
+    - checkpointer.config_json=${oc.env:SSI_TEST_MODEL_DIR}/config.json
+    - checkpointer.output_dir=${oc.env:SSI_TEST_OUTPUT_DIR,/tmp}/ssi-checkpoints/${now:%Y-%m-%d}/${hydra.job.name}
+    - tokenizer.path=${oc.env:SSI_TEST_MODEL_DIR}/original/tokenizer.model
+    - wandb.project=speech-integration-tests
+    - wandb.group=regression
+    - wandb.log_dir=${oc.env:SSI_TEST_OUTPUT_DIR,/tmp}/wandb
+    - max_steps=6
+    - gradient_accumulation_steps=1
+    - log_interval=1
+    - eval_steps=1000
+    - save_steps=10000
+    - compile=false
+    - debug_mode=error
+    - dtype=bf16
+    - device=cuda
+    - optimizer.fused=false
+
+rows:
+  - id: cpt_hubert_interleaved_mls
+    enabled: true
+    runnable: true
+    mode: cpt
+    approach: cpt_interleaved
+    tokenizer: hubert
+    script: scripts/train_cpt.py
+    data_config: cpt/mls-hubert_large_ll60k-layer_22
+    threshold_profile: cpt_hubert_interleaved_mls_v1
+    marks: [gpu, regression, heavy, tier_smoke, approach_cpt, tokenizer_hubert]
+
+  - id: cpt_speechtokenizer_interleaved_mls
+    enabled: true
+    runnable: true
+    mode: cpt
+    approach: cpt_interleaved
+    tokenizer: speechtokenizer
+    script: scripts/train_cpt.py
+    data_config: cpt/mls-speechtokenizer-rvq_0
+    threshold_profile: cpt_speechtokenizer_interleaved_mls_v1
+    marks: [gpu, regression, heavy, tier_smoke, approach_cpt, tokenizer_speechtokenizer]
+
+  - id: sft_hubert_mls
+    enabled: true
+    runnable: true
+    mode: sft
+    approach: sft
+    tokenizer: hubert
+    script: scripts/train_sft.py
+    data_config: sft/mls-hubert_large_ll60k-layer_22
+    threshold_profile: sft_hubert_mls_v1
+    marks: [gpu, regression, heavy, tier_smoke, approach_sft, tokenizer_hubert]
+
+  - id: sft_speechtokenizer_mls
+    enabled: true
+    runnable: true
+    mode: sft
+    approach: sft
+    tokenizer: speechtokenizer
+    script: scripts/train_sft.py
+    data_config: sft/mls-speechtokenizer-rvq_0
+    threshold_profile: sft_speechtokenizer_mls_v1
+    marks: [gpu, regression, heavy, tier_smoke, approach_sft, tokenizer_speechtokenizer]
+
+  - id: sft_mimi_mls
+    enabled: true
+    runnable: true
+    mode: sft
+    approach: sft
+    tokenizer: mimi
+    script: scripts/train_sft.py
+    data_config: sft/mls-mimi-srvq_0
+    threshold_profile: sft_mimi_mls_v1
+    marks: [gpu, regression, heavy, tier_smoke, approach_sft, tokenizer_mimi]
+
+  - id: cpt_mimi_interleaved_mls
+    enabled: false
+    runnable: false
+    blocked_by: [missing_cpt_config]
+    mode: cpt
+    approach: cpt_interleaved
+    tokenizer: mimi
+    script: scripts/train_cpt.py
+    data_config: cpt/mls-mimi-srvq_0
+    threshold_profile: cpt_mimi_interleaved_mls_v1
+    marks: [gpu, regression, heavy, tier_full, approach_cpt, tokenizer_mimi]
+
+  - id: cpt_focalcodec_interleaved_mls
+    enabled: false
+    runnable: false
+    blocked_by: [missing_cpt_config, missing_dataset]
+    mode: cpt
+    approach: cpt_interleaved
+    tokenizer: focalcodec
+    script: scripts/train_cpt.py
+    data_config: cpt/mls-focalcodec-rvq_0
+    threshold_profile: cpt_focalcodec_interleaved_mls_v1
+    marks: [gpu, regression, heavy, tier_full, approach_cpt, tokenizer_focalcodec]
+
+  - id: sft_focalcodec_mls
+    enabled: false
+    runnable: false
+    blocked_by: [missing_sft_config, missing_dataset]
+    mode: sft
+    approach: sft
+    tokenizer: focalcodec
+    script: scripts/train_sft.py
+    data_config: sft/mls-focalcodec-rvq_0
+    threshold_profile: sft_focalcodec_mls_v1
+    marks: [gpu, regression, heavy, tier_full, approach_sft, tokenizer_focalcodec]
+
+  - id: cpt_then_sft_hubert_mls
+    enabled: false
+    runnable: false
+    blocked_by: [missing_pipeline_harness]
+    mode: cpt_then_sft
+    approach: cpt_sft
+    tokenizer: hubert
+    script: scripts/train_sft.py
+    data_config: sft/mls-hubert_large_ll60k-layer_22
+    threshold_profile: cpt_then_sft_hubert_mls_v1
+    marks: [gpu, regression, heavy, tier_full, approach_cpt_sft, tokenizer_hubert]

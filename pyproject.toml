@@ -54,6 +54,8 @@ dev = [
 "black==24.4.2",
 "flake8",
 "isort==5.13.2",
+# test runner
+"pytest>=8.0.0",
 # "mypy",
 "pipreqs==0.5.0",
 "pre-commit==3.8.0",
@@ -75,3 +77,20 @@ profile = "black"
 line_length = 120
 lines_after_imports = 2
 force_alphabetical_sort_within_sections = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "gpu: requires CUDA GPU resources",
+    "regression: long-running regression tests",
+    "heavy: expensive end-to-end runs",
+    "tier_smoke: short smoke-profile tests",
+    "tier_full: full-profile tests",
+    "approach_cpt: CPT training path",
+    "approach_sft: SFT training path",
+    "approach_cpt_sft: CPT then SFT chain",
+    "tokenizer_hubert: HuBERT dataset/tokenizer path",
+    "tokenizer_speechtokenizer: SpeechTokenizer dataset/tokenizer path",
+    "tokenizer_mimi: Mimi dataset/tokenizer path",
+    "tokenizer_focalcodec: FocalCodec dataset/tokenizer path",
+]

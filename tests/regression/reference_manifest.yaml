@@ -1,0 +1,44 @@
+version: 1
+
+# Reference runs are immutable baselines for exact-threshold regression tests.
+# Fill entries once references are captured and promoted.
+references:
+  - matrix_id: cpt_hubert_interleaved_mls
+    threshold_profile: cpt_hubert_interleaved_mls_v1
+    wandb_run_path: null
+    artifact_name: null
+    config_hash: null
+    git_commit: null
+    created_at: null
+
+  - matrix_id: cpt_speechtokenizer_interleaved_mls
+    threshold_profile: cpt_speechtokenizer_interleaved_mls_v1
+    wandb_run_path: null
+    artifact_name: null
+    config_hash: null
+    git_commit: null
+    created_at: null
+
+  - matrix_id: sft_hubert_mls
+    threshold_profile: sft_hubert_mls_v1
+    wandb_run_path: null
+    artifact_name: null
+    config_hash: null
+    git_commit: null
+    created_at: null
+
+  - matrix_id: sft_speechtokenizer_mls
+    threshold_profile: sft_speechtokenizer_mls_v1
+    wandb_run_path: null
+    artifact_name: null
+    config_hash: null
+    git_commit: null
+    created_at: null
+
+  - matrix_id: sft_mimi_mls
+    threshold_profile: sft_mimi_mls_v1
+    wandb_run_path: null
+    artifact_name: null
+    config_hash: null
+    git_commit: null
+    created_at: null
