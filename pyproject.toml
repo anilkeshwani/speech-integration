@@ -61,6 +61,9 @@ dev = [
 "usort==1.0.8",
 ]
 
+[tool.uv]
+environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
+
 [tool.black]
 line-length = 120
 
