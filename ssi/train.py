@@ -172,7 +172,7 @@ def train(cfg: DictConfig) -> None:
             for tt, ttcnt in count_token_types(batch["tokens"], token_type_ranges, tokenizer.pad_id).items():
                 token_type_counts_total[tt] += ttcnt
             max_seq_len_step = max(max_seq_len_step, batch["tokens"].size(1))
-            num_tokens_iter = (batch["labels"] != loss_fn.ignore_index).sum()
+            num_tokens_iter = int((batch["labels"] != loss_fn.ignore_index).sum().item())
             num_tokens_step += num_tokens_iter
             # loss is normalized -> multiply by number of tokens for renormalization later for grad. accum.
             loss_batch = compute_loss(batch, model, loss_fn) * num_tokens_iter
