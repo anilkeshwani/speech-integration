@@ -9,12 +9,12 @@ Research implementation to investigate methods of integrating the speech modalit
 ```bash
 git clone git@github.com:anilkeshwani/speech-integration.git &&
     cd speech-integration &&
-    git submodule update --init --recursive --progress # future-proof
+    git submodule update --init --recursive --progress
 ```
 
 ## Set Up Environment
 
-Ensure the necessary binary requirements are installed:
+Ensure the sox and ffmpeg binaries are installed:
 
 ```bash
 apt install sox ffmpeg
@@ -70,51 +70,7 @@ huggingface-cli download "meta-llama/Llama-3.2-1B" \
     --revision "4e20de362430cd3b72f300e6b0f18e50e7166e08" # specific Git LFS commit
 ```
 
-### Download with torchtune (`tune download`) - Not Recommended
-
-The training recipe assumes that you've run the following command, substituting relevant variables from the configuration file values, in order to download the Llama 3.2 pre-trained (base) model:
-
-``` bash
-tune download meta-llama/${model_name} --output-dir ${base_models_dir}/${model_name} --ignore-patterns "original/consolidated.00.pth"
-```
-
-Typically:
-
-```bash
-base_models_dir=/mnt/scratch-artemis/anilkeshwani/models/base/ &&
-tune download meta-llama/Llama-3.2-1B \
-    --output-dir ${base_models_dir}/Llama-3.2-1B \
-    --ignore-patterns "original/consolidated.00.pth"
-```
-
-<details>
-    <summary>Download terminal output</summary>
-    ```
-    Ignoring files matching the following patterns: original/consolidated.00.pth
-    LICENSE.txt: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 7.71k/7.71k [00:00<00:00, 2.99MB/s]
-    original/params.json: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 220/220 [00:00<00:00, 2.06MB/s]
-    USE_POLICY.md: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 6.02k/6.02k [00:00<00:00, 38.1MB/s]
-    README.md: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 41.2k/41.2k [00:00<00:00, 13.4MB/s]
-    .gitattributes: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1.52k/1.52k [00:00<00:00, 14.1MB/s]
-    tokenizer.model: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 2.18M/2.18M [00:00<00:00, 25.0MB/s]
-    Fetching 12 files: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 12/12 [00:02<00:00,  4.76it/s]
-    Successfully downloaded model repo and wrote to the following locations:
-    /mnt/scratch-artemis/anilkeshwani/models/base/Llama-3.2-1B/.gitattributes
-    /mnt/scratch-artemis/anilkeshwani/models/base/Llama-3.2-1B/config.json
-    /mnt/scratch-artemis/anilkeshwani/models/base/Llama-3.2-1B/LICENSE.txt
-    /mnt/scratch-artemis/anilkeshwani/models/base/Llama-3.2-1B/tokenizer_config.json
-    /mnt/scratch-artemis/anilkeshwani/models/base/Llama-3.2-1B/tokenizer.json
-    /mnt/scratch-artemis/anilkeshwani/models/base/Llama-3.2-1B/original
-    /mnt/scratch-artemis/anilkeshwani/models/base/Llama-3.2-1B/.cache
-    /mnt/scratch-artemis/anilkeshwani/models/base/Llama-3.2-1B/README.md
-    /mnt/scratch-artemis/anilkeshwani/models/base/Llama-3.2-1B/generation_config.json
-    /mnt/scratch-artemis/anilkeshwani/models/base/Llama-3.2-1B/model.safetensors
-    /mnt/scratch-artemis/anilkeshwani/models/base/Llama-3.2-1B/USE_POLICY.md
-    /mnt/scratch-artemis/anilkeshwani/models/base/Llama-3.2-1B/special_tokens_map.json
-    ```
-</details>
-
-## Extend Llama 3.2 Base Model
+`## Extend Llama 3.2 Base Model
 
 The following command suffices to extend the base model with the specified number of DSUs (speech tokens). It will save the extended model to the specified output directory.
 
