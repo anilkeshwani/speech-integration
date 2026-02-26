@@ -70,17 +70,17 @@ huggingface-cli download "meta-llama/Llama-3.2-1B" \
     --revision "4e20de362430cd3b72f300e6b0f18e50e7166e08" # specific Git LFS commit
 ```
 
-`## Extend Llama 3.2 Base Model
+## Extend Llama 3.2 Base Model
 
-The following command suffices to extend the base model with the specified number of DSUs (speech tokens). It will save the extended model to the specified output directory.
+Extend the base model with the specified number of DSUs (speech tokens). 
+
+It saves the extended model to the specified output directory.
 
 ```bash
 ./scripts/extend_llama3_2.py --n_new_dsus 5000
 ```
 
 See `./scripts/extend_llama3_2.py --help` for details.
-
----
 
 # Train
 
