@@ -2,7 +2,6 @@ import gc
 import json
 import logging
 import os
-from ast import Not
 from pathlib import Path
 from typing import Any, Dict
 
@@ -19,7 +18,6 @@ from torchtune.training.checkpointing._utils import (
     copy_files,
     FormattedCheckpointFiles,
     get_path,
-    ModelType,
     REPO_ID_FNAME,
     safe_torch_load,
     SAFETENSOR_INDEX_FNAME,
@@ -53,9 +51,7 @@ def get_model_checkpoint_paths(checkpoint_files: list[str] | dict[str, str], che
 
 class FullModelHFCheckpointer(_CheckpointerInterface):
     """
-    Checkpointer which reads and writes checkpoints in HF's format. For LoRA models this includes
-    saving checkpoints in a format that can be loaded into PEFT via e.g. ``from_pretrained``. Examples include
-    the Llama-2-7b-hf model from the meta-llama repo (https://huggingface.co/meta-llama/Llama-2-7b-hf).
+    Checkpointer which reads and writes checkpoints in HF's format for Llama 3.2 1B.
 
     Note:
         HF checkpoint names are usually ordered by ID (eg: 0001_of_0003, 0002_of_0003, etc.) To ensure \
@@ -76,7 +72,6 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         output_dir (str): Directory to save the checkpoint files
         adapter_checkpoint (Path | None): Path to the adapter weights. Default is None.
         recipe_checkpoint (Path | None): Path to the recipe state checkpoint file. Default is None.
-        model_type (ModelType): Model type. Default is ModelType.LLAMA3_2
         safe_serialization (bool): If True, the checkpointer will save the checkpoint file using `safetensors`.
             Default is True.
     """
@@ -90,12 +85,10 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         output_dir: Path | str,
         recipe_checkpoint: Path | str | None = None,
         adapter_checkpoint: Path | str | None = None,
-        model_type: str = "llama3_2",
         safe_serialization: bool = True,
     ) -> None:
         self.checkpoint_dir = Path(checkpoint_dir)
         self.safe_serialization = safe_serialization
-        self.model_type: ModelType = ModelType(model_type)
         self.output_dir = Path(output_dir)  # idempotent
         self.recipe_checkpoint = Path(recipe_checkpoint) if recipe_checkpoint is not None else None
         self.adapter_checkpoint = Path(adapter_checkpoint) if adapter_checkpoint else None
@@ -147,7 +140,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         write the state dict correctly in ``save_checkpoint``.
 
         Before returning, the model state dict is converted to a torchtune-compatible format using
-        the appropriate convert_weights function (depending on ``self.model_type``).
+        Llama 3.2 conversion.
 
         Returns:
             state_dict (Dict[str, Any]): torchtune checkpoint state dict
@@ -183,29 +176,13 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             del state_dict
             gc.collect()
 
-        match self.model_type:
-            case ModelType.PHI3_MINI:
-                self.phi3_hf_to_tune(merged_state_dict, converted_state_dict)
-            case ModelType.REWARD:
-                self.reward_hf_to_tune(merged_state_dict, converted_state_dict)
-            case ModelType.QWEN2:
-                self.qwen2_hf_to_tune(merged_state_dict, converted_state_dict)
-            case ModelType.LLAMA3_VISION:
-                self.llama3_vision_hf_to_tune(merged_state_dict, converted_state_dict)
-            case ModelType.CLIP_TEXT:
-                self.clip_text_hf_to_tune(merged_state_dict, converted_state_dict)
-            case ModelType.GEMMA2:
-                self.gemma2_hf_to_tune(merged_state_dict, converted_state_dict)
-            case ModelType.LLAMA2 | ModelType.LLAMA3 | ModelType.LLAMA3_2:
-                converted_state_dict[training.MODEL_KEY] = convert_weights.hf_to_tune(
-                    merged_state_dict,
-                    num_heads=self._config["num_attention_heads"],
-                    num_kv_heads=self._config["num_key_value_heads"],
-                    dim=self._config["hidden_size"],
-                    head_dim=self._config.get("head_dim", None),
-                )
-            case _:
-                raise ValueError(f"Unsupported model type: {self.model_type}")
+        converted_state_dict[training.MODEL_KEY] = convert_weights.hf_to_tune(
+            merged_state_dict,
+            num_heads=self._config["num_attention_heads"],
+            num_kv_heads=self._config["num_key_value_heads"],
+            dim=self._config["hidden_size"],
+            head_dim=self._config.get("head_dim", None),
+        )
 
         if self.adapter_checkpoint:
             adapter_state_dict = safe_torch_load(self.adapter_checkpoint)
@@ -217,163 +194,17 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
 
         return converted_state_dict
 
-    def phi3_hf_to_tune(self, merged_state_dict, converted_state_dict):
-        LOGGER.info(
-            "Converting Phi-3 Mini weights from HF format."
-            "Note that conversion of adapter weights into PEFT format is not supported."
-        )
-        from torchtune.models.phi3._convert_weights import phi3_hf_to_tune
-
-        converted_state_dict[training.MODEL_KEY] = phi3_hf_to_tune(merged_state_dict)
-        return converted_state_dict
-
-    def phi3_tune_to_hf(self, state_dict):
-        from torchtune.models.phi3._convert_weights import phi3_tune_to_hf
-
-        state_dict[training.MODEL_KEY] = phi3_tune_to_hf(state_dict[training.MODEL_KEY])
-
-    def reward_hf_to_tune(self, merged_state_dict, converted_state_dict):
-        from torchtune.rlhf.utils import reward_hf_to_tune
-
-        converted_state_dict[training.MODEL_KEY] = reward_hf_to_tune(
-            merged_state_dict,
-            num_heads=self._config["num_attention_heads"],
-            num_kv_heads=self._config["num_key_value_heads"],
-            dim=self._config["hidden_size"],
-        )
-        return converted_state_dict
-
-    def reward_tune_to_hf(self, state_dict):
-        from torchtune.rlhf.utils import reward_tune_to_hf
-
-        state_dict[training.MODEL_KEY] = reward_tune_to_hf(
-            state_dict[training.MODEL_KEY],
-            num_heads=self._config["num_attention_heads"],
-            num_kv_heads=self._config["num_key_value_heads"],
-            dim=self._config["hidden_size"],
-        )
-
-    def qwen2_hf_to_tune(self, merged_state_dict, converted_state_dict):
-        from torchtune.models.qwen2._convert_weights import qwen2_hf_to_tune
-
-        converted_state_dict[training.MODEL_KEY] = qwen2_hf_to_tune(
-            merged_state_dict,
-            num_heads=self._config["num_attention_heads"],
-            num_kv_heads=self._config["num_key_value_heads"],
-            dim=self._config["hidden_size"],
-            tie_word_embeddings=self._config["tie_word_embeddings"],
-        )
-        return converted_state_dict
-
-    def qwen2_tune_to_hf(self, state_dict):
-        from torchtune.models.qwen2._convert_weights import qwen2_tune_to_hf
-
-        state_dict[training.MODEL_KEY] = qwen2_tune_to_hf(
-            state_dict[training.MODEL_KEY],
-            num_heads=self._config["num_attention_heads"],
-            num_kv_heads=self._config["num_key_value_heads"],
-            dim=self._config["hidden_size"],
-            tie_word_embeddings=self._config["tie_word_embeddings"],
-        )
-
-    def llama3_vision_hf_to_tune(self, merged_state_dict, converted_state_dict):
-        from torchtune.models.llama3_2_vision._convert_weights import llama3_vision_hf_to_tune
-
-        text_config = self._config.get("text_config", {})
-        vision_config = self._config.get("vision_config", {})
-        converted_state_dict[training.MODEL_KEY] = llama3_vision_hf_to_tune(
-            merged_state_dict,
-            num_heads=text_config["num_attention_heads"],
-            num_kv_heads=text_config["num_key_value_heads"],
-            dim=text_config["hidden_size"],
-            head_dim=text_config.get("head_dim", None),
-            vocab_size=text_config["vocab_size"],
-            cross_attention_layers=text_config.get("cross_attention_layers", None),
-            encoder_dim=vision_config["hidden_size"],
-            tile_size=vision_config["image_size"],
-            num_tiles=vision_config["max_num_tiles"],
-            supported_aspect_ratios=vision_config.get("supported_aspect_ratios", None),
-        )
-        return converted_state_dict
-
-    def llama3_vision_tune_to_hf(self, state_dict):
-        from torchtune.models.llama3_2_vision._convert_weights import llama3_vision_tune_to_hf
-
-        text_config = self._config.get("text_config", {})
-        vision_config = self._config.get("vision_config", {})
-        state_dict[training.MODEL_KEY] = llama3_vision_tune_to_hf(
-            state_dict[training.MODEL_KEY],
-            num_heads=text_config["num_attention_heads"],
-            num_kv_heads=text_config["num_key_value_heads"],
-            dim=text_config["hidden_size"],
-            head_dim=text_config.get("head_dim", None),
-            vocab_size=text_config["vocab_size"],
-            cross_attention_layers=text_config.get("cross_attention_layers", None),
-            encoder_dim=vision_config["hidden_size"],
-            tile_size=vision_config["image_size"],
-            num_tiles=vision_config["max_num_tiles"],
-            supported_aspect_ratios=vision_config.get("supported_aspect_ratios", None),
-        )
-
-    def clip_text_hf_to_tune(self, merged_state_dict, converted_state_dict):
-        from torchtune.models.clip._convert_weights import clip_text_hf_to_tune
-
-        converted_state_dict[training.MODEL_KEY] = clip_text_hf_to_tune(merged_state_dict)
-        return converted_state_dict
-
-    def clip_text_tune_to_hf(self, state_dict):
-        raise NotImplementedError
-
-    def gemma2_hf_to_tune(self, merged_state_dict, converted_state_dict):
-        from torchtune.models.gemma2._convert_weights import gemma2_hf_to_tune
-
-        converted_state_dict[training.MODEL_KEY] = gemma2_hf_to_tune(
-            merged_state_dict,
-            num_heads=self._config["num_attention_heads"],
-            num_kv_heads=self._config["num_key_value_heads"],
-            dim=self._config["hidden_size"],
-            head_dim=self._config.get("head_dim", None),
-        )
-        return converted_state_dict
-
-    def gemma2_tune_to_hf(self, state_dict):
-        from torchtune.models.gemma2._convert_weights import gemma2_tune_to_hf
-
-        state_dict[training.MODEL_KEY] = gemma2_tune_to_hf(
-            state_dict[training.MODEL_KEY],
-            num_heads=self._config["num_attention_heads"],
-            num_kv_heads=self._config["num_key_value_heads"],
-            dim=self._config["hidden_size"],
-            head_dim=self._config.get("head_dim", None),
-        )
-
     def save_full_model(self, state_dict: dict[str, Any], output_dir: Path) -> None:
         if self._weight_map is None:
             raise ValueError("Weight map is not initialized. Please load a checkpoint before saving.")
 
-        match self.model_type:
-            case ModelType.PHI3_MINI:
-                self.phi3_tune_to_hf(state_dict)
-            case ModelType.REWARD:
-                self.reward_tune_to_hf(state_dict)
-            case ModelType.QWEN2:
-                self.qwen2_tune_to_hf(state_dict)
-            case ModelType.LLAMA3_VISION:
-                self.llama3_vision_tune_to_hf(state_dict)
-            case ModelType.GEMMA2:
-                self.gemma2_tune_to_hf(state_dict)
-            case ModelType.CLIP_TEXT:
-                raise NotImplementedError("Clip text conversion is not supported yet")  # strangely
-            case ModelType.LLAMA2 | ModelType.LLAMA3 | ModelType.LLAMA3_2:
-                state_dict[training.MODEL_KEY] = convert_weights.tune_to_hf(
-                    state_dict[training.MODEL_KEY],
-                    num_heads=self._config["num_attention_heads"],
-                    num_kv_heads=self._config["num_key_value_heads"],
-                    dim=self._config["hidden_size"],
-                    head_dim=self._config.get("head_dim", None),
-                )
-            case _:
-                raise ValueError(f"Unsupported model type: {self.model_type}")
+        state_dict[training.MODEL_KEY] = convert_weights.tune_to_hf(
+            state_dict[training.MODEL_KEY],
+            num_heads=self._config["num_attention_heads"],
+            num_kv_heads=self._config["num_key_value_heads"],
+            dim=self._config["hidden_size"],
+            head_dim=self._config.get("head_dim", None),
+        )
 
         # split the state_dict into separate dicts, one for each output checkpoint file, by _weight_map
         split_state_dicts: Dict[str, Dict[str, torch.Tensor]] = {}
@@ -438,43 +269,33 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         _ckpt_sz = os.path.getsize(output_path) / 1024**3
         LOGGER.info(f"Adapter checkpoint of size {_ckpt_sz:.2f} GiB saved to {output_path}")
 
-        if self.model_type == ModelType.PHI3_MINI:
-            LOGGER.warning("Phi-3 Mini adapter to PEFT conversion unsupported. Saved in torchtune format")
-        elif self.model_type == ModelType.LLAMA3_VISION:
-            LOGGER.warning("Llama3.2 Vision adapter to PEFT conversion unsupported. Saved in torchtune format")
+        state_dict[training.ADAPTER_KEY] = convert_weights.tune_to_peft_adapter_weights(
+            state_dict[training.ADAPTER_KEY],
+            num_heads=self._config["num_attention_heads"],
+            num_kv_heads=self._config["num_key_value_heads"],
+            dim=self._config["hidden_size"],
+            head_dim=self._config.get("head_dim", None),
+        )
+        output_path = output_dir / ADAPTER_MODEL_FNAME
+        output_dir.mkdir(parents=True, exist_ok=True)
+        if not self.safe_serialization:
+            output_path = output_path.with_suffix(".bin")
+            torch.save(state_dict[training.ADAPTER_KEY], output_path)
         else:
-            state_dict[training.ADAPTER_KEY] = convert_weights.tune_to_peft_adapter_weights(
-                state_dict[training.ADAPTER_KEY],
-                num_heads=self._config["num_attention_heads"],
-                num_kv_heads=self._config["num_key_value_heads"],
-                dim=self._config["hidden_size"],
-                head_dim=self._config.get("head_dim", None),
-            )
-            output_path = output_dir / ADAPTER_MODEL_FNAME
-            output_dir.mkdir(parents=True, exist_ok=True)
-            if not self.safe_serialization:
-                output_path = output_path.with_suffix(".bin")
-                torch.save(state_dict[training.ADAPTER_KEY], output_path)
-            else:
-                output_path = output_path.with_suffix(".safetensors")
-                save_file(state_dict[training.ADAPTER_KEY], output_path, metadata={"format": "pt"})
-            _ckpt_sz = os.path.getsize(output_path) / 1024**3
-            LOGGER.info(f"Adapter checkpoint of size {_ckpt_sz:.2f} GiB saved to {output_path}")
+            output_path = output_path.with_suffix(".safetensors")
+            save_file(state_dict[training.ADAPTER_KEY], output_path, metadata={"format": "pt"})
+        _ckpt_sz = os.path.getsize(output_path) / 1024**3
+        LOGGER.info(f"Adapter checkpoint of size {_ckpt_sz:.2f} GiB saved to {output_path}")
 
     def save_adapter_config(self, state_dict: dict[str, Any], output_dir: Path) -> None:
-        if self.model_type == ModelType.PHI3_MINI:
-            LOGGER.warning("PEFT integration for Phi-3 Mini is not supported. Skipping adapter config save")
-        elif self.model_type == ModelType.LLAMA3_VISION:
-            LOGGER.warning("PEFT integration for Llama3.2 Vision is not supported. Skipping adapter config save")
-        else:
-            state_dict[training.ADAPTER_CONFIG] = convert_weights.tune_to_peft_adapter_config(
-                adapter_config=state_dict[training.ADAPTER_CONFIG],
-                base_model_name_or_path=self.repo_id,
-            )
-            output_path = (output_dir / ADAPTER_CONFIG_FNAME).with_suffix(".json")
-            with open(output_path, "w") as f:
-                json.dump(state_dict[training.ADAPTER_CONFIG], f)
-            LOGGER.info(f"Adapter config saved to {output_path}")
+        state_dict[training.ADAPTER_CONFIG] = convert_weights.tune_to_peft_adapter_config(
+            adapter_config=state_dict[training.ADAPTER_CONFIG],
+            base_model_name_or_path=self.repo_id,
+        )
+        output_path = (output_dir / ADAPTER_CONFIG_FNAME).with_suffix(".json")
+        with open(output_path, "w") as f:
+            json.dump(state_dict[training.ADAPTER_CONFIG], f)
+        LOGGER.info(f"Adapter config saved to {output_path}")
 
     def save_recipe_state(self, state_dict: dict[str, Any]) -> None:
         output_path = self.output_dir / "recipe_state.pt"  # NOTE dropped added subdir resp. Meta code

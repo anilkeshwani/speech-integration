@@ -37,5 +37,4 @@ checkpointer:
   output_dir: null # if null -> resolved to ${output_dir}/${wandb_run_name}-id_{wandb_run_id}/checkpoints
   recipe_checkpoint: null
   adapter_checkpoint: null
-  model_type: "llama3_2"
   safe_serialization: True
