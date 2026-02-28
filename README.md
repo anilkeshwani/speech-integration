@@ -92,7 +92,7 @@ See `./scripts/extend_llama3_2.py --help` for details.
 Example call using SpeechTokenizer-encoded (RVQ 0) speech tokens:
 
 ```bash
-python scripts/train_cpt.py \
+uv run scripts/train_cpt.py \
     checkpointer.checkpoint_dir="$(realpath "${HOME}/hafh/models/extended/Llama-3.2-1B-5000-dsus")" \
     checkpointer.checkpoint_files='["ft-model-00001-of-00001.safetensors"]' \
     optimizer.lr=0.0002 \
@@ -114,7 +114,7 @@ Specify the call as for CPT but using `scripts/train_sft.py` in place of `script
 Example call:
 
 ```bash
-conda run --live-stream -n ssi-latest python scripts/train_sft.py \
+uv run scripts/train_sft.py \
     checkpointer.checkpoint_dir="$(realpath "${HOME}/hafh/models/extended/Llama-3.2-1B-2048-dsus")" \
     checkpointer.checkpoint_files='["ft-model-00001-of-00001.safetensors"]' \
     optimizer.lr=0.0002 \
@@ -139,7 +139,7 @@ srun \
     --time=48:00:00 \
     --gres=gpu:1 \
     --qos=gpu-medium \
-    conda run --live-stream -n ssi-latest python scripts/train_sft.py \
+    uv run scripts/train_sft.py \
         checkpointer.checkpoint_dir="$(realpath "${HOME}/hafh/models/extended/Llama-3.2-1B-2048-dsus")" \
         checkpointer.checkpoint_files='["ft-model-00001-of-00001.safetensors"]' \
         optimizer.lr=0.0002 \
