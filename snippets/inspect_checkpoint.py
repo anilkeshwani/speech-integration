@@ -41,6 +41,7 @@ def inspect_checkpoint(checkpoint_dir: str):
 
     # 2. Inspect Model Weights Structure (Index file)
     print("\n")
+    weight_map = {}
     index_files = list(ckpt_path.glob("*.index.json"))
     if index_files:
         print(f"--- Found Model Index: {index_files[0]} ---")
@@ -61,6 +62,64 @@ def inspect_checkpoint(checkpoint_dir: str):
                 print(f"  ... and {len(weight_map) - 5} more")
     else:
         print(f"--- No model index JSON found in {ckpt_path} ---")
+
+    # 3. Inspect Model Shards
+    if weight_map:
+        print("\n--- Inspecting Model Shards on Disk ---")
+        unique_shards = sorted(list(set(weight_map.values())))
+        for shard_name in unique_shards:
+            shard_path = ckpt_path / shard_name
+            if not shard_path.exists():
+                print(f"  [MISSING] Shard not found on disk: {shard_path}")
+                continue
+            
+            # Read the shard
+            shard_size_gb = shard_path.stat().st_size / (1024 ** 3)
+            print(f"  [OK] {shard_name} ({shard_size_gb:.2f} GiB)")
+            
+            try:
+                num_params = 0
+                dtypes = set()
+                
+                if shard_name.endswith(".safetensors"):
+                    try:
+                        from safetensors import safe_open
+                        with safe_open(shard_path, framework="pt", device="cpu") as f:
+                            # Safetensors allows us to check shape/dtype without loading everything into memory
+                            keys = f.keys()
+                            for k in keys:
+                                tensor_slice = f.get_slice(k)
+                                shape = tensor_slice.get_shape() 
+                                params = 1
+                                for dim in shape:
+                                    params *= dim
+                                num_params += params
+                                
+                            # Get dtype directly from the first tensor
+                            if keys:
+                                first_key = keys[0]
+                                dtype = f.get_tensor(first_key).dtype
+                                dtypes.add(str(dtype))
+                                
+                    except ImportError:
+                        print("       [WARNING] 'safetensors' package not installed. Cannot read contents.")
+                        continue
+                        
+                elif shard_name.endswith(".bin") or shard_name.endswith(".pt"):
+                    # Use mmap=True to avoid loading the whole file into active memory immediately
+                    state_dict = torch.load(shard_path, map_location="cpu", weights_only=True, mmap=True)
+                    for k, v in state_dict.items():
+                        num_params += v.numel()
+                        dtypes.add(str(v.dtype))
+                else:
+                    print(f"       [SKIPPED] Unrecognized shard extension: {shard_name}")
+                    continue
+                
+                print(f"       Parameters: {num_params:,}")
+                print(f"       DTypes: {', '.join(dtypes)}")
+                
+            except Exception as e:
+                print(f"       [ERROR] Failed to read shard: {e}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Inspect a training checkpoint.")
