@@ -58,6 +58,27 @@ If you want to use pre-commit remember to install hooks:
 pre-commit install --install-hooks
 ```
 
+## Type Checking and LSP (Pyrefly)
+
+Pyrefly is the project's canonical type checker and Python language server.
+
+Install/update development dependencies:
+
+```bash
+uv sync --extra dev
+```
+
+Run type checking (configured for `ssi`):
+
+```bash
+uv run pyrefly check
+```
+
+For Google Antigravity IDE:
+- Install the `Pyrefly` extension (`meta.pyrefly`) from OpenVSX.
+- Use the workspace interpreter at `${workspaceFolder}/.venv/bin/python`.
+- Keep Pyright/Pylance disabled for this workspace to avoid duplicate diagnostics.
+
 ## Download Llama 3.2 Base Model
 
 ### Download with Hugging Face CLI
