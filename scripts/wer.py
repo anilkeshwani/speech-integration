@@ -66,6 +66,7 @@ def main(args: Namespace) -> None:
         LOGGER.info("No normalizer specified, skipping text normalization.")
     else:
         raise NotImplementedError(f"Unsupported normalizer: {args.normalizer}. Supported: 'whisper' or None (null).")
+    # TODO Any merit of using jiwer.process_words(reference=reference, hypothesis=generated)?
     wer = wer_metric.compute(predictions=generated, references=reference)
     with open(wer_json, "x") as f:
         json.dump({"wer": wer}, f, indent=4)
