@@ -1,7 +1,0 @@
-- Add explicit schema validation for required dataset columns in ssi/data/sft.py and ssi/data/cpt.py.
-- Replace mutable default args ([]) and other unsafe defaults in dataset/collate code.
-- Move CPT PRNG from module-global to instance-owned RNG for deterministic reproducibility.
-- Add deterministic fixtures for deduplication, modality token behavior, and interleave span correctness.
-    - Exit criteria: deterministic tokenization/collation tests pass under fixed seed.
-- Normalize Hydra config shape and remove obsolete flags/TODO pathways.
-- Optionally unify training entrypoints into single script with explicit mode.

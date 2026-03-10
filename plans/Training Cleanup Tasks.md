@@ -174,12 +174,6 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 - `cpt.py:41` — `PRNG = np.random.default_rng(SEED)` is module-level; dev reproducibility depends on training history.
 - Fix: create a per-instance RNG, or separate RNGs for train and dev.
 
-**C9. Mutable default arguments in data functions**
-- `ssi/data/__init__.py:108`, `ssi/data/sft.py:121` — `additional_keys: list[str] = []`
-- `ssi/data/cpt.py:172` — `dsu_spans: list[str] = []`
-- Low practical risk here (lists are not mutated across calls), but violates Python best practice.
-- Fix: replace with `= None` and assign `[]` inside the function body, or use `field(default_factory=list)` for dataclasses.
-
 **C7. Unconditional `torch.cuda.empty_cache()` every batch**
 - `ssi/train.py:254` — harms throughput on CUDA; a no-op or error on other devices.
 - Fix: remove (the preceding `del batch` is sufficient), or gate behind a dedicated `cfg.debug_empty_cache` flag (default off) — do not reuse `cfg.debug_mode` for this.
@@ -188,7 +182,27 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 - `token_type_counts_total` is cumulative but logged inline with per-step metrics (loss, num_tokens_step) — `train.py:206`.
 - Also logged to wandb as `n_tokens.{tt}` at `train.py:228` — cumulative, but field name and context are ambiguous.
 - Padding tokens in `special_text` range inflate that counter while `"total"` excludes padding.
+
+**C9. Mutable default arguments in data functions**
+- `ssi/data/__init__.py:108`, `ssi/data/sft.py:121` — `additional_keys: list[str] = []`
+- `ssi/data/cpt.py:172` — `dsu_spans: list[str] = []`
+- Low practical risk here (lists are not mutated across calls), but violates Python best practice.
+- Fix: replace with `= None` and assign `[]` inside the function body, or use `field(default_factory=list)` for dataclasses.
 - Fix: clarify per-step vs cumulative; exclude padding consistently from all type buckets.
+
+**C10. No schema validation for required dataset columns**
+- `ssi/data/sft.py` and `ssi/data/cpt.py` do not validate that expected columns are present before attempting access.
+- Failure mode is an unhelpful `KeyError` deep in the data pipeline rather than an early, descriptive error.
+- Fix: add explicit checks for required columns at dataset construction time.
+
+**C11. Training entrypoints are separate scripts with no explicit mode flag**
+- `scripts/train.py` (or equivalent) and generation are separate scripts; no unified entrypoint with `--mode cpt|sft|generate`.
+- Optional / aspirational: low priority relative to correctness fixes.
+
+**C12. Hydra configs are not minimal or modular**
+- Data configs (under `conf/data/`) repeat shared parameters across `train` and `dev` splits for the same dataset and training type (CPT vs SFT).
+- More broadly, configs across training types and datasets have not been audited for redundancy or factored into composable base configs + overrides.
+- Fix: extract shared parameters into a parent/base config; set only split-specific or dataset-specific parameters in child configs. Use Hydra's config group composition to assemble final configs from minimal, non-redundant parts.
 
 ---
 
