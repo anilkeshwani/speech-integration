@@ -96,6 +96,18 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 - `tokenized_key`, `alignment_start_time_key`, `alignment_end_time_key`, `speech_tokens_key` resolved in `cpt.py:85-92` but never stored or passed to `interleave()` / `concatenate_speech_text()`.
 - Fix: thread keys through to prompt functions, or remove the parameters if intentionally unused.
 
+**B10. `update_from_speech_cfg` mutates global singleton instead of `self`**
+- `ssi/llama_configs.py:48-49` — `update_from_speech_cfg` is an instance method but hardcodes `configllama3_2_1b` instead of `self`.
+- Calling it on any instance other than `configllama3_2_1b` silently mutates the wrong object.
+- Currently harmless because `train.py:124` always calls it as `configllama3_2_1b.update_from_speech_cfg(...)`, but is a latent bug for tests or multi-config use.
+- Fix: replace `configllama3_2_1b.n_dsus = ...` and `configllama3_2_1b.modality_tokens = ...` with `self.n_dsus = ...` and `self.modality_tokens = ...`.
+
+**B11. `train_cfg` NameError in `generate.py` when `cfg.train_yaml` is not None**
+- `scripts/generate.py` only assigns `train_cfg` inside the `if cfg.train_yaml is None:` block (lines 152–160).
+- `train_cfg` is referenced unconditionally at lines 164, 170, 180 to resolve `cfg.speech.n_dsus`, `cfg.speech.deduplicate`, and `cfg.data`.
+- If a caller provides `cfg.train_yaml` explicitly, this raises `NameError: name 'train_cfg' is not defined` at runtime.
+- Fix: add the `else` branch that loads `train_cfg = OmegaConf.load(cfg.train_yaml)` when `cfg.train_yaml` is not None.
+
 ---
 
 ## Dead / Redundant Code
@@ -161,6 +173,12 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 **C6. Module-level PRNG shared between train and dev datasets**
 - `cpt.py:41` — `PRNG = np.random.default_rng(SEED)` is module-level; dev reproducibility depends on training history.
 - Fix: create a per-instance RNG, or separate RNGs for train and dev.
+
+**C9. Mutable default arguments in data functions**
+- `ssi/data/__init__.py:108`, `ssi/data/sft.py:121` — `additional_keys: list[str] = []`
+- `ssi/data/cpt.py:172` — `dsu_spans: list[str] = []`
+- Low practical risk here (lists are not mutated across calls), but violates Python best practice.
+- Fix: replace with `= None` and assign `[]` inside the function body, or use `field(default_factory=list)` for dataclasses.
 
 **C7. Unconditional `torch.cuda.empty_cache()` every batch**
 - `ssi/train.py:254` — harms throughput on CUDA; a no-op or error on other devices.
