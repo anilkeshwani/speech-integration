@@ -1,78 +1,78 @@
 [build-system]
-requires = ["setuptools>=64", "setuptools-scm>=8"]
-build-backend = "setuptools.build_meta"
+    requires      = ["setuptools>=64", "setuptools-scm>=8"]
+    build-backend = "setuptools.build_meta"
 
 [project]
-name = "ssi"
-authors = [
-{ name = "Anil Keshwani", email = "anil.keshwani.academic@gmail.com" },
-]
-description = "Research implementation to investigate methods of integrating the speech modality into pre-trained language models"
-requires-python = "==3.10.6"
-license = { file = "LICENSE" }
-dynamic = ["readme", "version"]
-dependencies = [
-"evaluate>=0.4.3,<1.0.0",
-"huggingface_hub>=0.25.2,<1.0.0",
-"hydra-colorlog>=1.2.0,<2.0.0",
-"hydra-core>=1.3.2,<2.0.0",
-"inflect>=7.3.1,<8.0.0",
-"jiwer>=3.1.0,<4.0.0",
-"matplotlib>=3.10.6,<4.0.0",
-"omegaconf>=2.3.0,<3.0.0",
-"psutil>=6.0.0,<7.0.0",
-"pyarrow>=17.0.0,<18.0.0",
-"PyYAML>=6.0.2,<7.0.0",
-"regex>=2024.9.11,<2025.0.0",
-"sardalign",
-"scikit-learn>=1.7.2,<2.0.0",
-"seaborn>=0.13.2,<1.0.0",
-"sentencepiece>=0.2.0,<1.0.0",
-"six>=1.16.0,<2.0.0",
-"tiktoken>=0.8.0,<1.0.0",
-"torch>=2.5.1,<3.0.0",
-"torchao>=0.5.0,<1.0.0",
-"torchaudio>=2.2.2,<3.0.0",
-"torchtune>=0.5.0,<1.0.0",
-"torchvision>=0.20.1,<1.0.0",
-"tqdm>=4.66.5,<5.0.0",
-"vllm>=0.7.3,<1.0.0; sys_platform == 'linux'",
-"wandb>=0.20.1,<1.0.0",
-"whisper_normalizer>=0.1.11,<1.0.0",
-]
+    name = "ssi"
+    authors = [
+        { name = "Anil Keshwani", email = "anil.keshwani.academic@gmail.com" },
+    ]
+    description = "Research implementation to investigate methods of integrating the speech modality into pre-trained language models"
+    requires-python = "==3.10.6"
+    license = { file = "LICENSE" }
+    dynamic = ["readme", "version"]
+    dependencies = [
+        "evaluate>=0.4.3,<1.0.0",
+        "huggingface_hub>=0.25.2,<1.0.0",
+        "hydra-colorlog>=1.2.0,<2.0.0",
+        "hydra-core>=1.3.2,<2.0.0",
+        "inflect>=7.3.1,<8.0.0",
+        "jiwer>=3.1.0,<4.0.0",
+        "matplotlib>=3.10.6,<4.0.0",
+        "omegaconf>=2.3.0,<3.0.0",
+        "psutil>=6.0.0,<7.0.0",
+        "pyarrow>=17.0.0,<18.0.0",
+        "PyYAML>=6.0.2,<7.0.0",
+        "regex>=2024.9.11,<2025.0.0",
+        "sardalign",
+        "scikit-learn>=1.7.2,<2.0.0",
+        "seaborn>=0.13.2,<1.0.0",
+        "sentencepiece>=0.2.0,<1.0.0",
+        "six>=1.16.0,<2.0.0",
+        "tiktoken>=0.8.0,<1.0.0",
+        "torch>=2.5.1,<3.0.0",
+        "torchao>=0.5.0,<1.0.0",
+        "torchaudio>=2.2.2,<3.0.0",
+        "torchtune>=0.5.0,<1.0.0",
+        "torchvision>=0.20.1,<1.0.0",
+        "tqdm>=4.66.5,<5.0.0",
+        "vllm>=0.7.3,<1.0.0; sys_platform == 'linux'",
+        "wandb>=0.20.1,<1.0.0",
+        "whisper_normalizer>=0.1.11,<1.0.0",
+    ]
 
 [tool.setuptools]
-packages = ["ssi"] # Sardine Speech Integration
+    packages = ["ssi"] # Sardine Speech Integration
 
 [tool.setuptools_scm]
-version_file = "ssi/_version.py"
+    version_file = "ssi/_version.py"
 
 [tool.setuptools.dynamic]
-readme = { file = ["README.md"] }
+    readme = { file = ["README.md"] }
 
 [project.optional-dependencies]
-dev = [
-"pipreqs>=0.5.0,<1.0.0",
-"pre-commit>=3.8.0,<4.0.0",
-"ruff>=0.9.0,<1.0.0",
-"shfmt-py>=3.7.0.1,<4.0.0",
-]
+    dev = [
+        "pipreqs>=0.5.0,<1.0.0",
+        "pre-commit>=3.8.0,<4.0.0",
+        "ruff>=0.9.0,<1.0.0",
+        "shfmt-py>=3.7.0.1,<4.0.0",
+    ]
 
 [tool.uv]
-environments = [
-"sys_platform == 'linux' and platform_machine == 'x86_64'",
-"sys_platform == 'darwin' and platform_machine == 'arm64'",
-]
+    environments = [
+        "sys_platform == 'linux' and platform_machine == 'x86_64'",
+        "sys_platform == 'darwin' and platform_machine == 'arm64'",
+    ]
 
 [tool.uv.sources]
-sardalign = { git = "https://github.com/anilkeshwani/speech-text-alignment.git", rev = "4532b81c9cf15564f2ea3f4e578e8dbd3dbae5c0" }
+    sardalign = { git = "https://github.com/anilkeshwani/speech-text-alignment.git", rev = "4532b81c9cf15564f2ea3f4e578e8dbd3dbae5c0" }
 
 [tool.ruff]
-line-length = 120
-target-version = "py310"
-include = ["ssi/**/*.py", "pyproject.toml"]
-exclude = [".venv", "outputs", "build", "third_party"]
+    line-length    = 120
+    target-version = "py310"
+    include        = ["ssi/**/*.py", "pyproject.toml"]
+    exclude        = [".venv", "outputs", "build", "third_party"]
 
 [tool.ruff.lint.isort]
-lines-after-imports = 2
-force-sort-within-sections = true
+    lines-after-imports        = 2
+    force-sort-within-sections = true
