@@ -40,10 +40,6 @@ wandb:
   entity: anilkeshwani # if null, automatically set to username by wandb based on API key
   group: ${config_name}
 
-# Memory management
-enable_activation_checkpointing: False # True reduces memory
-enable_activation_offloading: False # True reduces memory
-
 # Debug Mode
 # `None` -> don't set any PyTorch global values
 # "default" or 0 -> don't error or warn on nondeterministic operations and additionally enable PyTorch CuDNN benchmark

@@ -1,8 +1,8 @@
 import logging
 from typing import Any
 
-import torch
 from omegaconf import DictConfig
+import torch
 from torchtune import training
 from torchtune.models.llama3_2 import llama3_2
 from torchtune.modules import TransformerDecoder
@@ -30,14 +30,6 @@ def setup_llama3_2_1b(
         model = llama3_2(**llama_config.parameters)
     if cfg.compile:
         training.compile_model(model)
-    if cfg.enable_activation_checkpointing:
-        raise NotImplementedError
-        training.set_activation_checkpointing(model, auto_wrap_policy={modules.TransformerSelfAttentionLayer})
     model.load_state_dict(model_state_dict)  # load model weights
     training.validate_expected_param_dtype(model.named_parameters(), dtype=dtype_default)
-    if cfg.enable_activation_offloading:
-        raise NotImplementedError
-        activations_handling_ctx = training.get_act_offloading_ctx_manager(model, cfg.enable_activation_offloading)
-    if cfg.enable_activation_checkpointing and (not cfg.enable_activation_offloading):
-        LOGGER.warning("Activation checkpointing is enabled but activation offloading is not.")
     return model

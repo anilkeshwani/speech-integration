@@ -1,12 +1,12 @@
+from collections import defaultdict
 import logging
 import math
 import os
 import time
-from collections import defaultdict
 from typing import Any
 
-import torch
 from omegaconf import DictConfig, OmegaConf
+import torch
 from torch import Tensor
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
@@ -48,9 +48,6 @@ LOGGER = logging.getLogger(__name__)
 def validate_train_cfg(cfg: DictConfig) -> None:
     if PRECISION_STR_TO_DTYPE.get(cfg.dtype) not in SUPPORTED_DTYPES:
         raise ValueError(f"Unsupported dtype: {cfg.dtype}. Supported dtypes: {SUPPORTED_DTYPES}")
-
-    if cfg.optimizer_in_bwd or cfg.enable_activation_checkpointing or cfg.enable_activation_offloading:
-        raise NotImplementedError
 
     missing_keys = OmegaConf.missing_keys(cfg)
     if missing_keys:
