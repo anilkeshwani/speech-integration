@@ -58,26 +58,28 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 
 ## Dead / Redundant Code
 
-**D1. Dead `ignore_idx` assignment in data setup**
-- `ssi/data/__init__.py:44-46, 81-83` — first `if loss_fn is None: ignore_idx = ...` immediately overwritten by the ternary below.
-- Fix: remove the redundant `if` block; keep only the ternary.
+~~**D1. Dead `ignore_idx` assignment in data setup**~~
+- ~~`ssi/data/__init__.py:44-46, 81-83` — first `if loss_fn is None: ignore_idx = ...` immediately overwritten by the ternary below.~~
+- ~~Fix: remove the redundant `if` block; keep only the ternary.~~
 
 **D2. Unreachable second `packed` block**
 - Both `setup_text_completion_data` and `setup_sft_data` raise `NotImplementedError` if `packed=True`, making the second `if packed:` block unreachable.
-- Fix: remove the first early-raise or implement packing properly; eliminate the dead second block.
+- Converted to feature spec: `plans/Feature - Packed Dataset Support.md`.
+- Fix: implement packing properly per the feature spec; dead stub code will be replaced.
 
-**D3. Unreachable code after `NotImplementedError` raises**
-- `optimizer_in_bwd`, `enable_activation_checkpointing`, `enable_activation_offloading` all raise immediately, with unreachable code beneath them.
-- Files: `ssi/model.py:33-42`, `ssi/lr_schedule.py:25-42`, `ssi/optimizer.py`
-- Fix: either remove the dead lines, or collapse the stubs to a single clear comment.
+~~**D3. Unreachable code after `NotImplementedError` raises**~~
+- ~~`optimizer_in_bwd`, `enable_activation_checkpointing`, `enable_activation_offloading` all raise immediately, with unreachable code beneath them.~~
+- ~~Files: `ssi/model.py:33-42`, `ssi/lr_schedule.py:25-42`, `ssi/optimizer.py`~~
+- ~~Fix: either remove the dead lines, or collapse the stubs to a single clear comment.~~
+- Also removed dead `optimizer_in_bwd` / `optim_ckpt_wrapper` parameters from `lr_schedule.py` and `checkpoint.py`; flattened `else` skeleton in `optimizer.py`.
 
-**D4. Self-assignment `optimizer = optimizer`**
-- No-op in `else` branch of `lr_schedule.py` and `optimizer.py`.
-- Fix: remove.
+~~**D4. Self-assignment `optimizer = optimizer`**~~
+- ~~No-op in `else` branch of `lr_schedule.py` and `optimizer.py`.~~
+- ~~Fix: remove.~~
 
-**D5. Unreachable activation checkpointing warning**
-- `ssi/model.py:41-42` warns if `enable_activation_checkpointing and not enable_activation_offloading`, but checkpointing raises `NotImplementedError` above — warning can never be reached.
-- Fix: remove (belongs after the feature is implemented).
+~~**D5. Unreachable activation checkpointing warning**~~
+- ~~`ssi/model.py:41-42` warns if `enable_activation_checkpointing and not enable_activation_offloading`, but checkpointing raises `NotImplementedError` above — warning can never be reached.~~
+- ~~Fix: remove (belongs after the feature is implemented).~~
 
 ---
 
