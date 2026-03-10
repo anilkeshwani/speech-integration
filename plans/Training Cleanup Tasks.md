@@ -151,6 +151,8 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 - Current: `experiments/.../checkpoints/epoch_N/global_step_M/`
 - Target: `experiments/{stage}_{encoder}_{n_dsus}dsus_{flags}_{wandb_id}/step_M/`
 - Touches: `ssi/checkpoint.py`, `ssi/utils.py`, `scripts/generate.py`, `snippets/`, `conf/training.yaml`.
+- Notes:
+    - We'll come back to this refactoring - specifically I think it makes more sense to structure the experiments into four broad directories according to which speech tokenizer is being used and then automatically set the number of DSUs used in that set of experiments accordingly. For this, we'll probably want to write out an extended version of the Llama 3.2 1B model where the tokenizer and embedding layer is extended by the correct number of types (tokens) in each case e.g. 5000 for HuBERT. 
 
 ~~**R2. LR scheduler `last_epoch` initialization**~~
 - ~~Clean up `global_step = -1 if global_step == 0 else global_step` pattern in `train.py:138-146`.~~
