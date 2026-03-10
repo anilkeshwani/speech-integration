@@ -41,8 +41,6 @@ def setup_text_completion_data(
         dataset = pack_dataset(dataset, model_tokenizer, split_across_pack=cfg_dataset.get("split_across_pack", False))
         collate_fn = padded_collate_packed
     else:
-        if loss_fn is None:
-            ignore_idx = CROSS_ENTROPY_IGNORE_IDX
         ignore_idx = CROSS_ENTROPY_IGNORE_IDX if loss_fn is None else loss_fn.ignore_index
         collate_fn = partial(
             padded_collate_sft,
@@ -78,8 +76,6 @@ def setup_sft_data(
         dataset = pack_dataset(dataset, model_tokenizer, split_across_pack=False)
         collate_fn = padded_collate_packed
     else:
-        if loss_fn is None:
-            ignore_idx = CROSS_ENTROPY_IGNORE_IDX
         ignore_idx = CROSS_ENTROPY_IGNORE_IDX if loss_fn is None else loss_fn.ignore_index
         collate_fn = partial(
             padded_collate_sft,
