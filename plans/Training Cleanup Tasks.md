@@ -85,9 +85,9 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 
 ## Naming / Typos
 
-**N1. Typo: `optimzer_state_dict`**
-- `ssi/optimizer.py:11` — missing `i` in `optimizer`.
-- Fix: rename to `optimizer_state_dict` throughout.
+~~**N1. Typo: `optimzer_state_dict`**~~
+- ~~`ssi/optimizer.py:11` — missing `i` in `optimizer`.~~
+- ~~Fix: rename to `optimizer_state_dict` throughout.~~
 
 **N2. Confusing `global_step = -1` initialization**
 - `ssi/train.py:138` — non-obvious `-1` sentinel for LR scheduler's `last_epoch`.
