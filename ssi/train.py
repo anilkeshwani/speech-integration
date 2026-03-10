@@ -157,7 +157,7 @@ def train(cfg: DictConfig) -> None:
         data_dev, sampler_dev = setup_text_completion_data(cfg.data.dev, tokenizer)
     else:
         raise NotImplementedError
-    optimizer.zero_grad()  # zero gradients before training # NOTE make conditional for optimizer_in_bwd
+    optimizer.zero_grad()  # zero gradients before training
     t_train_start = time.perf_counter()
     t0 = time.perf_counter()
     loss_running = 0.0
