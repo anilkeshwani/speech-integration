@@ -43,11 +43,11 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 
 ## Bugs (Incorrect Behavior)
 
-**B1. Checkpoint resume broken — step key mismatch**
-- `resume_training_state()` reads `ckpt_dict[STEPS_KEY]` (`"steps_run"`) — `ssi/train.py:60-63`
-- `save_checkpoint()` writes `GLOBAL_STEP_KEY` (`"global_step"`) — `ssi/checkpoint.py:534-538`
-- Result: resume fails with a missing key or restores wrong step.
-- Fix: align save/load to use the same key (`"steps_run"`), add legacy fallback for old checkpoints.
+~~**B1. Checkpoint resume broken — step key mismatch**~~
+- ~~`resume_training_state()` reads `ckpt_dict[STEPS_KEY]` (`"steps_run"`) — `ssi/train.py:60-63`~~
+- ~~`save_checkpoint()` writes `GLOBAL_STEP_KEY` (`"global_step"`) — `ssi/checkpoint.py:534-538`~~
+- ~~Result: resume fails with a missing key or restores wrong step.~~
+- ~~Fix: align save/load to use the same key (`"steps_run"`), add legacy fallback for old checkpoints.~~
 - For exact resume (bit-identical continuation): also save/load RNG state and intra-epoch dataloader position.
 
 **B2. Epoch semantics on resume are wrong**

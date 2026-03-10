@@ -24,11 +24,11 @@ from ssi.checkpoint import FullModelHFCheckpointer, resolve_checkpointer_output_
 from ssi.constants import (
     DEBUGGING_TAG,
     EPOCHS_KEY,
+    GLOBAL_STEP_KEY,
     MODEL_KEY,
     OPTIMIZER_KEY,
     SEED,
     SEED_KEY,
-    STEPS_KEY,
     SUPPORTED_DTYPES,
 )
 from ssi.data import setup_sft_data, setup_text_completion_data
@@ -65,7 +65,7 @@ def validate_train_cfg(cfg: DictConfig) -> None:
 def resume_training_state(ckpt_dict: dict[str, Any]) -> tuple[int, int, StateDict]:
     if SEED != ckpt_dict[SEED_KEY]:
         raise ValueError("Config value for seed does not match the checkpoint value")
-    return ckpt_dict[EPOCHS_KEY], ckpt_dict[STEPS_KEY], ckpt_dict[OPTIMIZER_KEY]
+    return ckpt_dict[EPOCHS_KEY], ckpt_dict[GLOBAL_STEP_KEY], ckpt_dict[OPTIMIZER_KEY]
 
 
 def get_token_type_ranges(llama_config: ConfigLlama3_2) -> dict[str, tuple[int, int]]:
