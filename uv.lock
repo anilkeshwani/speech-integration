@@ -2306,10 +2306,11 @@ wheels = [
 
 [[package]]
 name = "sardalign"
-version = "0.1.dev377+g4532b81c9"
-source = { git = "https://github.com/anilkeshwani/speech-text-alignment.git?rev=4532b81c9cf15564f2ea3f4e578e8dbd3dbae5c0#4532b81c9cf15564f2ea3f4e578e8dbd3dbae5c0" }
+version = "0.1.dev387+g09bcb07d8"
+source = { git = "https://github.com/anilkeshwani/speech-text-alignment.git?rev=09bcb07d8f3805dbad1bec4ddd80722676593602#09bcb07d8f3805dbad1bec4ddd80722676593602" }
 dependencies = [
     { name = "datasets", extra = ["audio"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "huggingface-hub", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "joblib", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "librosa", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "matplotlib", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -2561,7 +2562,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.2,<7.0.0" },
     { name = "regex", specifier = ">=2024.9.11,<2025.0.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.9.0,<1.0.0" },
-    { name = "sardalign", git = "https://github.com/anilkeshwani/speech-text-alignment.git?rev=4532b81c9cf15564f2ea3f4e578e8dbd3dbae5c0" },
+    { name = "sardalign", git = "https://github.com/anilkeshwani/speech-text-alignment.git?rev=09bcb07d8f3805dbad1bec4ddd80722676593602" },
     { name = "scikit-learn", specifier = ">=1.7.2,<2.0.0" },
     { name = "seaborn", specifier = ">=0.13.2,<1.0.0" },
     { name = "sentencepiece", specifier = ">=0.2.0,<1.0.0" },

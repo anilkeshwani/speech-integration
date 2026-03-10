@@ -65,7 +65,7 @@
     ]
 
 [tool.uv.sources]
-    sardalign = { git = "https://github.com/anilkeshwani/speech-text-alignment.git", rev = "4532b81c9cf15564f2ea3f4e578e8dbd3dbae5c0" }
+    sardalign = { git = "https://github.com/anilkeshwani/speech-text-alignment.git", rev = "09bcb07d8f3805dbad1bec4ddd80722676593602" }
 
 [tool.ruff]
     line-length    = 120
