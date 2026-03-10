@@ -53,6 +53,14 @@ def validate_train_cfg(cfg: DictConfig) -> None:
     if missing_keys:
         raise ValueError(f"Missing keys in config: {missing_keys}")
 
+    positive_int_fields = ("gradient_accumulation_steps", "max_steps", "log_interval", "eval_steps", "save_steps")
+    for field in positive_int_fields:
+        if cfg.get(field, 0) <= 0:
+            raise ValueError(f"Config field '{field}' must be a positive integer, got: {cfg.get(field)}")
+
+    if cfg.save_steps % cfg.eval_steps != 0:
+        raise ValueError(f"save_steps ({cfg.save_steps}) must be a multiple of eval_steps ({cfg.eval_steps})")
+
 
 def resume_training_state(ckpt_dict: dict[str, Any]) -> tuple[int, int, StateDict]:
     if SEED != ckpt_dict[SEED_KEY]:

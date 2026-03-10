@@ -133,14 +133,14 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 
 ## Config Validation
 
-**V1. No positive-integer validation for critical step fields**
-- `gradient_accumulation_steps`, `max_steps`, `log_interval`, `eval_steps`, `save_steps` never validated > 0 in `validate_train_cfg()`.
-- Zero values cause modulo/division crashes deep in the training loop.
-- Fix: add checks to `validate_train_cfg()`.
+~~**V1. No positive-integer validation for critical step fields**~~
+- ~~`gradient_accumulation_steps`, `max_steps`, `log_interval`, `eval_steps`, `save_steps` never validated > 0 in `validate_train_cfg()`.~~
+- ~~Zero values cause modulo/division crashes deep in the training loop.~~
+- ~~Fix: add checks to `validate_train_cfg()`.~~
 
-**V2. `save_steps` not validated as multiple of `eval_steps`**
-- Comment in `conf/training.yaml` says it "should be" — not enforced.
-- Fix: add assertion in `validate_train_cfg()`.
+~~**V2. `save_steps` not validated as multiple of `eval_steps`**~~
+- ~~Comment in `conf/training.yaml` says it "should be" — not enforced.~~
+- ~~Fix: add assertion in `validate_train_cfg()`.~~
 
 ---
 
