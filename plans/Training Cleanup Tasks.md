@@ -27,12 +27,13 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 - Fix: count valid tokens from the same shifted mask used by loss, or return `(loss, n_valid_tokens)` from `compute_loss`.
 
 **B4. `steps_per_epoch = 0` crashes**
-- `steps_per_epoch = batches_per_epoch // gradient_accumulation_steps` — `ssi/train.py:164`
+- `steps_per_epoch = batches_per_epoch // gradient_accumulation_steps` — `ssi/train.py:169`
 - If `batches_per_epoch < grad_accum_steps`, `steps_per_epoch == 0` and `ceil(max_steps / 0)` crashes.
-- Fix: add validation in `validate_train_cfg()` or guard with an early error.
+- V1 validation guards `gradient_accumulation_steps > 0` but cannot check `batches_per_epoch` at config-validation time.
+- Fix: guard after `steps_per_epoch` is computed (raise early if zero) or enforce via dataset size check.
 
 **B5. Divide-by-zero in gradient scaling**
-- `scale_grads(model, 1 / num_tokens_step)` — `ssi/train.py:182`
+- `scale_grads(model, 1 / num_tokens_step)` — `ssi/train.py:187`
 - If all labels in an accumulation window are masked, `num_tokens_step == 0` → ZeroDivisionError.
 - Fix: skip optimizer step (with a warning) when `num_tokens_step == 0`.
 
@@ -46,9 +47,9 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 - Fix: use `batch["labels"]` (read-only access).
 
 **B8. Dev loss has wrong type**
-- `num_tokens_dev` starts as `int` but is incremented by a tensor — `ssi/eval.py:30-31`
-- Return type annotation is `-> float` but may return a tensor.
-- Fix: call `.item()` when accumulating; cast before dividing.
+- `num_tokens_dev_batch = (...).sum()` yields a tensor — `ssi/eval.py:30`; `num_tokens_dev += num_tokens_dev_batch` makes `num_tokens_dev` a tensor.
+- `dev_loss_running / num_tokens_dev` returns a tensor, but `compute_dataset_loss` is annotated `-> float`.
+- Fix: call `.item()` on `num_tokens_dev_batch` at accumulation site (`eval.py:30`).
 
 **B9. CPT custom key parameters silently ignored**
 - `tokenized_key`, `alignment_start_time_key`, `alignment_end_time_key`, `speech_tokens_key` resolved in `cpt.py:85-92` but never stored or passed to `interleave()` / `concatenate_speech_text()`.
@@ -121,11 +122,12 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 - Fix: create a per-instance RNG, or separate RNGs for train and dev.
 
 **C7. Unconditional `torch.cuda.empty_cache()` every batch**
-- `ssi/train.py:249` — harms throughput on CUDA; wrong on other devices.
+- `ssi/train.py:254` — harms throughput on CUDA; wrong on other devices.
 - Fix: gate behind `cfg.debug_mode` or remove (the `del batch` is sufficient).
 
 **C8. Token-type accounting semantics unclear**
-- Counters appear cumulative but logged like per-step values — `train.py:99-101`.
+- `token_type_counts_total` is cumulative but logged inline with per-step metrics (loss, num_tokens_step) — `train.py:206`.
+- Also logged to wandb as `n_tokens.{tt}` at `train.py:228` — cumulative, but field name and context are ambiguous.
 - Padding tokens in `special_text` range inflate that counter while `"total"` excludes padding.
 - Fix: clarify per-step vs cumulative; exclude padding consistently from all type buckets.
 
