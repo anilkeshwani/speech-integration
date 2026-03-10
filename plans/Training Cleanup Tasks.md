@@ -4,6 +4,41 @@ Produced by exploratory review of all training-related code. Tasks are grouped b
 
 Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes and Refactor.md`, `plans/claude-data-critique.md`, `plans/Plan to Simplify Checkpoint Directory Structure.md`.
 
+## Recommendations
+
+1. **Fix checkpoint schema first**
+   - Save and load the same keys (`steps_run` + `epochs_run`), and keep legacy fallback for old checkpoints.
+   - Save/load RNG state and intra-epoch dataloader position if exact resume matters.
+
+2. **Fix token-count math**
+   - Compute normalization counts on the same shifted label mask used by loss, or derive counts inside `compute_loss` and return both `(loss, n_valid_tokens)`.
+
+3. **Harden config validation**
+   - Enforce strict positivity for step/interval fields.
+   - Validate `batches_per_epoch >= gradient_accumulation_steps` or support partial-window stepping explicitly.
+
+4. **Guard against zero-token windows**
+   - Skip optimizer step when `num_tokens_step == 0`, or fail fast with a descriptive error.
+
+5. **Remove or gate `empty_cache`**
+   - At minimum `if DEVICE.type == "cuda" and cfg.debug_empty_cache`.
+   - Default off.
+
+6. **Make metric semantics explicit**
+   - Decide whether token-type counters are per-step or cumulative and ensure padding is excluded consistently.
+
+7. **Fix eval numeric typing and distributed reduction**
+   - Convert token counts to Python ints (`.item()`), and all-reduce `(dev_loss_sum, dev_token_count)` across ranks before division.
+
+8. **Avoid mutating batches in loss**
+   - Use `labels = batch["labels"]` and keep batch immutable in compute paths.
+
+9. **Add regression tests** → **T1–T4**
+   - Resume from saved checkpoint roundtrip.
+   - Gradient normalization with shifted labels.
+   - Small dataset where `len(dataloader) < grad_accum`.
+   - All-ignored-label batch behavior.
+
 ---
 
 ## Bugs (Incorrect Behavior)
@@ -12,19 +47,24 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 - `resume_training_state()` reads `ckpt_dict[STEPS_KEY]` (`"steps_run"`) — `ssi/train.py:60-63`
 - `save_checkpoint()` writes `GLOBAL_STEP_KEY` (`"global_step"`) — `ssi/checkpoint.py:534-538`
 - Result: resume fails with a missing key or restores wrong step.
-- Fix: align save/load to use the same key (`"steps_run"`), add legacy fallback.
+- Fix: align save/load to use the same key (`"steps_run"`), add legacy fallback for old checkpoints.
+- For exact resume (bit-identical continuation): also save/load RNG state and intra-epoch dataloader position.
 
 **B2. Epoch semantics on resume are wrong**
-- Save writes the current loop index `epoch` (mid-epoch) — `ssi/checkpoint.py:536`
-- Resume skips that epoch entirely (`range(epochs_run, n_epochs)`) — `ssi/train.py:168`
-- Result: remaining batches in the interrupted epoch are dropped.
-- Fix: save `epoch + 1` (completed epochs), or switch to step-only training with no epoch loop.
+- Save writes the current loop index `epoch` (mid-epoch, 0-indexed) — `ssi/checkpoint.py:536`
+- On resume, `epochs_run = epoch`, so `range(epochs_run, n_epochs)` restarts that epoch **from batch 0** — `ssi/train.py:173`
+- Result: already-trained batches in the interrupted epoch are re-trained (data duplication), not skipped; global_step is also incremented again over those batches, breaking the step count.
+- Fix: save `epoch + 1` (number of completed epochs), or switch to step-only training with no epoch loop.
 
 **B3. Gradient normalization uses wrong token count**
-- `num_tokens_iter` is counted from unshifted labels — `ssi/train.py:175`
-- But `compute_loss` shifts labels by 1 — `ssi/loss.py:16`
-- Creates systematic mismatch in loss scaling and gradient renormalization.
-- Fix: count valid tokens from the same shifted mask used by loss, or return `(loss, n_valid_tokens)` from `compute_loss`.
+- `num_tokens_iter` counted from **unshifted** labels — `ssi/train.py:180`
+- But `compute_loss` shifts labels left by 1, appending `ignore_index` at the end — `ssi/loss.py:16`
+- This mismatch affects three sites:
+  - Per-batch loss scaling: `compute_loss(...) * num_tokens_iter` — `ssi/train.py:183`
+  - Gradient renormalization: `scale_grads(model, 1 / num_tokens_step)` — `ssi/train.py:187`
+  - Logged loss: `loss_running.item() / num_tokens_step` — `ssi/train.py:195`
+- Overcounts by up to `batch_size` valid tokens (one per sequence); bias is small per batch but systematic across training.
+- Fix: count valid tokens from the same shifted label mask used by loss, or return `(loss, n_valid_tokens)` from `compute_loss`.
 
 **B4. `steps_per_epoch = 0` crashes**
 - `steps_per_epoch = batches_per_epoch // gradient_accumulation_steps` — `ssi/train.py:169`
@@ -46,10 +86,11 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 - Fragile: any caller that needs labels after `compute_loss` will see an empty batch.
 - Fix: use `batch["labels"]` (read-only access).
 
-**B8. Dev loss has wrong type**
+**B8. Dev loss has wrong type and missing distributed aggregation**
 - `num_tokens_dev_batch = (...).sum()` yields a tensor — `ssi/eval.py:30`; `num_tokens_dev += num_tokens_dev_batch` makes `num_tokens_dev` a tensor.
 - `dev_loss_running / num_tokens_dev` returns a tensor, but `compute_dataset_loss` is annotated `-> float`.
-- Fix: call `.item()` on `num_tokens_dev_batch` at accumulation site (`eval.py:30`).
+- No cross-rank aggregation: in a distributed setting, each rank reports its own local shard's loss, not the global dev loss.
+- Fix: call `.item()` on `num_tokens_dev_batch` at the accumulation site (`eval.py:30`); all-reduce `(dev_loss_sum, dev_token_count)` across ranks before the final division.
 
 **B9. CPT custom key parameters silently ignored**
 - `tokenized_key`, `alignment_start_time_key`, `alignment_end_time_key`, `speech_tokens_key` resolved in `cpt.py:85-92` but never stored or passed to `interleave()` / `concatenate_speech_text()`.
@@ -122,8 +163,8 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 - Fix: create a per-instance RNG, or separate RNGs for train and dev.
 
 **C7. Unconditional `torch.cuda.empty_cache()` every batch**
-- `ssi/train.py:254` — harms throughput on CUDA; wrong on other devices.
-- Fix: gate behind `cfg.debug_mode` or remove (the `del batch` is sufficient).
+- `ssi/train.py:254` — harms throughput on CUDA; a no-op or error on other devices.
+- Fix: remove (the preceding `del batch` is sufficient), or gate behind a dedicated `cfg.debug_empty_cache` flag (default off) — do not reuse `cfg.debug_mode` for this.
 
 **C8. Token-type accounting semantics unclear**
 - `token_type_counts_total` is cumulative but logged inline with per-step metrics (loss, num_tokens_step) — `train.py:206`.
@@ -159,3 +200,21 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 ~~**R2. LR scheduler `last_epoch` initialization**~~
 - ~~Clean up `global_step = -1 if global_step == 0 else global_step` pattern in `train.py:138-146`.~~
 - ~~Compute `last_epoch = global_step - 1` explicitly with a comment.~~
+
+---
+
+## Regression Tests
+
+Recommended test cases to validate correctness of the above fixes:
+
+**T1. Checkpoint resume roundtrip**
+- Run for N steps, save checkpoint, resume, verify global_step is correct, LR is continuous, and the first post-resume batch is not a duplicate of the last pre-checkpoint batch.
+
+**T2. Gradient normalization with shifted labels**
+- Construct a batch with known valid-token count; verify `num_tokens_iter` matches the shifted label mask (not the unshifted one) and that `loss * num_tokens_iter / num_tokens_step` is numerically correct.
+
+**T3. Small dataset: `len(dataloader) < gradient_accumulation_steps`**
+- Verify a clear early error is raised (not a silent `ZeroDivisionError` deep in `math.ceil`).
+
+**T4. All-ignored-label batch**
+- Construct a batch where every label is `ignore_index`; verify the optimizer step is skipped with a warning rather than producing a `ZeroDivisionError`.
