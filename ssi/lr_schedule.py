@@ -14,14 +14,10 @@ def setup_lr_scheduler(
     optimizer: Optimizer,
     global_step: int,
     num_training_steps: int,
-    # arguments for future implementation of optimizer_in_bwd
-    optimizer_in_bwd: bool = False,
-    optim_ckpt_wrapper=None,
 ) -> LambdaLR | None:
     if cfg.get("lr_scheduler") is None:
         LOGGER.info("No learning rate scheduler configured. Using constant learning rate.")
         return None
-
 
     # NOTE PyTorch LR schedulers have the extremely misleadingly name `last_epoch` parameter, which is in fact the
     # global step in the cosine annealing with warmup regime, where we require step-level granularity

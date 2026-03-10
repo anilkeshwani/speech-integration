@@ -345,8 +345,6 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         seed: int,
         save_training_state: bool = True,
         adapter_only: bool = False,
-        optimizer_in_bwd: bool = False,  # TODO not implemented
-        optim_ckpt_wrapper=None,  # TODO typing if/when implemented; not implemented
         output_dir: Path | None = None,
         ignore_suffixes: list[str] | None = None,
     ) -> tuple[dict[str, Any], Path]:
@@ -359,11 +357,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             SEED_KEY: seed,
         }
         if optimizer_state_dict is not None:
-            if optimizer_in_bwd:
-                raise NotImplementedError("optimizer_in_bwd=True not implemented yet")
-                ckpt_dict[training.OPT_KEY] = optim_ckpt_wrapper.state_dict()  # type: ignore # TODO
-            else:
-                ckpt_dict[training.OPT_KEY] = optimizer_state_dict
+            ckpt_dict[training.OPT_KEY] = optimizer_state_dict
         if output_dir is None:
             output_dir = self.output_dir / f"epoch_{epoch}" / f"global_step_{global_step}"
         self._save_checkpoint(
