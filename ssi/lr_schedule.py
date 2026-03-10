@@ -22,11 +22,6 @@ def setup_lr_scheduler(
         LOGGER.info("No learning rate scheduler configured. Using constant learning rate.")
         return None
 
-    if optimizer_in_bwd:
-        raise NotImplementedError
-        optimizer = next(iter(optim_ckpt_wrapper.optim_map.values()))  # get lr from first optimizer in wrapper
-    else:
-        optimizer = optimizer  # standard case: use the single optimizer
 
     # NOTE PyTorch LR schedulers have the extremely misleadingly name `last_epoch` parameter, which is in fact the
     # global step in the cosine annealing with warmup regime, where we require step-level granularity
@@ -36,9 +31,5 @@ def setup_lr_scheduler(
         last_epoch=global_step,
         **cfg.lr_scheduler,
     )
-
-    if optimizer_in_bwd:
-        # Modify the scheduler for optimizer_in_bwd case
-        optim_ckpt_wrapper.set_lr_scheduler(lr_scheduler)
 
     return lr_scheduler

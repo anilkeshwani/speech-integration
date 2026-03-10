@@ -9,9 +9,6 @@ optimizer:
 gradient_accumulation_steps: 4
 clip_grad_norm: null
 
-# Fuse optimizer step into backward pass
-optimizer_in_bwd: False # https://pytorch.org/tutorials/intermediate/optimizer_step_in_backward_tutorial.html
-
 # Learning rate scheduler
 lr_scheduler:
   num_warmup_steps: 1000
