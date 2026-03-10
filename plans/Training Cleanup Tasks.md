@@ -89,9 +89,9 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 - ~~`ssi/optimizer.py:11` — missing `i` in `optimizer`.~~
 - ~~Fix: rename to `optimizer_state_dict` throughout.~~
 
-**N2. Confusing `global_step = -1` initialization**
-- `ssi/train.py:138` — non-obvious `-1` sentinel for LR scheduler's `last_epoch`.
-- Fix: add a clear comment or compute `last_epoch = global_step - 1` explicitly.
+~~**N2. Confusing `global_step = -1` initialization**~~
+- ~~`ssi/train.py:138` — non-obvious `-1` sentinel for LR scheduler's `last_epoch`.~~
+- ~~Fix: add a clear comment or compute `last_epoch = global_step - 1` explicitly.~~
 
 ---
 
@@ -152,6 +152,6 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 - Target: `experiments/{stage}_{encoder}_{n_dsus}dsus_{flags}_{wandb_id}/step_M/`
 - Touches: `ssi/checkpoint.py`, `ssi/utils.py`, `scripts/generate.py`, `snippets/`, `conf/training.yaml`.
 
-**R2. LR scheduler `last_epoch` initialization**
-- Clean up `global_step = -1 if global_step == 0 else global_step` pattern in `train.py:138-146`.
-- Compute `last_epoch = global_step - 1` explicitly with a comment.
+~~**R2. LR scheduler `last_epoch` initialization**~~
+- ~~Clean up `global_step = -1 if global_step == 0 else global_step` pattern in `train.py:138-146`.~~
+- ~~Compute `last_epoch = global_step - 1` explicitly with a comment.~~

@@ -132,7 +132,7 @@ def train(cfg: DictConfig) -> None:
     lr_scheduler: LambdaLR | None = setup_lr_scheduler(
         cfg=cfg,
         optimizer=optimizer,
-        global_step=-1 if global_step == 0 else global_step,
+        global_step=global_step - 1,  # see setup_lr_scheduler: LambdaLR steps once on init
         num_training_steps=cfg.max_steps,
     )
     loss_fn = CEWithChunkedOutputLoss()
