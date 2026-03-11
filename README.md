@@ -58,6 +58,24 @@ If you want to use pre-commit remember to install hooks:
 pre-commit install --install-hooks
 ```
 
+## Testing
+
+Run the full test suite:
+
+```bash
+uv run pytest
+```
+
+Run with verbose output:
+
+```bash
+uv run pytest -v
+```
+
+Tests are located under `tests/`. The suite currently covers checkpoint save/load round-trips (`tests/test_checkpoint.py`).
+
+**Note:** Tests `T-CKP-6` and `T-CKP-7` require the Llama 3.2 1B base model to be present at `LLAMA_3_2_1B_BASE_DIR` (see `ssi/constants.py`). They are automatically skipped if the directory is not found.
+
 ## Type Checking and LSP (Pyrefly)
 
 Pyrefly is the project's canonical type checker and Python language server.
