@@ -143,12 +143,12 @@ The fast tier is cheap enough to run as a pre-commit hook. Add a `local` hook to
     - id: checkpoint-tests
       name: Checkpoint unit tests
       language: system
-      entry: uv run pytest tests/test_checkpoint.py -k "not disk" -q
+      entry: uv run pytest tests/test_checkpoint.py -q
       pass_filenames: false
       always_run: true
 ```
 
-The `-k "not disk"` selector excludes the two disk tests. Alternatively, mark the disk tests with `@pytest.mark.slow` and use `-m "not slow"`.
+The disk tests carry a `skipif` guard and skip automatically when `LLAMA_3_2_1B_BASE_DIR` is absent (as it will be on most developer machines outside the cluster), so no additional filter is needed.
 
 **Periodic full run on the cluster**
 
