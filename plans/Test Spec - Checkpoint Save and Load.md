@@ -4,7 +4,7 @@ Tests the round-trip correctness of `save_checkpoint()` → `resume_training_sta
 
 **GPU required:** No. All tests operate on CPU tensors and temporary directories.
 
-**Proposed location:** `tests/test_checkpoint.py`
+**Location:** `tests/test_checkpoint.py` ✓ implemented
 
 ---
 
@@ -106,3 +106,60 @@ Then   returned (epochs_run, global_step, optimizer_state) == (3, 200, optimizer
   - Use `pytest`'s `tmp_path` fixture for the output directory
 - `FullModelHFCheckpointer` currently expects a `recipe_checkpoint` path to decide whether to resume.  For T-CKP-6 and T-CKP-7, set `recipe_checkpoint` to `None` at construction, then point it at the file written by `save_checkpoint` for loading.
 - The optimizer state used in tests can be an empty-but-structurally-valid dict (`{"state": {}, "param_groups": []}`); we are testing key schema, not optimizer correctness.
+
+---
+
+## Running Tests Regularly
+
+### Who should run what
+
+The test suite splits naturally into two tiers based on runtime and infrastructure requirements:
+
+| Tier | Tests | Runtime | Dependencies |
+|------|-------|---------|--------------|
+| Fast (pure-dict) | `test_resume_training_state_*` (5 tests) | < 1 s | None beyond the package |
+| Disk | `test_save_recipe_state_*`, `test_save_and_resume_*` (2 tests) | ~20 s | `LLAMA_3_2_1B_BASE_DIR` on disk |
+
+### Recommended cadence
+
+**On every commit / PR — CI pipeline (GitHub Actions or equivalent)**
+
+Run the full suite. The disk tests should be run here if the runner has access to the model weights (e.g. a self-hosted Artemis runner). If not, run the fast tier only and rely on developer machines for the disk tier.
+
+Suggested CI step:
+
+```yaml
+- name: Run checkpoint tests
+  run: uv run pytest tests/test_checkpoint.py -v
+```
+
+**On every local commit — pre-commit hook**
+
+The fast tier is cheap enough to run as a pre-commit hook. Add a `local` hook to `.pre-commit-config.yaml`:
+
+```yaml
+- repo: local
+  hooks:
+    - id: checkpoint-tests
+      name: Checkpoint unit tests
+      language: system
+      entry: uv run pytest tests/test_checkpoint.py -k "not disk" -q
+      pass_filenames: false
+      always_run: true
+```
+
+The `-k "not disk"` selector excludes the two disk tests. Alternatively, mark the disk tests with `@pytest.mark.slow` and use `-m "not slow"`.
+
+**Periodic full run on the cluster**
+
+If CI runners do not have access to the Llama 3.2 1B weights, schedule a periodic Slurm job (e.g. nightly or weekly) to run the full suite on a node that does:
+
+```bash
+srun --partition cpu --time=00:05:00 \
+    uv run pytest tests/test_checkpoint.py -v
+```
+
+### Keeping the suite cheap
+
+- The disk tests call `save_recipe_state()` directly rather than `save_checkpoint()`, avoiding a full Llama 3.2 1B weight load. Keep this pattern for any future disk-touching tests.
+- If the model directory moves, update `LLAMA_3_2_1B_BASE_DIR` in `ssi/constants.py`; the skip guard in the test file will handle the rest automatically.
