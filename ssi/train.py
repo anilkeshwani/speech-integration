@@ -1,3 +1,4 @@
+import itertools
 from collections import defaultdict
 import logging
 import math
@@ -10,26 +11,30 @@ import torch
 from torch import Tensor
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
-from torch.optim.optimizer import StateDict
 from torchtune import training
 from torchtune.modules.loss import CEWithChunkedOutputLoss
-from torchtune.training import get_dtype, scale_grads
+from torchtune.training import get_dtype, get_world_size_and_rank, scale_grads
 from torchtune.training.lr_schedulers import get_lr
 from torchtune.training.precision import PRECISION_STR_TO_DTYPE
 from torchtune.utils import batch_to_device, get_device
 from tqdm import tqdm
 
 from ssi._version import __version__
-from ssi.checkpoint import FullModelHFCheckpointer, resolve_checkpointer_output_dir
+from ssi.checkpoint import FullModelHFCheckpointer, resolve_checkpointer_output_dir, restore_rng_states
 from ssi.constants import (
+    CHECKPOINT_VERSION_KEY,
+    CONSUMED_SAMPLES_KEY,
+    CUMULATIVE_METRICS_KEY,
     DEBUGGING_TAG,
-    EPOCHS_KEY,
     GLOBAL_STEP_KEY,
+    LR_SCHEDULER_KEY,
     MODEL_KEY,
     OPTIMIZER_KEY,
+    RNG_KEY,
     SEED,
     SEED_KEY,
     SUPPORTED_DTYPES,
+    TRAINING_HPARAMS_KEY,
 )
 from ssi.data import setup_sft_data, setup_text_completion_data
 from ssi.eval import compute_dataset_loss
@@ -62,10 +67,43 @@ def validate_train_cfg(cfg: DictConfig) -> None:
         raise ValueError(f"save_steps ({cfg.save_steps}) must be a multiple of eval_steps ({cfg.eval_steps})")
 
 
-def resume_training_state(ckpt_dict: dict[str, Any]) -> tuple[int, int, StateDict]:
+def resume_training_state(ckpt_dict: dict[str, Any]) -> dict[str, Any]:
+    """Extract and validate resume state from a versioned checkpoint dict."""
+    if CHECKPOINT_VERSION_KEY not in ckpt_dict:
+        raise ValueError(
+            "Checkpoint predates the versioned schema (no 'checkpoint_version' key). "
+            "Legacy checkpoints are not supported. Start a fresh training run."
+        )
     if SEED != ckpt_dict[SEED_KEY]:
-        raise ValueError("Config value for seed does not match the checkpoint value")
-    return ckpt_dict[EPOCHS_KEY], ckpt_dict[GLOBAL_STEP_KEY], ckpt_dict[OPTIMIZER_KEY]
+        raise ValueError(f"Seed mismatch: config={SEED}, checkpoint={ckpt_dict[SEED_KEY]}")
+    return {
+        "global_step": ckpt_dict[GLOBAL_STEP_KEY],
+        "optimizer_state": ckpt_dict[OPTIMIZER_KEY],
+        "lr_scheduler_state": ckpt_dict.get(LR_SCHEDULER_KEY),
+        "rng_state": ckpt_dict.get(RNG_KEY),
+        "training_hparams": ckpt_dict.get(TRAINING_HPARAMS_KEY),
+        "consumed_samples": ckpt_dict.get(CONSUMED_SAMPLES_KEY, 0),
+        "cumulative_metrics": ckpt_dict.get(CUMULATIVE_METRICS_KEY),
+    }
+
+
+def validate_resume_hparams(
+    ckpt_hparams: dict[str, Any],
+    current_hparams: dict[str, Any],
+    force_resume: bool = False,
+) -> None:
+    """Validate that training hyperparameters match between checkpoint and current config."""
+    for key in ("batch_size", "gradient_accumulation_steps", "world_size", "steps_per_epoch"):
+        if key in ckpt_hparams and ckpt_hparams[key] != current_hparams[key]:
+            msg = (
+                f"Training hparam mismatch on resume for '{key}': "
+                f"checkpoint={ckpt_hparams[key]}, current={current_hparams[key]}. "
+                f"This breaks the step-to-data-position mapping."
+            )
+            if force_resume:
+                LOGGER.warning(msg)
+            else:
+                raise ValueError(msg)
 
 
 def get_token_type_ranges(llama_config: ConfigLlama3_2) -> dict[str, tuple[int, int]]:
@@ -112,6 +150,7 @@ def train(cfg: DictConfig) -> None:
     training.set_seed(seed=SEED, debug_mode=cfg.debug_mode)
     DEVICE: torch.device = get_device(cfg.device)
     DTYPE: torch.dtype = get_dtype(cfg.dtype)
+    world_size, _ = get_world_size_and_rank()
     wandb_tags = [__version__, cfg.config_name]
     if os.getenv("SLURM_JOB_QOS") == "gpu-debug":
         wandb_tags += [DEBUGGING_TAG]
@@ -133,16 +172,26 @@ def train(cfg: DictConfig) -> None:
     model.train()
     tokenizer, special_tokens = setup_llama3_tokenizer(**cfg.tokenizer)
     token_type_ranges = get_token_type_ranges(llama_config=configllama3_2_1b)
-    epochs_run, global_step, optimizer_state = 0, 0, None
-    if checkpointer.recipe_checkpoint is not None:  # cfg.checkpoint.recipe_checkpoint Path
-        epochs_run, global_step, optimizer_state = resume_training_state(ckpt_dict)
-    optimizer: AdamW = setup_optimizer(cfg, model, optimizer_state)
+
+    # === Resume state ===
+    global_step = 0
+    consumed_samples = 0
+    resume_state: dict[str, Any] | None = None
+    if checkpointer.recipe_checkpoint is not None:
+        resume_state = resume_training_state(ckpt_dict)
+        global_step = resume_state["global_step"]
+        consumed_samples = resume_state["consumed_samples"]
+
+    optimizer: AdamW = setup_optimizer(cfg, model, resume_state["optimizer_state"] if resume_state else None)
     lr_scheduler: LambdaLR | None = setup_lr_scheduler(
         cfg=cfg,
         optimizer=optimizer,
         global_step=global_step - 1,  # see setup_lr_scheduler: LambdaLR steps once on init
         num_training_steps=cfg.max_steps,
     )
+    if resume_state and resume_state["lr_scheduler_state"] is not None and lr_scheduler is not None:
+        lr_scheduler.load_state_dict(resume_state["lr_scheduler_state"])
+
     loss_fn = CEWithChunkedOutputLoss()
     if cfg.compile:
         training.compile_loss(loss_fn)
@@ -157,24 +206,71 @@ def train(cfg: DictConfig) -> None:
         data_dev, sampler_dev = setup_text_completion_data(cfg.data.dev, tokenizer)
     else:
         raise NotImplementedError
-    optimizer.zero_grad()  # zero gradients before training
+
+    # === Derived training geometry ===
+    batch_size = cfg.data.train.dataloader.batch_size
+    batches_per_epoch = len(data_train)
+    steps_per_epoch = batches_per_epoch // cfg.gradient_accumulation_steps
+    assert steps_per_epoch > 0, (
+        f"batches_per_epoch ({batches_per_epoch}) < gradient_accumulation_steps ({cfg.gradient_accumulation_steps})"
+    )
+    n_epochs = math.ceil(cfg.max_steps / steps_per_epoch)
+
+    # === Validate hparams on resume ===
+    if resume_state and resume_state["training_hparams"] is not None:
+        validate_resume_hparams(
+            ckpt_hparams=resume_state["training_hparams"],
+            current_hparams={
+                "batch_size": batch_size,
+                "gradient_accumulation_steps": cfg.gradient_accumulation_steps,
+                "world_size": world_size,
+                "steps_per_epoch": steps_per_epoch,
+            },
+            force_resume=cfg.get("force_resume", False),
+        )
+
+    # === Resume position ===
+    epochs_run = global_step // steps_per_epoch
+    batches_to_skip = (global_step % steps_per_epoch) * cfg.gradient_accumulation_steps
+
+    # === Cumulative metrics (restore or initialize) ===
+    tokens_train_total: int = 0
+    token_type_counts_total: defaultdict[str, int] = defaultdict(int)
+    wall_clock_offset: float = 0.0
+    if resume_state and resume_state["cumulative_metrics"] is not None:
+        cm = resume_state["cumulative_metrics"]
+        tokens_train_total = cm.get("tokens_train_total", 0)
+        for k, v in cm.get("token_type_counts", {}).items():
+            token_type_counts_total[k] = v
+        wall_clock_offset = cm.get("wall_clock_seconds", 0.0)
+
+    # === Restore framework RNG states (after all setup, before training loop) ===
+    if resume_state and resume_state["rng_state"] is not None:
+        restore_rng_states(resume_state["rng_state"])
+        LOGGER.info("Restored framework RNG states from checkpoint.")
+
+    # === Training loop ===
+    optimizer.zero_grad()
     t_train_start = time.perf_counter()
     t0 = time.perf_counter()
     loss_running = 0.0
-    token_type_counts_total = defaultdict(int)
     num_tokens_step = 0
     max_seq_len_step = 0
-    tokens_train_total: int = 0
-    batches_per_epoch = len(data_train)
-    steps_per_epoch = batches_per_epoch // cfg.gradient_accumulation_steps
-    n_epochs = math.ceil(cfg.max_steps / steps_per_epoch)
     LOGGER.info(OmegaConf.to_yaml(cfg, resolve=True, sort_keys=False))
     wandb_logger.log_config(cfg)  # log config after parameter resolution + overrides
     for epoch in range(epochs_run, n_epochs):
         sampler_train.set_epoch(epoch)  # distinct seed each epoch
         if hasattr(data_train.dataset, "set_epoch"):
             data_train.dataset.set_epoch(epoch)
-        for i, batch in tqdm(enumerate(data_train), total=batches_per_epoch):  # type: ignore
+        # Skip already-processed batches on resume
+        if epoch == epochs_run and batches_to_skip > 0:
+            LOGGER.info(f"Resuming: skipping {batches_to_skip} batches in epoch {epoch}")
+            data_iter = itertools.islice(enumerate(data_train), batches_to_skip, None)
+            n_batches = batches_per_epoch - batches_to_skip
+        else:
+            data_iter = enumerate(data_train)
+            n_batches = batches_per_epoch
+        for i, batch in tqdm(data_iter, total=n_batches):
             batch_to_device(batch, DEVICE)  # in-place
             for tt, ttcnt in count_token_types(batch["tokens"], token_type_ranges, tokenizer.pad_id).items():
                 token_type_counts_total[tt] += ttcnt
@@ -194,6 +290,7 @@ def train(cfg: DictConfig) -> None:
                 if lr_scheduler is not None:
                     lr_scheduler.step()
                 global_step += 1
+                consumed_samples += cfg.gradient_accumulation_steps * batch_size * world_size
                 loss_to_log = loss_running.item() / num_tokens_step  # loss per token
                 tokens_train_total += num_tokens_step  # total number of tokens trained on so far
                 # log metrics to console
@@ -202,7 +299,7 @@ def train(cfg: DictConfig) -> None:
                         (
                             f"Epoch {epoch + 1:03d}",
                             f"Iteration {i:0{len(str(batches_per_epoch))}d} / {batches_per_epoch}",
-                            f"Global Step {global_step:0{len(str(steps_per_epoch))}d}",  # TODO bad zero padding
+                            f"Global Step {global_step}",
                             f"Loss: {loss_to_log:.4f}",
                             f"Tokens (num_tokens_step): {num_tokens_step}",
                             *[f"Tokens ({tt}): {ttcnt}" for tt, ttcnt in token_type_counts_total.items()],
@@ -225,7 +322,7 @@ def train(cfg: DictConfig) -> None:
                         "duration_step": dur_step,
                         "tokens_per_second_per_gpu": num_tokens_step / dur_step,
                         "tokens_total": tokens_train_total,
-                        "train_clock_time": (time.perf_counter() - t_train_start) / (60**2),
+                        "train_clock_time": (wall_clock_offset + (time.perf_counter() - t_train_start)) / (60**2),
                         "max_seq_len_step": max_seq_len_step,
                         **{f"n_tokens.{tt}": ttcnt for tt, ttcnt in token_type_counts_total.items()},
                     }
@@ -244,11 +341,23 @@ def train(cfg: DictConfig) -> None:
                     checkpointer.save_checkpoint(
                         model_state_dict=model.state_dict(),
                         optimizer_state_dict=optimizer.state_dict(),
-                        epoch=epoch,
                         global_step=global_step,
                         seed=SEED,
+                        lr_scheduler_state_dict=lr_scheduler.state_dict() if lr_scheduler else None,
+                        training_hparams={
+                            "batch_size": batch_size,
+                            "gradient_accumulation_steps": cfg.gradient_accumulation_steps,
+                            "world_size": world_size,
+                            "steps_per_epoch": steps_per_epoch,
+                        },
+                        consumed_samples=consumed_samples,
+                        cumulative_metrics={
+                            "tokens_train_total": tokens_train_total,
+                            "token_type_counts": dict(token_type_counts_total),
+                            "wall_clock_seconds": wall_clock_offset + (time.perf_counter() - t_train_start),
+                        },
                     )
-                    LOGGER.info(f"Checkpoint saved at step {global_step:0{len(str(steps_per_epoch))}d}")  # TODO 0s pad
+                    LOGGER.info(f"Checkpoint saved at step {global_step}")
                 if global_step >= cfg.max_steps:
                     LOGGER.info("Training completed.")
                     return

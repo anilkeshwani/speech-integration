@@ -84,6 +84,14 @@ GLOBAL_STEP_KEY: str = "global_step"  # canonical key for global step in recipe 
 RNG_KEY: str = training.RNG_KEY  # rng state for ensuring correct training resuming (original use in PPO impl.)
 assert RNG_KEY == "rng_state"
 
+# Checkpoint schema v1 keys
+TRAINING_HPARAMS_KEY: str = "training_hparams"
+LR_SCHEDULER_KEY: str = "lr_scheduler"
+CONSUMED_SAMPLES_KEY: str = "consumed_samples"
+CUMULATIVE_METRICS_KEY: str = "cumulative_metrics"
+CHECKPOINT_VERSION_KEY: str = "checkpoint_version"
+CHECKPOINT_VERSION: int = 1
+
 # TODO remove this - strongly dislike this from torchtune - included as a reminder of functionality conflict
 # MAX_STEPS_KEY: str = training.MAX_STEPS_KEY
 # assert MAX_STEPS_KEY == "max_steps_per_epoch"
