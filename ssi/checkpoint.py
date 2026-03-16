@@ -2,9 +2,12 @@ import gc
 import json
 import logging
 import os
+import random
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
+import numpy as np
 import torch
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from safetensors.torch import save_file
@@ -27,7 +30,20 @@ from torchtune.training.checkpointing._utils import (
 )
 from torchtune.training.metric_logging import WandBLogger
 
-from ssi.constants import EPOCHS_KEY, GLOBAL_STEP_KEY, LLAMA_3_2_CONFIG_RELPATH, MODEL_KEY, SEED_KEY
+from ssi._version import __version__
+from ssi.constants import (
+    CHECKPOINT_VERSION,
+    CHECKPOINT_VERSION_KEY,
+    CONSUMED_SAMPLES_KEY,
+    CUMULATIVE_METRICS_KEY,
+    GLOBAL_STEP_KEY,
+    LLAMA_3_2_CONFIG_RELPATH,
+    LR_SCHEDULER_KEY,
+    MODEL_KEY,
+    RNG_KEY,
+    SEED_KEY,
+    TRAINING_HPARAMS_KEY,
+)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -47,6 +63,27 @@ def get_model_checkpoint_paths(checkpoint_files: list[str] | dict[str, str], che
         formatted_checkpoint_files = FormattedCheckpointFiles.from_dict(checkpoint_files)
         checkpoint_files = formatted_checkpoint_files.build_checkpoint_filenames()
     return validate_checkpoint_files(checkpoint_files, input_dir=checkpoint_dir, missing_ok=False)
+
+
+def save_rng_states() -> dict[str, Any]:
+    """Capture the 4 standard framework RNG states for checkpointing."""
+    rng_state: dict[str, Any] = {
+        "python": random.getstate(),
+        "numpy_global": np.random.get_state(),
+        "torch_cpu": torch.get_rng_state(),
+    }
+    if torch.cuda.is_available():
+        rng_state["torch_cuda"] = torch.cuda.get_rng_state_all()
+    return rng_state
+
+
+def restore_rng_states(rng_state: dict[str, Any]) -> None:
+    """Restore the 4 standard framework RNG states from a checkpoint."""
+    random.setstate(rng_state["python"])
+    np.random.set_state(rng_state["numpy_global"])
+    torch.set_rng_state(rng_state["torch_cpu"])
+    if "torch_cuda" in rng_state and torch.cuda.is_available():
+        torch.cuda.set_rng_state_all(rng_state["torch_cuda"])
 
 
 class FullModelHFCheckpointer(_CheckpointerInterface):
@@ -297,10 +334,10 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             json.dump(state_dict[training.ADAPTER_CONFIG], f)
         LOGGER.info(f"Adapter config saved to {output_path}")
 
-    def save_recipe_state(self, state_dict: dict[str, Any]) -> None:
-        output_path = self.output_dir / "recipe_state.pt"  # NOTE dropped added subdir resp. Meta code
+    def save_recipe_state(self, state_dict: dict[str, Any], output_dir: Path) -> None:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / "recipe_state.pt"
         exclude_keys = (training.MODEL_KEY, training.ADAPTER_KEY, training.ADAPTER_CONFIG)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
         torch.save({k: v for k, v in state_dict.items() if k not in exclude_keys}, output_path)
         LOGGER.info(f"Recipe checkpoint ({os.path.getsize(output_path) / 1024**3:.2f} GiB) saved to {output_path}")
 
@@ -332,7 +369,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         copy_files(self.checkpoint_dir, output_dir, ignore_suffixes=ignore_suffixes)
 
         if save_training_state:
-            self.save_recipe_state(state_dict)
+            self.save_recipe_state(state_dict, output_dir)
         else:
             LOGGER.info("No training state saved.")
 
@@ -340,9 +377,13 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         self,
         model_state_dict: dict[str, Any],
         optimizer_state_dict: dict[str, Any] | None,
-        epoch: int,
         global_step: int,
         seed: int,
+        *,
+        lr_scheduler_state_dict: dict[str, Any] | None = None,
+        training_hparams: dict[str, Any] | None = None,
+        consumed_samples: int = 0,
+        cumulative_metrics: dict[str, Any] | None = None,
         save_training_state: bool = True,
         adapter_only: bool = False,
         output_dir: Path | None = None,
@@ -350,16 +391,26 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
     ) -> tuple[dict[str, Any], Path]:
         if ignore_suffixes is None:
             ignore_suffixes = SUFFIXES_TO_NOT_COPY + ["torchtune_config.yaml"]
-        ckpt_dict: dict = {
+        ckpt_dict: dict[str, Any] = {
             MODEL_KEY: model_state_dict,
-            EPOCHS_KEY: epoch,
             GLOBAL_STEP_KEY: global_step,
             SEED_KEY: seed,
+            CHECKPOINT_VERSION_KEY: CHECKPOINT_VERSION,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "ssi_version": __version__,
         }
         if optimizer_state_dict is not None:
             ckpt_dict[training.OPT_KEY] = optimizer_state_dict
+        if lr_scheduler_state_dict is not None:
+            ckpt_dict[LR_SCHEDULER_KEY] = lr_scheduler_state_dict
+        ckpt_dict[RNG_KEY] = save_rng_states()
+        if training_hparams is not None:
+            ckpt_dict[TRAINING_HPARAMS_KEY] = training_hparams
+        ckpt_dict[CONSUMED_SAMPLES_KEY] = consumed_samples
+        if cumulative_metrics is not None:
+            ckpt_dict[CUMULATIVE_METRICS_KEY] = cumulative_metrics
         if output_dir is None:
-            output_dir = self.output_dir / f"epoch_{epoch}" / f"global_step_{global_step}"
+            output_dir = self.output_dir / f"step_{global_step}"
         self._save_checkpoint(
             ckpt_dict,
             output_dir=output_dir,

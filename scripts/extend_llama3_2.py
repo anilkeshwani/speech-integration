@@ -94,7 +94,6 @@ def main(args: Namespace) -> None:
     checkpointer.save_checkpoint(
         model.state_dict(),
         optimizer_state_dict=None,
-        epoch=0,
         global_step=0,
         seed=SEED,
         save_training_state=False,
