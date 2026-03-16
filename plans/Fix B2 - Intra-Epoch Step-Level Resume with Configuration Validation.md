@@ -249,3 +249,89 @@ The `i` values from `enumerate` start at `batches_to_skip`. Since `batches_to_sk
 2. Resume from that checkpoint: confirm `batches_to_skip=20`, `epochs_run=0`, and that `global_step` increments from 10 to 11 on the first optimizer step after resume.
 3. Attempt resume with a different `gradient_accumulation_steps` in config: confirm `ValueError` is raised listing the mismatch.
 4. Resume from a legacy checkpoint (no `TRAINING_HPARAMS_KEY`): confirm `LOGGER.warning` fires and training proceeds.
+
+# Notes and Critique on Current Plan
+
+Here are the weaknesses and omissions I found, ordered by severity:
+
+## Findings
+
+### 1. Critical: Module-level PRNG in `cpt.py` is NOT advanced during `islice` skip
+
+`cpt.py:41` defines a module-level stateful PRNG:
+```python
+PRNG = np.random.default_rng(SEED)
+```
+
+This PRNG advances on every `__getitem__` call for the `INTERLEAVED` sequence type — specifically in `interleave()` (calls `PRNG.choice` and `get_span_idxs_binomial` which calls `PRNG.binomial`). When `islice` skips `batches_to_skip` micro-batches, it does so **without calling `__getitem__`**, so the PRNG state stays at position 0.
+
+Consequence: after the skip, every sample in the resumed epoch gets a different interleaving structure (span boundaries, `start_with_text` choice) than it would have had in an uninterrupted run. The dataset indices fed to the model are the same (the DistributedSampler is deterministic), but their content differs.
+
+The plan makes no mention of this. The fix is to save the PRNG state in the checkpoint alongside `training_hparams` and restore it before the epoch loop begins.
+
+---
+
+### 2. Important: `islice` skip time is not quantified and could be large
+
+The plan says `num_workers=0` makes islice "cheap." But each discarded batch still requires a full CPU-side `__getitem__` call per sample in the batch: HuggingFace `datasets` lookup, string processing, tokenization. For MLS at any reasonable batch size, worst-case skip (checkpointing near the end of an epoch) could mean loading tens of thousands of batches and discarding them. The plan should either:
+- Estimate this overhead and flag it as a known cost, or
+- Mention saving the DataLoader/sampler state as a future optimization to avoid it
+
+This is especially relevant for production training runs where a resume from late in the epoch could block for hours before any gradient steps.
+
+---
+
+### 3. Moderate: `tokens_train_total` and `token_type_counts_total` are not checkpointed
+
+Both are initialized to `0` before the training loop (`train.py:166-167`) and are not restored from the checkpoint. After a resume:
+- `tokens_total` in W&B resets to 0, making it useless for tracking cumulative tokens across a resume boundary
+- `n_tokens.{tt}` counts similarly reset
+
+The plan doesn't mention these, either to restore them from checkpoint or to document the W&B monitoring discontinuity they create.
+
+---
+
+### 4. Moderate: `EPOCHS_KEY` is orphaned — written to every checkpoint but never read after refactor
+
+The plan removes `EPOCHS_KEY` from `resume_training_state` (correct, since `epochs_run` is now derived from `global_step`). But `save_checkpoint` still writes `ckpt_dict[EPOCHS_KEY] = epoch` on every save. This value is no longer trusted on resume — the plan derives `epochs_run = global_step // steps_per_epoch` instead.
+
+If someone inspects a checkpoint and sees `epochs_run: 3` but `global_step // steps_per_epoch = 5`, they'll be confused. More importantly, the plan doesn't state this key is now dead — it should either be removed from the checkpoint or clearly documented.
+
+---
+
+### 5. Moderate: No explicit guard for `batches_to_skip >= batches_per_epoch`
+
+If `batches_to_skip >= batches_per_epoch` (which can't happen if `steps_per_epoch` validation passes, but isn't guarded by an explicit assertion), `islice` yields an empty iterator and the entire epoch is silently skipped with no batches processed. The plan relies on `steps_per_epoch` validation to prevent this transitively, but a direct assertion would be clearer and safer:
+```python
+assert batches_to_skip < batches_per_epoch, ...
+```
+
+---
+
+### 6. Minor: `validate_resume_hparams` is called after data setup — wasted setup on mismatch
+
+The plan places `validate_resume_hparams` after the `setup_{sft,text_completion}_data` calls. If there's a configuration mismatch (e.g., wrong `batch_size`), the dataset will have been loaded from disk before the error is raised. This is wasteful but not a correctness issue. The `world_size` and `gradient_accumulation_steps` components of the validation could be checked before data setup, with the `batch_size` / `steps_per_epoch` checks deferred.
+
+---
+
+### 7. Minor: Console log `Iteration {i}` will show skipped-past numbers in resume epoch
+
+The existing log at `train.py:203`:
+```python
+f"Iteration {i:0{len(str(batches_per_epoch))}d} / {batches_per_epoch}",
+```
+On resume, `i` starts at `batches_to_skip` (not 0), so the first logged iteration is `batches_to_skip / batches_per_epoch` not `1 / batches_per_epoch`. This is technically correct (it reflects the actual batch index) but could be confusing to a reader who expects iterations to start at `~0` in log output after a resume. Worth documenting.
+
+---
+
+### Summary table
+
+| # | Severity | Issue |
+|---|---|---|
+| 1 | Critical | `PRNG` in `cpt.py` not advanced during islice skip → wrong interleaving on resume |
+| 2 | Important | Skip cost not quantified — could block for hours on late-epoch resume of MLS |
+| 3 | Moderate | `tokens_train_total` / `token_type_counts_total` not checkpointed → W&B monitoring breaks |
+| 4 | Moderate | `EPOCHS_KEY` written but no longer read — silent dead field in every checkpoint |
+| 5 | Moderate | No assertion guarding `batches_to_skip < batches_per_epoch` |
+| 6 | Minor | Validation happens after expensive data setup |
+| 7 | Minor | Console log `Iteration {i}` is confusing on resume (starts mid-range) |
