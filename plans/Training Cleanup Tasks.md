@@ -112,6 +112,10 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 
 ---
 
+**D0. Dead import `from ast import Not` in `ssi/checkpoint.py:5`**
+- Unused import, likely a copy-paste artifact.
+- Fix: remove.
+
 ## Dead / Redundant Code
 
 ~~**D1. Dead `ignore_idx` assignment in data setup**~~
@@ -223,6 +227,11 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 
 ## Structural Refactoring
 
+**R0. Split `ssi/train.py` into logical units**
+- Current `train()` function mixes config validation/setup, epoch/step execution, evaluation, logging, and checkpoint policy in one large function.
+- Proposed decomposition: separate modules or functions for each concern; introduce an explicit `TrainState` dataclass (epoch, global_step, token counters, timers) to replace scattered local variables; add callback-like hooks so logging/checkpointing/eval triggers are testable in isolation.
+- This is a significant structural refactor — do after correctness bugs (B-series) are fixed.
+
 **R1. Checkpoint directory structure simplification**
 - Full plan in `plans/Plan to Simplify Checkpoint Directory Structure.md`.
 - Current: `experiments/.../checkpoints/epoch_N/global_step_M/`
@@ -234,6 +243,18 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 ~~**R2. LR scheduler `last_epoch` initialization**~~
 - ~~Clean up `global_step = -1 if global_step == 0 else global_step` pattern in `train.py:138-146`.~~
 - ~~Compute `last_epoch = global_step - 1` explicitly with a comment.~~
+
+---
+
+## CI and Documentation
+
+**CI1. Add quality gates to CI pipeline**
+- No CI currently enforces formatting, linting, or tests.
+- Fix: add ruff (lint + format), and `pytest` to CI on every branch. Consolidate to ruff; drop any separate black/isort/flake8 config.
+
+**CI2. Documentation**
+- No architecture overview, config reference, or reproducibility checklist exists.
+- Minimum viable docs: architecture overview (module responsibilities), config field reference, reproducibility checklist (seed, RNG, data order), checkpoint compatibility statement (schema version, legacy fallback behaviour).
 
 ---
 
