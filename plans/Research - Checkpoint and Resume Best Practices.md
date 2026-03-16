@@ -63,7 +63,7 @@ The correct PyTorch pattern is:
 
 1. Save `scheduler.state_dict()` alongside `optimizer.state_dict()`.
 2. On resume, create a fresh scheduler instance, then call `scheduler.load_state_dict(saved_state)`.
-3. The scheduler's internal `last_epoch` counter (which actually counts steps, not epochs) determines where in the schedule you are.
+3. The scheduler's internal `last_epoch` counter determines where in the schedule you are. **Note on naming**: despite being called `last_epoch`, this counter simply tracks how many times `scheduler.step()` has been called. Whether it counts epochs or optimizer steps depends entirely on the calling convention. Classical PyTorch examples (StepLR, MultiStepLR) call `.step()` per epoch; modern large-model codebases (HuggingFace Trainer, torchtune, fairseq) call `.step()` per optimizer update, making `last_epoch` effectively a step counter. `OneCycleLR` and `CyclicLR` are explicitly documented as requiring per-batch stepping. This naming confusion is an acknowledged open issue in PyTorch ([#69753](https://github.com/pytorch/pytorch/issues/69753), [#37768](https://github.com/pytorch/pytorch/issues/37768)). **In our codebase**, we call `.step()` per optimizer update, so `last_epoch` counts optimizer steps.
 
 **Common pitfalls** ([PyTorch Forum discussion](https://discuss.pytorch.org/t/what-is-the-proper-way-of-resuming-a-scheduler/176350)):
 - Initializing the scheduler with `last_epoch=saved_value` directly causes an `initial_lr` parameter error.
