@@ -49,7 +49,7 @@ jobs:
         run: uv sync --extra dev
 
       - name: Format check (shfmt)
-        run: uv run shfmt --diff .
+        run: uv run shfmt --diff $(git ls-files '*.sh')
 
       - name: Lint (shellcheck)
         run: uv run shellcheck $(git ls-files '*.sh')
