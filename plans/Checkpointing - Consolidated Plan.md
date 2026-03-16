@@ -37,7 +37,7 @@ MLS is 44k hours. Our training budget is 48 GPU-hours on a single A6000. One epo
 
 1. **Correctly resumes mid-epoch** — picking up at the exact dataset position, global step, and optimizer state where training left off.
 2. **Detects configuration mismatches** — raising clear errors when batch size, gradient accumulation, or world size differ between save and resume, because these break the step-to-data-position mapping.
-3. **Preserves RNG state** — so that stochastic operations (interleaving, dropout, data shuffling) produce the same sequence they would have in an uninterrupted run.
+3. **Produces deterministic, order-independent data transforms** — so that stochastic operations like interleaving produce the same output for a given sample regardless of processing order, resume point, or parallelism.
 4. **Saves the LR scheduler state** — so the learning rate resumes at the correct point in the schedule.
 5. **Maintains monitoring continuity** — so cumulative metrics (tokens seen, training time) don't reset to zero on resume.
 
@@ -68,7 +68,7 @@ return ckpt_dict[EPOCHS_KEY], ckpt_dict[GLOBAL_STEP_KEY], ckpt_dict[OPTIMIZER_KE
 | # | Severity | Bug | Root Cause | Current Impact |
 |---|----------|-----|------------|----------------|
 | **B2** | Critical | Epoch semantics on resume are wrong | `save_checkpoint` writes the current loop index `epoch` (mid-epoch, 0-indexed). On resume, `range(epochs_run, n_epochs)` restarts that epoch from batch 0, re-training already-seen batches and double-incrementing `global_step`. | Data duplication + step count corruption on every resume. |
-| **PRNG** | Critical | Module-level PRNG in `cpt.py` not advanced during any skip | `PRNG = np.random.default_rng(SEED)` is module-level. On resume, it starts at position 0 regardless of how many batches were processed before the checkpoint. Even without islice, the PRNG state is never restored. | Every resumed run produces different interleaving than the original run would have for the same data points. |
+| **PRNG** | Critical | Module-level PRNG in `cpt.py` couples interleaving to processing order | `PRNG = np.random.default_rng(SEED)` is module-level and stateful. A sample's interleaving pattern depends on how many samples were processed before it, not on the sample's own identity. This makes interleaving non-reproducible across resumes, different shuffle orders, or multi-worker DataLoaders. | Interleaving diverges from an uninterrupted run on any resume unless the PRNG is at exactly the same position — which is fragile and requires either skipping or state checkpointing. |
 | **LR** | High | LR scheduler state not checkpointed | `lr_schedule.py` reconstructs the scheduler from `global_step` on resume, but does not save/restore `scheduler.state_dict()`. The current workaround (passing `last_epoch=global_step-1`) only works for the specific cosine-with-warmup schedule and breaks if the schedule has any internal state beyond `last_epoch`. | LR is approximately correct for cosine warmup but will be wrong for any other schedule. |
 | **Metrics** | Moderate | `tokens_train_total` and `token_type_counts_total` not checkpointed | Both are initialized to 0 in `train.py:164-167`. | W&B `tokens_total` and `n_tokens.*` metrics reset to 0 on every resume, creating discontinuities in monitoring. |
 | **EPOCHS_KEY dead** | Moderate | `EPOCHS_KEY` written to every checkpoint but no longer semantically meaningful | The plan (B2 fix) derives `epochs_run` from `global_step // steps_per_epoch`, making the saved `epochs_run` value redundant and potentially confusing if it disagrees. | No functional bug, but a maintenance hazard. |
@@ -92,9 +92,9 @@ We also track `consumed_samples` (total micro-batches processed × batch_size) a
 
 If the training configuration differs between save and resume in a way that would break step-to-data-position mapping, we raise a hard error. This is more rigorous than HuggingFace (silent corruption) and PyTorch Lightning (no validation). A `--force-resume` flag can downgrade to a warning for expert users.
 
-### P4: Save everything needed for exact resume
+### P4: Save everything needed for exact resume; eliminate state where possible
 
-The checkpoint should contain all state needed to produce a training run bitwise-identical to an uninterrupted run. This includes RNG states, scheduler state, and cumulative metrics — not just model weights and optimizer.
+The checkpoint should contain all state needed to produce a training run bitwise-identical to an uninterrupted run. This includes framework RNG states, scheduler state, and cumulative metrics — not just model weights and optimizer. Where possible, prefer designs that eliminate state entirely (e.g., per-sample deterministic RNG for interleaving) over designs that require saving and restoring additional state.
 
 ### P5: Step-based training with epoch bookkeeping
 
@@ -123,8 +123,10 @@ The `recipe_state.pt` file will contain:
         "numpy_global": <numpy.random.get_state()>,
         "torch_cpu": <torch.get_rng_state()>,
         "torch_cuda": <torch.cuda.get_rng_state_all()>,
-        "cpt_prng": <PRNG.bit_generator.state>,      # our custom interleaving PRNG
     },
+    # Note: the cpt.py interleaving PRNG is NOT checkpointed — it is eliminated entirely
+    # by the per-sample deterministic RNG refactor (Section 7). Interleaving for each sample
+    # is a pure function of (seed, epoch, sample_index), so there is no PRNG state to save.
 
     # === Configuration validation ===
     "training_hparams": {
@@ -193,7 +195,7 @@ On resume (when `recipe_checkpoint is not None`):
 6. **Set up data** — create DataLoader, compute `batches_per_epoch`, `steps_per_epoch`.
 7. **Full validation** — validate `batch_size` and `steps_per_epoch` against checkpoint (requires data setup to have completed).
 8. **Restore LR scheduler** — `scheduler.load_state_dict(ckpt_dict[LR_SCHEDULER_KEY])` if present, else reconstruct from `global_step` (legacy fallback).
-9. **Restore RNG states** — restore all 5 RNG states if `rng_state` is present.
+9. **Restore RNG states** — restore all 4 standard RNG states (Python, NumPy global, PyTorch CPU, PyTorch CUDA) if `rng_state` is present. The interleaving PRNG does not need restoration — it is eliminated by the per-sample deterministic RNG design (Section 7).
 10. **Compute resume position**:
     ```python
     global_step = ckpt_dict[GLOBAL_STEP_KEY]
@@ -232,11 +234,7 @@ else:
 
 - **Simplicity**: No new dependencies, no changes to the DataLoader/Dataset API.
 - **Our context**: `num_workers=0`, so each skipped batch is a synchronous CPU load. This is slow but not catastrophically so for our scale.
-- **Correctness with RNG fix**: Once we save and restore the `cpt.py` PRNG state (Section 7), the islice approach produces the same RNG sequence as an uninterrupted run, because `__getitem__` is called for each skipped batch and advances the PRNG correctly. **Wait — this is wrong.** `islice` on the DataLoader iterator skips yielded batches but *does* call `__getitem__` on the underlying Dataset for each skipped batch (because `num_workers=0` means the main process calls `__getitem__` synchronously for each batch). So with `num_workers=0`, islice *does* advance the PRNG correctly. **This means the PRNG concern from the critique is actually not an issue for islice specifically** — but it IS an issue if we ever move to `num_workers>0` or to a seek-based approach.
-
-**Correction to the original critique**: With `num_workers=0`, `itertools.islice` on `enumerate(data_train)` does iterate through the DataLoader, which calls `Dataset.__getitem__()` for each batch, which calls `interleave()`, which advances `PRNG`. The PRNG *is* advanced during the skip. The critique was wrong on this point.
-
-**However**, the PRNG state is still not *saved/restored* from the checkpoint. After a resume, the PRNG starts from `PRNG = np.random.default_rng(SEED)` (position 0), and the islice skip advances it by `batches_to_skip * batch_size` calls — which is correct only if the PRNG was at position 0 at the start of the current epoch. Since `DistributedSampler.set_epoch(epoch)` reshuffles the data order per epoch, and the PRNG in `cpt.py` is independent of the sampler, the PRNG state at the start of epoch E depends on all samples processed in epochs 0..E-1. For E=0 (the common case in our single-epoch training), the PRNG starts at position 0 and the islice skip correctly advances it. **For E>0, the PRNG would be wrong.** Since we never complete an epoch in practice, this is not currently a problem, but it must be fixed for correctness.
+- **No PRNG interaction**: After the per-sample deterministic RNG refactor (Section 7), islice skipping has no effect on interleaving correctness. Each sample's interleaving is a pure function of `(seed, epoch, sample_index)`, so skipped samples don't affect future samples. This also means islice works correctly with `num_workers > 0` — there is no shared PRNG state to worry about.
 
 ### Skip cost estimate
 
@@ -257,7 +255,50 @@ For the long term, the gold standard is Megatron-LM's approach: a deterministic 
 
 ## 7. RNG State Management
 
-### What we need to save
+There are two categories of randomness in the training pipeline. They require different solutions.
+
+### Category 1: Data transform randomness (interleaving)
+
+The module-level `PRNG = np.random.default_rng(SEED)` in `cpt.py:41` controls interleaving span boundaries and `start_with_text` decisions. It is stateful: sample N's interleaving depends on how many samples were processed before it. This couples correctness to processing order — a fundamental design problem that no amount of state checkpointing can fully solve (it breaks with `num_workers > 0`, different shuffle orders, or seek-based resume).
+
+**Fix: eliminate the stateful PRNG entirely.** Replace it with per-sample deterministic RNG seeded by sample identity:
+
+```python
+def interleave(sample, ..., *, seed: int, epoch: int, sample_index: int):
+    rng = np.random.default_rng((seed, epoch, sample_index))
+    start_with_text = rng.choice([True, False])
+    span_idxs = get_span_idxs_binomial(n, p, seq_len, rng=rng)
+    ...
+```
+
+Each sample's interleaving is now a **pure function of `(seed, epoch, sample_index)`**. This eliminates the PRNG state management problem entirely:
+
+| Property | Stateful PRNG (before) | Per-sample deterministic RNG (after) |
+|----------|----------------------|--------------------------------------|
+| State to checkpoint | `PRNG.bit_generator.state` | Nothing |
+| islice skip correctness | Depends on `num_workers=0` | Always correct |
+| `num_workers > 0` | Broken (shared mutable state) | Correct (pure function) |
+| Train/dev contamination | Shared PRNG → dev depends on training | Independent by construction |
+| Same sample, different order | Different interleaving | Identical interleaving |
+| Reproducibility across resumes | Fragile (requires exact PRNG position) | Guaranteed |
+
+NumPy's `SeedSequence` handles tuple seeds correctly, so `np.random.default_rng((seed, epoch, sample_index))` produces independent, well-distributed streams with no collision risk.
+
+The `TextCompletionDataset.__getitem__` passes the index through:
+
+```python
+def __getitem__(self, index: int) -> dict[str, list[int]]:
+    sample = self._data[index]
+    return self._prepare_sample(sample, sample_index=index)
+```
+
+The dataset stores `seed` and `epoch` (set via `set_epoch(epoch)`, same pattern as `DistributedSampler`), and threads `(seed, epoch, sample_index)` through to `interleave()` and `get_span_idxs_binomial()`.
+
+The module-level `PRNG` global is simply deleted.
+
+### Category 2: Framework RNG states (dropout, sampler, etc.)
+
+The standard 4 PyTorch RNG states control dropout, `DistributedSampler` shuffling, and other framework-level randomness. These remain stateful and must be checkpointed for exact resume.
 
 | RNG | Used by | Save | Restore |
 |-----|---------|------|---------|
@@ -265,7 +306,6 @@ For the long term, the gold standard is Megatron-LM's approach: a deterministic 
 | NumPy global | `training.set_seed()` | `numpy.random.get_state()` | `numpy.random.set_state(state)` |
 | PyTorch CPU | `training.set_seed()`, dropout | `torch.get_rng_state()` | `torch.set_rng_state(state)` |
 | PyTorch CUDA | dropout, `DistributedSampler` | `torch.cuda.get_rng_state_all()` | `torch.cuda.set_rng_state_all(states)` |
-| `cpt.py` PRNG | interleaving span boundaries, `start_with_text` | `PRNG.bit_generator.state` | `PRNG.bit_generator.state = state` |
 
 ### When to save
 
@@ -274,24 +314,6 @@ RNG states are saved as part of `recipe_state.pt` at every checkpoint.
 ### When to restore
 
 Restore immediately after loading the checkpoint, before entering the training loop. This ensures that any code between restore and the first training batch consumes the same RNG sequence as the original run.
-
-### The `cpt.py` PRNG problem
-
-The module-level `PRNG = np.random.default_rng(SEED)` in `cpt.py:41` creates several issues:
-1. It's shared between train and dev `TextCompletionDataset` instances.
-2. It's module-level, so saving/restoring it requires reaching into the module's global state.
-3. It means dev-set evaluation interleaving depends on training history.
-
-**Fix (this plan)**: Make PRNG a constructor argument to `TextCompletionDataset`, stored as `self._prng`. The train and dev datasets get separate PRNG instances. The train dataset's PRNG state is saved in the checkpoint. The dev dataset's PRNG is re-seeded deterministically each evaluation.
-
-```python
-class TextCompletionDataset(Dataset):
-    def __init__(self, ..., prng: np.random.Generator | None = None):
-        self._prng = prng or np.random.default_rng(SEED)
-        ...
-```
-
-`interleave()` and `get_span_idxs_binomial()` become methods (or take `prng` as a parameter) instead of using the module-level global.
 
 ---
 
@@ -387,7 +409,7 @@ On resume, initialize from checkpoint values instead of 0. On fresh start, initi
 | File | Changes |
 |------|---------|
 | `ssi/constants.py` | Add new key constants (`TRAINING_HPARAMS_KEY`, `LR_SCHEDULER_KEY`, `RNG_STATE_KEY`, etc.) |
-| `ssi/checkpoint.py` | Update `save_checkpoint` to accept and save all new fields; add `save_rng_states()` / `load_rng_states()` helpers |
+| `ssi/checkpoint.py` | Update `save_checkpoint` to accept and save all new fields; add `save_rng_states()` / `restore_rng_states()` helpers for the 4 standard RNG states |
 | `ssi/train.py` | Update `resume_training_state` to return new fields; add `validate_resume_hparams`; update save call site; update training loop for islice skip; restore cumulative metrics |
 | `ssi/lr_schedule.py` | No changes to `setup_lr_scheduler`; scheduler state_dict saved/restored in `train.py` |
 
@@ -470,17 +492,17 @@ for epoch in range(epochs_run, n_epochs):
         ...
 ```
 
-### Phase 2: PRNG refactor (separate commit)
+### Phase 2: Per-sample deterministic RNG (separate commit)
 
-Move the module-level `PRNG` in `cpt.py` to a per-instance attribute on `TextCompletionDataset`.
+Replace the module-level stateful `PRNG` in `cpt.py` with per-sample deterministic RNG seeded by `(seed, epoch, sample_index)`. This eliminates the PRNG state management problem entirely — there is no PRNG state to checkpoint.
 
 **Files modified:**
 
 | File | Changes |
 |------|---------|
-| `ssi/data/cpt.py` | Remove module-level `PRNG`; add `prng` parameter to `TextCompletionDataset.__init__`; pass `self._prng` to `interleave` and `get_span_idxs_binomial` |
-| `ssi/data/__init__.py` | Pass PRNG instance when constructing `TextCompletionDataset` |
-| `ssi/train.py` | Create PRNG instance, pass to data setup, save/restore its state |
+| `ssi/data/cpt.py` | Delete module-level `PRNG`. Add `seed` and `epoch` attributes to `TextCompletionDataset`. Add `set_epoch(epoch)` method. Change `__getitem__` to pass `index` through to `_prepare_sample`. Change `interleave()` and `get_span_idxs_binomial()` to take a `rng` parameter instead of using the global. Construct `rng = np.random.default_rng((self._seed, self._epoch, index))` per sample in `_prepare_sample`. |
+| `ssi/data/__init__.py` | No PRNG-related changes needed (seed comes from the existing `SEED` constant) |
+| `ssi/train.py` | Call `data_train.dataset.set_epoch(epoch)` alongside `sampler_train.set_epoch(epoch)` in the epoch loop. No PRNG state saving/restoring needed. |
 
 ### Phase 3: Tests (separate commit)
 
@@ -514,7 +536,9 @@ See Section 12.
 | T13 | Checkpoint contains `GLOBAL_STEP_KEY`, not `STEPS_KEY` | B1 regression guard |
 | T14 | Checkpoint does NOT contain `EPOCHS_KEY` | Schema cleanup verification |
 | T15 | Legacy checkpoint (no new keys) loads with warnings | Backward compat |
-| T16 | RNG state round-trip: save, restore, generate — matches uninterrupted sequence | RNG preservation |
+| T16 | Framework RNG state round-trip: save, restore, generate — dropout/sampler matches uninterrupted sequence | RNG preservation |
+| T16b | Per-sample deterministic interleaving: same `(seed, epoch, index)` always produces same interleaving | Interleaving reproducibility |
+| T16c | Per-sample interleaving is independent of processing order: shuffled vs sequential produces identical per-sample results | Order independence |
 
 ### Smoke tests (GPU, cluster)
 
@@ -560,11 +584,13 @@ Each decision records what we chose, what we rejected, and why.
 **Rejected**: Keep writing it for human readability.
 **Why**: A field that is written but never read on resume is a maintenance hazard. It will inevitably diverge from `global_step // steps_per_epoch` and confuse someone inspecting the checkpoint. The epoch can be trivially derived when needed.
 
-### D6: Per-instance PRNG (not module-level)
+### D6: Per-sample deterministic RNG (not stateful PRNG)
 
-**Chose**: Constructor-injected `np.random.Generator` per `TextCompletionDataset` instance.
-**Rejected**: Module-level global PRNG (current state).
-**Why**: Module-level state is: (a) shared between train and dev, making dev evaluation non-deterministic; (b) impossible to save/restore cleanly without reaching into module globals; (c) incompatible with multi-worker DataLoader (each worker would share the same PRNG state).
+**Chose**: Per-sample RNG seeded by `(seed, epoch, sample_index)` — a pure function of sample identity.
+**Rejected alternatives**:
+- Module-level global PRNG (current state) — shared between train/dev, order-dependent, impossible to checkpoint cleanly, incompatible with `num_workers > 0`.
+- Per-instance PRNG on `TextCompletionDataset` (considered in earlier draft) — still stateful, still requires checkpointing, still order-dependent, still broken with `num_workers > 0`.
+**Why**: The per-sample approach eliminates the entire class of PRNG-state-management problems. There is no state to save, restore, or synchronize. Each sample's interleaving is deterministic given its identity, regardless of processing order, parallelism, or resume point. NumPy's `SeedSequence` ensures the per-sample streams are well-distributed and independent.
 
 ### D7: Drop `epoch` parameter from `save_checkpoint`
 
@@ -579,7 +605,7 @@ Each decision records what we chose, what we rejected, and why.
 These items are explicitly out of scope for the current implementation but are documented for planning.
 
 ### F1: `torchdata.StatefulDataLoader`
-Replace `torch.utils.data.DataLoader` with `torchdata.StatefulDataLoader` to eliminate islice skip cost. Requires `torchdata >= 0.8.0`. The DataLoader state_dict would be saved in the checkpoint alongside the other state. This also enables `num_workers > 0` without PRNG state issues (each worker's state is captured by the StatefulDataLoader).
+Replace `torch.utils.data.DataLoader` with `torchdata.StatefulDataLoader` to eliminate islice skip cost. Requires `torchdata >= 0.8.0`. The DataLoader state_dict would be saved in the checkpoint alongside the other state. This also enables `num_workers > 0` for the DataLoader itself (the per-sample deterministic RNG in Section 7 already makes the dataset side safe for multi-worker access).
 
 ### F2: Megatron-style consumed_samples indexing
 Pre-shuffle the dataset with a deterministic seed and use `consumed_samples` to index directly into the shuffled sequence. No skip, no stateful dataloader. This is the most robust solution for datasets that never complete an epoch.
