@@ -1,11 +1,11 @@
-import logging
 from enum import Enum
 from functools import partial
 from itertools import groupby, zip_longest
+import logging
 from typing import Any, Callable, Mapping
 
-import numpy as np
 from datasets import load_dataset
+import numpy as np
 from sardalign.constants import (
     ALIGNMENT_END_TIME_KEY,
     ALIGNMENT_START_TIME_KEY,
@@ -138,7 +138,7 @@ class TextCompletionDataset(Dataset):
             # TODO -1 is odd and does not match the tokenize_messages method NOTE this is original torchtune code
             tokens = truncate(tokens, self._tokenizer.max_seq_len - 1)
 
-        # No need to offset labels by 1 - happens in the recipe
+        # No need to offset labels by 1 - happens in the recipe # TODO find where this is done and update this comment
         labels = tokens.copy()
 
         return {"tokens": tokens, "labels": labels}
