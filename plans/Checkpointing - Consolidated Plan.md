@@ -12,6 +12,35 @@ The companion `Research - Checkpoint and Resume Best Practices.md` contains the 
 
 ---
 
+## Execution Order
+
+The three implementation phases have a dependency structure that dictates ordering:
+
+### Step 1: Per-sample deterministic RNG (Plan Phase 2)
+
+**Do this first.** Small, self-contained change to `ssi/data/cpt.py`. Delete the module-level `PRNG` global, add `set_epoch()` to `TextCompletionDataset`, thread `(seed, epoch, sample_index)` through to `interleave()` and `get_span_idxs_binomial()`. No checkpoint code touched. This de-risks Step 2 by eliminating the PRNG state question before we redesign the checkpoint schema — and it's independently testable.
+
+Files: `ssi/data/cpt.py`, `ssi/train.py` (add `data_train.dataset.set_epoch(epoch)` call).
+
+### Step 2: Checkpoint schema and resume logic (Plan Phase 1)
+
+**The big one.** New checkpoint schema (version 1), `save_checkpoint` signature change (drop `epoch`, add scheduler/RNG/metrics/hparams), `resume_training_state` rewrite, hparam validation, islice skip logic, cumulative metrics restore, LR scheduler save/restore, framework RNG state save/restore, `step_N/` directory naming.
+
+Sub-steps in order:
+1. New constants in `ssi/constants.py`
+2. `save_checkpoint` and helpers in `ssi/checkpoint.py`
+3. Resume logic, validation, and training loop changes in `ssi/train.py`
+
+Files: `ssi/constants.py`, `ssi/checkpoint.py`, `ssi/train.py`.
+
+### Step 3: Tests (Plan Phase 3)
+
+Lock in the new behaviour. Unit tests for schema contract, validation, and resume arithmetic. Integration tests for round-trip save/load and RNG state. Per-sample interleaving reproducibility and order-independence tests.
+
+Files: `tests/test_checkpoint.py`, `tests/test_cpt_deterministic_rng.py`.
+
+---
+
 ## Table of Contents
 
 1. [Problem Statement](#1-problem-statement)
