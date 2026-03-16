@@ -334,12 +334,16 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             json.dump(state_dict[training.ADAPTER_CONFIG], f)
         LOGGER.info(f"Adapter config saved to {output_path}")
 
-    def save_recipe_state(self, state_dict: dict[str, Any], output_dir: Path) -> None:
-        output_dir.mkdir(parents=True, exist_ok=True)
-        output_path = output_dir / "recipe_state.pt"
+    def save_recipe_state(self, state_dict: dict[str, Any]) -> None:
+        """Save training state to a single file at the top-level output directory.
+
+        Always overwrites the previous file — only the latest training state is kept
+        on disk. Model weights are saved separately per checkpoint step.
+        """
+        output_path = self.output_dir / "recipe_state.pt"
         exclude_keys = (training.MODEL_KEY, training.ADAPTER_KEY, training.ADAPTER_CONFIG)
         torch.save({k: v for k, v in state_dict.items() if k not in exclude_keys}, output_path)
-        LOGGER.info(f"Recipe checkpoint ({os.path.getsize(output_path) / 1024**3:.2f} GiB) saved to {output_path}")
+        LOGGER.info(f"Recipe state ({os.path.getsize(output_path) / 1024**3:.2f} GiB) saved to {output_path}")
 
     def _save_checkpoint(
         self,
@@ -369,7 +373,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         copy_files(self.checkpoint_dir, output_dir, ignore_suffixes=ignore_suffixes)
 
         if save_training_state:
-            self.save_recipe_state(state_dict, output_dir)
+            self.save_recipe_state(state_dict)
         else:
             LOGGER.info("No training state saved.")
 
