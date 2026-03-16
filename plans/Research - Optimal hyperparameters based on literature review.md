@@ -1,3 +1,50 @@
+# Research: Optimal hyperparameters based on literature review
+
+> [!info] This document collates research papers that have used Llama 3.2 1B or similar models as a foundation model and done continued pretraining or something else on top. This informs our choices of which hyperparameter values to search in the neighbourhood of when tuning the hyperparameters for our experiments. 
+
+# Updated Findings on Llama 3.2 1B Hyperparameters from Literature Review
+
+**Interspeech 2025 is where Llama 3.2 1B shows up a lot as a trained model.** NLP venues like ACL, EMNLP, NeurIPS, ICLR used it mostly as an off-the-shelf evaluation baseline. The speech community adopted it as a trainable backbone.
+
+### Confirmed published conference papers with training details
+
+| Paper | Venue | Model | Type | LR | Optimizer | Scheduler | Warmup | Task |
+|-------|-------|-------|------|----|-----------|-----------|--------|------|
+| Futami et al., *Scheduled Interleaved Speech-Text Training for S2ST* | **Interspeech 2025**, pp.36–40, DOI:10.21437/Interspeech.2025-1595 | LLaMA3.2-1B | Full FT | **5e-5** | Adam | custom text-ratio schedule | not reported | Speech-to-speech translation |
+| Zhang & Mohan, *Towards Atypical Speech Transcription* | **Interspeech 2025**, pp.574–578 | LLaMA-3.2-1B | LoRA | **1e-4** | not reported | not reported | 1000 steps | Atypical ASR |
+| Cappellazzo et al., *Scaling and Enhancing LLM-based AVSR* | **Interspeech 2025**, pp.1823–1827 | LLaMA 3.2-1B | QLoRA r=16 | **1e-4** → min 1e-5 | Adam β₁=0.9, β₂=0.98 | Cosine | 500/30k steps | Audio-visual SR |
+| Xu et al., *LLM-based ASR Error Correction for Child Conversations* | **Interspeech 2025**, pp.2840–2844 | LLaMA 3.2-1B | FT | not reported | — | — | — | Child speech ASR |
+| Gao et al., *MobiZO* | **EMNLP 2025** main | LLaMA3.2-1B | MP-LoRA (ZO) | not reported | zeroth-order | — | — | On-device edge FT |
+| Shen et al., *SLOT* | **EMNLP 2025** Industry | LLaMA-3.2-1B | FT | not reported | — | — | — | Structured output |
+
+### Best-documented arXiv preprints from serious groups
+
+| Paper | Group | Model | Type | LR | Scheduler | Warmup | Task |
+|-------|-------|-------|------|----|-----------|--------|------|
+| LLaSA (arXiv:2502.04128) | HKUST Audio | LLaMA 3.2-1B | **Full FT** | **5e-5** → 5e-6 | Cosine | 3% epochs | TTS, 250k hours |
+| Financial CPT (arXiv:2512.12384) | Johns Hopkins | LLaMA-3.2-1B | **Full FT** | **5e-6** (fixed) | None | None | Domain CPT |
+| FPT Vietnamese CPT | FPT Cloud | LLaMA-3.2-1B | **Full FT** | **4e-5** | Linear | None | Multilingual CPT |
+
+## Impact for Learning Rate (LR) choice
+
+Conference citations to back LR choice:
+
+**Full-parameter fine-tuning / CPT of Llama 3.2 1B:**
+- Futami et al. (Interspeech 2025, full FT, speech): **5e-5**
+- LLaSA (full FT, TTS, 250k hours): **5e-5** with cosine, 3% warmup
+- Vietnamese CPT (full FT, 2.8B tokens): **4e-5**
+- Financial CPT (full FT, very conservative, no schedule): **5e-6**
+
+**PEFT (LoRA/QLoRA) on Llama 3.2 1B:**
+- Zhang & Mohan (Interspeech 2025, LoRA): **1e-4**
+- Cappellazzo et al. (Interspeech 2025, QLoRA): **1e-4** with cosine
+
+The convergence on **5e-5** for full fine-tuning from two independent groups doing speech-related training (Futami, Interspeech 2025; LLaSA, HKUST) is the most directly applicable data point for your use case. **Cosine scheduler with ~3–5% warmup** is the consensus across these papers.
+
+The **1e-4** for PEFT is equally consistent across the speech papers.
+
+# Findings on Llama 3.2 1B Hyperparameters from Literature Review
+
 Llama 3.2 was released September 2024. 
 
 **Only found one paper in the list as a confirmed top-venue conference paper** using Llama 3.2 1B specifically:
