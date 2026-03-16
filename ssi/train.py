@@ -79,11 +79,11 @@ def resume_training_state(ckpt_dict: dict[str, Any]) -> dict[str, Any]:
     return {
         "global_step": ckpt_dict[GLOBAL_STEP_KEY],
         "optimizer_state": ckpt_dict[OPTIMIZER_KEY],
-        "lr_scheduler_state": ckpt_dict.get(LR_SCHEDULER_KEY),
-        "rng_state": ckpt_dict.get(RNG_KEY),
-        "training_hparams": ckpt_dict.get(TRAINING_HPARAMS_KEY),
-        "consumed_samples": ckpt_dict.get(CONSUMED_SAMPLES_KEY, 0),
-        "cumulative_metrics": ckpt_dict.get(CUMULATIVE_METRICS_KEY),
+        "lr_scheduler_state": ckpt_dict[LR_SCHEDULER_KEY],
+        "rng_state": ckpt_dict[RNG_KEY],
+        "training_hparams": ckpt_dict[TRAINING_HPARAMS_KEY],
+        "consumed_samples": ckpt_dict[CONSUMED_SAMPLES_KEY],
+        "cumulative_metrics": ckpt_dict[CUMULATIVE_METRICS_KEY],
     }
 
 
@@ -189,7 +189,7 @@ def train(cfg: DictConfig) -> None:
         global_step=global_step - 1,  # see setup_lr_scheduler: LambdaLR steps once on init
         num_training_steps=cfg.max_steps,
     )
-    if resume_state and resume_state["lr_scheduler_state"] is not None and lr_scheduler is not None:
+    if resume_state and lr_scheduler is not None:
         lr_scheduler.load_state_dict(resume_state["lr_scheduler_state"])
 
     loss_fn = CEWithChunkedOutputLoss()
@@ -217,7 +217,7 @@ def train(cfg: DictConfig) -> None:
     n_epochs = math.ceil(cfg.max_steps / steps_per_epoch)
 
     # === Validate hparams on resume ===
-    if resume_state and resume_state["training_hparams"] is not None:
+    if resume_state:
         validate_resume_hparams(
             ckpt_hparams=resume_state["training_hparams"],
             current_hparams={
@@ -237,15 +237,15 @@ def train(cfg: DictConfig) -> None:
     tokens_train_total: int = 0
     token_type_counts_total: defaultdict[str, int] = defaultdict(int)
     wall_clock_offset: float = 0.0
-    if resume_state and resume_state["cumulative_metrics"] is not None:
+    if resume_state:
         cm = resume_state["cumulative_metrics"]
-        tokens_train_total = cm.get("tokens_train_total", 0)
-        for k, v in cm.get("token_type_counts", {}).items():
+        tokens_train_total = cm["tokens_train_total"]
+        for k, v in cm["token_type_counts"].items():
             token_type_counts_total[k] = v
-        wall_clock_offset = cm.get("wall_clock_seconds", 0.0)
+        wall_clock_offset = cm["wall_clock_seconds"]
 
     # === Restore framework RNG states (after all setup, before training loop) ===
-    if resume_state and resume_state["rng_state"] is not None:
+    if resume_state:
         restore_rng_states(resume_state["rng_state"])
         LOGGER.info("Restored framework RNG states from checkpoint.")
 
