@@ -4,9 +4,11 @@ Produced by exploratory review of all training-related code. Tasks are grouped b
 
 Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes and Refactor.md`, `plans/claude-data-critique.md`, `plans/Plan to Simplify Checkpoint Directory Structure.md`.
 
+**Checkpoint-related items (B1, B2, B6, Recommendation 1) are now consolidated in `plans/Checkpointing - Consolidated Plan.md`.** That document supersedes the checkpoint-specific content below and in `Fix B2 - Intra-Epoch Step-Level Resume with Configuration Validation.md`. The research backing the design is in `plans/Research - Checkpoint and Resume Best Practices.md`.
+
 ## Recommendations
 
-1. **Fix checkpoint schema first**
+1. **Fix checkpoint schema first** → **See `Checkpointing - Consolidated Plan.md` for the full design.**
    - Save and load the same keys (`steps_run` + `epochs_run`), and keep legacy fallback for old checkpoints.
    - Save/load RNG state and intra-epoch dataloader position if exact resume matters.
 
