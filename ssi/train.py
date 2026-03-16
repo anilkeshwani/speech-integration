@@ -172,6 +172,8 @@ def train(cfg: DictConfig) -> None:
     wandb_logger.log_config(cfg)  # log config after parameter resolution + overrides
     for epoch in range(epochs_run, n_epochs):
         sampler_train.set_epoch(epoch)  # distinct seed each epoch
+        if hasattr(data_train.dataset, "set_epoch"):
+            data_train.dataset.set_epoch(epoch)
         for i, batch in tqdm(enumerate(data_train), total=batches_per_epoch):  # type: ignore
             batch_to_device(batch, DEVICE)  # in-place
             for tt, ttcnt in count_token_types(batch["tokens"], token_type_ranges, tokenizer.pad_id).items():

@@ -37,10 +37,6 @@ class CompletionSequenceType(Enum):
     ALTERNATING = "alternating"  # alternating between text-only and DSU-only sequences
 
 
-# Module-level pseudo-random number generator
-PRNG = np.random.default_rng(SEED)
-
-
 class TextCompletionDataset(Dataset):
     """
     Freeform dataset for any unstructured text corpus. Quickly load any dataset
@@ -106,23 +102,30 @@ class TextCompletionDataset(Dataset):
 
         self.deduplicate = deduplicate
         self.use_modality_tokens = use_modality_tokens
+        self._seed = SEED
+        self._epoch = 0
 
         if filter_fn is not None:
             self._data = self._data.filter(filter_fn)
+
+    def set_epoch(self, epoch: int) -> None:
+        self._epoch = epoch
 
     def __len__(self):
         return len(self._data)
 
     def __getitem__(self, index: int) -> dict[str, list[int]]:
         sample = self._data[index]
-        return self._prepare_sample(sample)
+        rng = np.random.default_rng((self._seed, self._epoch, index))
+        return self._prepare_sample(sample, rng)
 
-    def _prepare_sample(self, sample: Mapping[str, Any]) -> dict[str, list[int]]:
+    def _prepare_sample(self, sample: Mapping[str, Any], rng: np.random.Generator) -> dict[str, list[int]]:
         # Construct the prompt
         prompt = self.prompt_fn(
             sample=sample,
             deduplicate=self.deduplicate,
             use_modality_tokens=self.use_modality_tokens,
+            rng=rng,
         )
 
         # Tokenize
@@ -144,8 +147,8 @@ class TextCompletionDataset(Dataset):
         return {"tokens": tokens, "labels": labels}
 
 
-def get_span_idxs_binomial(n: int, p: float, seq_len: int) -> list[int]:
-    subspan_idxs = np.maximum(PRNG.binomial(n, p, size=seq_len), 1).cumsum()  # NOTE sample lower bounded to 1
+def get_span_idxs_binomial(n: int, p: float, seq_len: int, rng: np.random.Generator) -> list[int]:
+    subspan_idxs = np.maximum(rng.binomial(n, p, size=seq_len), 1).cumsum()  # NOTE sample lower bounded to 1
     return [0] + subspan_idxs[subspan_idxs < seq_len].tolist() + [seq_len]
 
 
@@ -154,17 +157,18 @@ def interleave(
     deduplicate: bool,
     use_modality_tokens: bool,
     *,
+    rng: np.random.Generator,
     sampling_rate: int,
     downsampling_ratio: int,
     mean_seq_len_tokens: float,
     binom_prob: float,
 ) -> str:
-    start_with_text = PRNG.choice([True, False], p=[0.5, 0.5])
+    start_with_text = rng.choice([True, False], p=[0.5, 0.5])
     tokens = sample[TOKENIZED_KEY]
     align_t_starts = sample[ALIGNMENT_START_TIME_KEY]
     align_t_ends = sample[ALIGNMENT_END_TIME_KEY]
     speech_tokens: list[int] = sample[SPEECH_TOKENS_KEY]
-    span_idxs = get_span_idxs_binomial(int(mean_seq_len_tokens), binom_prob, len(tokens))
+    span_idxs = get_span_idxs_binomial(int(mean_seq_len_tokens), binom_prob, len(tokens), rng=rng)
     # idxs: list of 2-tuples of start and end indices of subspans e.g. [(0, 4), (11, 16), (21, 25), (28, 31)]
     idxs1, idxs2 = zip(span_idxs[:-1:2], span_idxs[1::2]), zip(span_idxs[1:-1:2], span_idxs[2::2])
     text_idxs, dsu_idxs = (idxs1, idxs2) if start_with_text else (idxs2, idxs1)
@@ -195,6 +199,7 @@ def concatenate_speech_text(
     deduplicate: bool,
     use_modality_tokens: bool,
     *,
+    rng: np.random.Generator,  # unused; uniform prompt_fn(…, rng=rng) interface
     start_with_text: bool,
 ) -> str:
     speech_tokens: list[int] = sample[SPEECH_TOKENS_KEY]
