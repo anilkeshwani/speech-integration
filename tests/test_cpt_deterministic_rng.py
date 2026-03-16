@@ -29,11 +29,16 @@ def make_rng(seed: int, epoch: int, index: int) -> np.random.Generator:
 # ---------------------------------------------------------------------------
 
 
-def test_span_idxs_reproducible():
+@pytest.mark.parametrize(
+    "seed, epoch, index",
+    [(42, 0, 7), (42, 0, 0), (0, 0, 0), (99999, 10, 500), (42, 3, 12345)],
+    ids=["default", "zero-index", "all-zeros", "large-values", "high-index"],
+)
+def test_span_idxs_reproducible(seed, epoch, index):
     """Calling get_span_idxs_binomial with identically-seeded RNGs produces identical output."""
     n, p, seq_len = 5, 0.4, 50
-    result_a = get_span_idxs_binomial(n, p, seq_len, rng=make_rng(42, 0, 7))
-    result_b = get_span_idxs_binomial(n, p, seq_len, rng=make_rng(42, 0, 7))
+    result_a = get_span_idxs_binomial(n, p, seq_len, rng=make_rng(seed, epoch, index))
+    result_b = get_span_idxs_binomial(n, p, seq_len, rng=make_rng(seed, epoch, index))
     assert result_a == result_b
 
 
