@@ -1,0 +1,6 @@
+[formatting]
+column_width    = 120
+indent_tables   = true
+indent_string   = "    "  # 4 spaces — matches existing pyproject.toml style
+align_entries   = true    # align key = value pairs within each table section
+align_comments  = true
