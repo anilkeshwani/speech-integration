@@ -26,6 +26,9 @@ eval_steps: 1000
 # Checkpointing period - should be multiple of eval_steps
 save_steps: 10000
 
+# Resume behaviour
+force_resume: False # downgrade hparam mismatch errors to warnings on resume (expert override)
+
 # Checkpointer initialization
 checkpointer:
   checkpoint_dir: ???
