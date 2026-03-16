@@ -160,11 +160,17 @@ Model weights continue to be saved separately as HF-format safetensors (unchange
 
 ### Backward compatibility
 
-When loading a checkpoint that lacks `checkpoint_version` (i.e. any existing checkpoint):
-- Emit `LOGGER.warning("Legacy checkpoint format detected. ...")`.
-- Fall back to reading `EPOCHS_KEY` and `GLOBAL_STEP_KEY` as before.
-- `consumed_samples`, `lr_scheduler`, `rng_state`, `cumulative_metrics` all default to None/zero.
-- **Do not** attempt to validate training hparams (no `training_hparams` key).
+None. Loading a checkpoint that lacks `checkpoint_version` raises a hard `ValueError`:
+
+```python
+if CHECKPOINT_VERSION_KEY not in ckpt_dict:
+    raise ValueError(
+        "Checkpoint predates the versioned schema (no 'checkpoint_version' key). "
+        "Legacy checkpoints are not supported. Start a fresh training run."
+    )
+```
+
+This is consistent with the current refactoring phase policy of allowing backward-incompatible changes. Old checkpoints on disk are preserved but cannot be resumed — start fresh.
 
 ### Constants (`ssi/constants.py`)
 
@@ -194,7 +200,7 @@ On resume (when `recipe_checkpoint is not None`):
 5. **Early validation** — validate `gradient_accumulation_steps` and `world_size` (these are known before data setup).
 6. **Set up data** — create DataLoader, compute `batches_per_epoch`, `steps_per_epoch`.
 7. **Full validation** — validate `batch_size` and `steps_per_epoch` against checkpoint (requires data setup to have completed).
-8. **Restore LR scheduler** — `scheduler.load_state_dict(ckpt_dict[LR_SCHEDULER_KEY])` if present, else reconstruct from `global_step` (legacy fallback).
+8. **Restore LR scheduler** — `scheduler.load_state_dict(ckpt_dict[LR_SCHEDULER_KEY])` (required; missing key raises `KeyError`).
 9. **Restore RNG states** — restore all 4 standard RNG states (Python, NumPy global, PyTorch CPU, PyTorch CUDA) if `rng_state` is present. The interleaving PRNG does not need restoration — it is eliminated by the per-sample deterministic RNG design (Section 7).
 10. **Compute resume position**:
     ```python
@@ -213,7 +219,7 @@ On resume (when `recipe_checkpoint is not None`):
 | Mid-epoch resume (step N, N % S != 0) | Skip `(N % S) * G` batches in epoch `N // S` |
 | Exact epoch boundary (N % S == 0) | Start epoch `N // S` from batch 0, no skip |
 | Config mismatch | `ValueError` raised before any training |
-| Legacy checkpoint | Warning, proceed with derived values, no hparam validation |
+| Legacy checkpoint (no `checkpoint_version`) | `ValueError` raised immediately |
 
 (S = steps_per_epoch, G = gradient_accumulation_steps)
 
@@ -330,7 +336,7 @@ Restore immediately after loading the checkpoint, before entering the training l
 
 1. **Save** `scheduler.state_dict()` in the checkpoint under `LR_SCHEDULER_KEY`.
 2. **On resume**: create a fresh scheduler (same as now), then `scheduler.load_state_dict(ckpt_dict[LR_SCHEDULER_KEY])`.
-3. **Legacy fallback**: if `LR_SCHEDULER_KEY` not in checkpoint, use the current `last_epoch` approach with a warning.
+3. No legacy fallback — `LR_SCHEDULER_KEY` is a required field in versioned checkpoints.
 4. **Warm restart detection**: if the user has changed LR schedule parameters in the config vs the checkpoint, warn but proceed. This is a legitimate use case (fine-tuning from a CPT checkpoint with a different schedule).
 
 ### Future: WSD schedule
@@ -521,7 +527,7 @@ See Section 12.
 | T3 | Missing keys raise `KeyError` | Schema completeness |
 | T4 | `validate_resume_hparams` passes on matching config | Happy path |
 | T5 | `validate_resume_hparams` raises on each mismatch type | batch_size, grad_accum, world_size, steps_per_epoch |
-| T6 | `validate_resume_hparams` warns on legacy checkpoint (no hparams key) | Backward compat |
+| T6 | Legacy checkpoint (no `checkpoint_version`) raises `ValueError` | No backward compat |
 | T7 | `validate_resume_hparams` warns (not errors) with `force_resume=True` | Override mechanism |
 | T8 | Resume position arithmetic: mid-epoch | `epochs_run`, `batches_to_skip` correct |
 | T9 | Resume position arithmetic: exact epoch boundary | `batches_to_skip == 0` |
@@ -535,7 +541,7 @@ See Section 12.
 | T12 | Round-trip: save then load returns identical state | On-disk serialization correctness |
 | T13 | Checkpoint contains `GLOBAL_STEP_KEY`, not `STEPS_KEY` | B1 regression guard |
 | T14 | Checkpoint does NOT contain `EPOCHS_KEY` | Schema cleanup verification |
-| T15 | Legacy checkpoint (no new keys) loads with warnings | Backward compat |
+| T15 | Legacy checkpoint (no `checkpoint_version`) raises `ValueError` | No backward compat |
 | T16 | Framework RNG state round-trip: save, restore, generate — dropout/sampler matches uninterrupted sequence | RNG preservation |
 | T16b | Per-sample deterministic interleaving: same `(seed, epoch, index)` always produces same interleaving | Interleaving reproducibility |
 | T16c | Per-sample interleaving is independent of processing order: shuffled vs sequential produces identical per-sample results | Order independence |
