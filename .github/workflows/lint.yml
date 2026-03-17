@@ -52,7 +52,7 @@ jobs:
         run: uv run shfmt --diff $(git ls-files '*.sh')
 
       - name: Lint (shellcheck)
-        run: uv run shellcheck $(git ls-files '*.sh')
+        run: git ls-files '*.sh' | xargs -r uv run shellcheck
 
   toml:
     name: TOML (taplo)
