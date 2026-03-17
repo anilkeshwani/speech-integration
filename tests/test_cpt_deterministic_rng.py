@@ -21,6 +21,7 @@ from ssi.data.cpt import get_span_idxs_binomial
 
 
 def make_rng(seed: int, epoch: int, index: int) -> np.random.Generator:
+    # Mirrors the per-sample RNG construction in TextCompletionDataset.__getitem__
     return np.random.default_rng((seed, epoch, index))
 
 
