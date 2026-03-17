@@ -75,9 +75,9 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 - If all labels in an accumulation window are masked, `num_tokens_step == 0` → ZeroDivisionError.
 - Fix: skip optimizer step (with a warning) when `num_tokens_step == 0`.
 
-**B6. Remainder batches silently dropped**
-- When `batches_per_epoch % gradient_accumulation_steps != 0`, the trailing incomplete accumulation window is never stepped.
-- Fix: flush partial accumulation at epoch end, or document the behavior explicitly.
+~~**B6. Remainder batches silently dropped**~~
+- ~~When `batches_per_epoch % gradient_accumulation_steps != 0`, the trailing incomplete accumulation window was never stepped, and leaked gradients across epoch boundaries broke resume correctness.~~
+- ~~Fixed by explicitly zeroing gradients and resetting step-level accumulators at epoch boundaries when remainder batches exist — analogous to `drop_last=True` on the DataLoader but applied one level up. A warning is logged at setup time and at each epoch boundary so researchers are aware. Enforcing divisibility was rejected because it couples an infrastructure concern (dataset cardinality) to scientific decisions (effective batch size). Long-term fix is Megatron-style `consumed_samples` indexing (F2 in Checkpointing - Consolidated Plan).~~
 
 **B7. `compute_loss` mutates input batch**
 - `labels = batch.pop("labels")` — `ssi/loss.py:15`

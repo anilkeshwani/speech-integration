@@ -210,6 +210,13 @@ def train(cfg: DictConfig) -> None:
     # === Derived training geometry ===
     batch_size = cfg.data.train.dataloader.batch_size
     batches_per_epoch = len(data_train)
+    remainder_batches = batches_per_epoch % cfg.gradient_accumulation_steps
+    if remainder_batches > 0:
+        LOGGER.warning(
+            f"batches_per_epoch ({batches_per_epoch}) is not divisible by "
+            f"gradient_accumulation_steps ({cfg.gradient_accumulation_steps}): "
+            f"{remainder_batches} remainder batches will be discarded at each epoch boundary."
+        )
     steps_per_epoch = batches_per_epoch // cfg.gradient_accumulation_steps
     assert steps_per_epoch > 0, (
         f"batches_per_epoch ({batches_per_epoch}) < gradient_accumulation_steps ({cfg.gradient_accumulation_steps})"
@@ -363,3 +370,16 @@ def train(cfg: DictConfig) -> None:
                     return
             del batch  # Explicitly delete the batch to free memory; attempt to debug OOM
             torch.cuda.empty_cache()  # Release all unoccupied cached memory; attempt to debug OOM
+        # Discard any partially accumulated gradients at epoch boundary (analogous to drop_last
+        # on the DataLoader). Without this, remainder gradients leak into the next epoch's first
+        # accumulation window — and are lost on resume, breaking the resume invariant.
+        if remainder_batches > 0:
+            optimizer.zero_grad(set_to_none=True)
+            loss_running = 0.0
+            num_tokens_step = 0
+            max_seq_len_step = 0
+            LOGGER.info(
+                f"Epoch {epoch + 1}: discarded {remainder_batches} remainder batches "
+                f"(batches_per_epoch={batches_per_epoch} not divisible by "
+                f"gradient_accumulation_steps={cfg.gradient_accumulation_steps})"
+            )
