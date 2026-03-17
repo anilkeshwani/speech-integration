@@ -58,6 +58,7 @@
         "ruff>=0.9.0,<1.0.0",
         "shellcheck-py>=0.10.0,<1.0.0",
         "shfmt-py>=3.7.0.1,<4.0.0",
+        "yamlfix>=1.16.0,<2.0.0",
         "yamllint>=1.35.0,<2.0.0",
     ]
 
@@ -107,3 +108,7 @@
 [tool.ruff.lint.isort]
     lines-after-imports        = 2
     force-sort-within-sections = true
+
+[tool.yamlfix]
+    explicit_start = false # don't prepend --- to files (Hydra configs don't use document start markers)
+    line_length    = 120   # match project line length
