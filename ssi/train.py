@@ -1,5 +1,5 @@
-import itertools
 from collections import defaultdict
+import itertools
 import logging
 import math
 import os
@@ -240,6 +240,9 @@ def train(cfg: DictConfig) -> None:
     epochs_run = global_step // steps_per_epoch
     batches_to_skip = (global_step % steps_per_epoch) * cfg.gradient_accumulation_steps
 
+    # usable_batches: only full accumulation windows — remainder batches are not processed
+    usable_batches = steps_per_epoch * cfg.gradient_accumulation_steps
+
     # === Cumulative metrics (restore or initialize) ===
     tokens_train_total: int = 0
     token_type_counts_total: defaultdict[str, int] = defaultdict(int)
@@ -269,14 +272,14 @@ def train(cfg: DictConfig) -> None:
         sampler_train.set_epoch(epoch)  # distinct seed each epoch
         if hasattr(data_train.dataset, "set_epoch"):
             data_train.dataset.set_epoch(epoch)
-        # Skip already-processed batches on resume
+        # Skip already-processed batches on resume -> neatly eliminates need to zero grads for these
         if epoch == epochs_run and batches_to_skip > 0:
             LOGGER.info(f"Resuming: skipping {batches_to_skip} batches in epoch {epoch}")
-            data_iter = itertools.islice(enumerate(data_train), batches_to_skip, None)
-            n_batches = batches_per_epoch - batches_to_skip
+            data_iter = itertools.islice(enumerate(data_train), batches_to_skip, usable_batches)
+            n_batches = usable_batches - batches_to_skip
         else:
-            data_iter = enumerate(data_train)
-            n_batches = batches_per_epoch
+            data_iter = itertools.islice(enumerate(data_train), usable_batches)
+            n_batches = usable_batches
         for i, batch in tqdm(data_iter, total=n_batches):
             batch_to_device(batch, DEVICE)  # in-place
             for tt, ttcnt in count_token_types(batch["tokens"], token_type_ranges, tokenizer.pad_id).items():
@@ -370,16 +373,3 @@ def train(cfg: DictConfig) -> None:
                     return
             del batch  # Explicitly delete the batch to free memory; attempt to debug OOM
             torch.cuda.empty_cache()  # Release all unoccupied cached memory; attempt to debug OOM
-        # Discard any partially accumulated gradients at epoch boundary (analogous to drop_last
-        # on the DataLoader). Without this, remainder gradients leak into the next epoch's first
-        # accumulation window — and are lost on resume, breaking the resume invariant.
-        if remainder_batches > 0:
-            optimizer.zero_grad(set_to_none=True)
-            loss_running = 0.0
-            num_tokens_step = 0
-            max_seq_len_step = 0
-            LOGGER.info(
-                f"Epoch {epoch + 1}: discarded {remainder_batches} remainder batches "
-                f"(batches_per_epoch={batches_per_epoch} not divisible by "
-                f"gradient_accumulation_steps={cfg.gradient_accumulation_steps})"
-            )
