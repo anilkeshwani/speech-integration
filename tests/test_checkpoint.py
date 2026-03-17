@@ -66,7 +66,7 @@ def v1_ckpt_dict():
             "torch_cpu": torch.get_rng_state(),
         },
         TRAINING_HPARAMS_KEY: dict(HPARAMS),
-        CONSUMED_SAMPLES_KEY: 9600,
+        CONSUMED_SAMPLES_KEY: 9600,  # 150 steps * 16 batch_size * 4 grad_accum / 1 world_size
         CUMULATIVE_METRICS_KEY: {
             "tokens_train_total": 100_000,
             "token_type_counts": {"text": 80_000, "dsu": 15_000, "special_text": 5_000},
@@ -171,6 +171,7 @@ def test_legacy_checkpoint_raises(v1_ckpt_dict):
 
 
 def test_force_resume_warns_instead_of_raising(caplog):
+    # caplog: pytest built-in fixture that captures logging module output
     current = dict(HPARAMS)
     current["batch_size"] = 32
     # Should not raise, but should log a warning
@@ -189,8 +190,8 @@ def test_force_resume_warns_instead_of_raising(caplog):
 def test_resume_position_mid_epoch():
     """Mid-epoch: global_step=150, steps_per_epoch=500 → epoch 0, skip 600 batches."""
     global_step, steps_per_epoch, grad_accum = 150, 500, 4
-    epochs_run = global_step // steps_per_epoch
-    batches_to_skip = (global_step % steps_per_epoch) * grad_accum
+    epochs_run = global_step // steps_per_epoch  # 150 // 500 == 0
+    batches_to_skip = (global_step % steps_per_epoch) * grad_accum  # 150 * 4 == 600
     assert epochs_run == 0
     assert batches_to_skip == 600
 
@@ -198,8 +199,8 @@ def test_resume_position_mid_epoch():
 def test_resume_position_epoch_boundary():
     """Exact epoch boundary: global_step=500, steps_per_epoch=500 → epoch 1, skip 0."""
     global_step, steps_per_epoch, grad_accum = 500, 500, 4
-    epochs_run = global_step // steps_per_epoch
-    batches_to_skip = (global_step % steps_per_epoch) * grad_accum
+    epochs_run = global_step // steps_per_epoch  # 500 // 500 == 1
+    batches_to_skip = (global_step % steps_per_epoch) * grad_accum  # 0 * 4 == 0
     assert epochs_run == 1
     assert batches_to_skip == 0
 
@@ -238,6 +239,7 @@ _skip_disk = pytest.mark.skipif(
 
 @_skip_disk
 def test_round_trip_recipe_state(tmp_path, v1_ckpt_dict):
+    # tmp_path: pytest built-in fixture — unique temporary directory per test, auto-cleaned
     """T12: save_recipe_state then load returns identical training state."""
     checkpointer = FullModelHFCheckpointer(
         checkpoint_dir=LLAMA_3_2_1B_BASE_DIR,
