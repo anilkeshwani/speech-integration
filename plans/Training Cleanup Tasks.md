@@ -8,9 +8,8 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 
 ## Recommendations
 
-1. **Fix checkpoint schema first** → **See `Checkpointing - Consolidated Plan.md` for the full design.**
-   - Save and load the same keys (`steps_run` + `epochs_run`), and keep legacy fallback for old checkpoints.
-   - Save/load RNG state and intra-epoch dataloader position if exact resume matters.
+1. ~~**Fix checkpoint schema first** → **See `Checkpointing - Consolidated Plan.md` for the full design.**~~
+   - ~~Implemented as checkpoint schema v1. All fields aligned, legacy checkpoints rejected, RNG state saved/restored, LR scheduler state saved/restored, cumulative metrics preserved, hparam validation on resume.~~
 
 2. **Fix token-count math**
    - Compute normalization counts on the same shifted label mask used by loss, or derive counts inside `compute_loss` and return both `(loss, n_valid_tokens)`.
@@ -52,11 +51,8 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 - ~~Fix: align save/load to use the same key (`"steps_run"`), add legacy fallback for old checkpoints.~~
 - For exact resume (bit-identical continuation): also save/load RNG state and intra-epoch dataloader position.
 
-**B2. Epoch semantics on resume are wrong**
-- Save writes the current loop index `epoch` (mid-epoch, 0-indexed) — `ssi/checkpoint.py:536`
-- On resume, `epochs_run = epoch`, so `range(epochs_run, n_epochs)` restarts that epoch **from batch 0** — `ssi/train.py:173`
-- Result: already-trained batches in the interrupted epoch are re-trained (data duplication), not skipped; global_step is also incremented again over those batches, breaking the step count.
-- Fix: save `epoch + 1` (number of completed epochs), or switch to step-only training with no epoch loop.
+~~**B2. Epoch semantics on resume are wrong**~~
+- ~~Fixed by checkpoint schema v1: `epoch` parameter removed from `save_checkpoint`, `EPOCHS_KEY` removed from checkpoints, epoch derived from `global_step // steps_per_epoch`, islice skip for mid-epoch resume. See `Checkpointing - Consolidated Plan.md`.~~
 
 **B3. Gradient normalization uses wrong token count**
 - `num_tokens_iter` counted from **unshifted** labels — `ssi/train.py:180`
@@ -176,9 +172,8 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 - `ssi/data/__init__.py:180-199` — not called from any training script.
 - Fix: move to a test/example file or remove.
 
-**C6. Module-level PRNG shared between train and dev datasets**
-- `cpt.py:41` — `PRNG = np.random.default_rng(SEED)` is module-level; dev reproducibility depends on training history.
-- Fix: create a per-instance RNG, or separate RNGs for train and dev.
+~~**C6. Module-level PRNG shared between train and dev datasets**~~
+- ~~Fixed by per-sample deterministic RNG: module-level `PRNG` deleted, each sample's interleaving is a pure function of `(seed, epoch, sample_index)`. See `Checkpointing - Consolidated Plan.md` Step 1.~~
 
 **C7. Unconditional `torch.cuda.empty_cache()` every batch**
 - `ssi/train.py:254` — harms throughput on CUDA; a no-op or error on other devices.
@@ -262,7 +257,7 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 
 Recommended test cases to validate correctness of the above fixes:
 
-**T1. Checkpoint resume roundtrip**
+**T1. Checkpoint resume roundtrip** — Unit tests done (`tests/test_checkpoint.py` T1, T12–T16); GPU smoke test (T17 in Consolidated Plan) pending.
 - Run for N steps, save checkpoint, resume, verify global_step is correct, LR is continuous, and the first post-resume batch is not a duplicate of the last pre-checkpoint batch.
 
 **T2. Gradient normalization with shifted labels**

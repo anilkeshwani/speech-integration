@@ -16,26 +16,27 @@ The companion `Research - Checkpoint and Resume Best Practices.md` contains the 
 
 The three implementation phases have a dependency structure that dictates ordering:
 
-### Step 1: Per-sample deterministic RNG (Plan Phase 2)
+### ~~Step 1: Per-sample deterministic RNG (Plan Phase 2)~~ DONE
 
-**Do this first.** Small, self-contained change to `ssi/data/cpt.py`. Delete the module-level `PRNG` global, add `set_epoch()` to `TextCompletionDataset`, thread `(seed, epoch, sample_index)` through to `interleave()` and `get_span_idxs_binomial()`. No checkpoint code touched. This de-risks Step 2 by eliminating the PRNG state question before we redesign the checkpoint schema — and it's independently testable.
+Small, self-contained change to `ssi/data/cpt.py`. Deleted the module-level `PRNG` global, added `set_epoch()` to `TextCompletionDataset`, threaded `(seed, epoch, sample_index)` through to `interleave()` and `get_span_idxs_binomial()`. No checkpoint code touched.
 
-Files: `ssi/data/cpt.py`, `ssi/train.py` (add `data_train.dataset.set_epoch(epoch)` call).
+Files: `ssi/data/cpt.py`, `ssi/train.py`.
 
-### Step 2: Checkpoint schema and resume logic (Plan Phase 1)
+### ~~Step 2: Checkpoint schema and resume logic (Plan Phase 1)~~ DONE
 
-**The big one.** New checkpoint schema (version 1), `save_checkpoint` signature change (drop `epoch`, add scheduler/RNG/metrics/hparams), `resume_training_state` rewrite, hparam validation, islice skip logic, cumulative metrics restore, LR scheduler save/restore, framework RNG state save/restore, `step_N/` directory naming.
+New checkpoint schema (version 1), `save_checkpoint` signature change (drop `epoch`, add scheduler/RNG/metrics/hparams), `resume_training_state` rewrite, hparam validation, islice skip logic, cumulative metrics restore, LR scheduler save/restore, framework RNG state save/restore, `step_N/` directory naming.
 
-Sub-steps in order:
-1. New constants in `ssi/constants.py`
-2. `save_checkpoint` and helpers in `ssi/checkpoint.py`
-3. Resume logic, validation, and training loop changes in `ssi/train.py`
+Implementation refinements vs original plan:
+- `resume_training_state` uses direct `[]` access (not `.get()`) for all required fields — missing keys raise `KeyError` immediately rather than propagating `None`.
+- `recipe_state.pt` is saved as a single file at the top-level `self.output_dir`, always overwritten — conserves disk (AdamW state is large) while model weights are saved per-step in `step_N/` directories.
+- `force_resume` config entry added to `conf/training.yaml`.
+- `scripts/extend_llama3_2.py` updated to match new `save_checkpoint` signature (dropped `epoch` parameter).
 
-Files: `ssi/constants.py`, `ssi/checkpoint.py`, `ssi/train.py`.
+Files: `ssi/constants.py`, `ssi/checkpoint.py`, `ssi/train.py`, `conf/training.yaml`, `scripts/extend_llama3_2.py`.
 
-### Step 3: Tests (Plan Phase 3)
+### ~~Step 3: Tests (Plan Phase 3)~~ DONE
 
-Lock in the new behaviour. Unit tests for schema contract, validation, and resume arithmetic. Integration tests for round-trip save/load and RNG state. Per-sample interleaving reproducibility and order-independence tests.
+46 tests across two files. Unit tests for schema contract, validation, and resume arithmetic. Integration tests for round-trip save/load and RNG state. Per-sample interleaving reproducibility and order-independence tests. All pass.
 
 Files: `tests/test_checkpoint.py`, `tests/test_cpt_deterministic_rng.py`.
 
@@ -437,7 +438,7 @@ On resume, initialize from checkpoint values instead of 0. On fresh start, initi
 
 ## 11. Implementation Plan
 
-### Phase 1: Core checkpoint schema (single commit)
+### ~~Phase 1: Core checkpoint schema (single commit)~~ DONE
 
 **Files modified:**
 
@@ -484,20 +485,22 @@ def save_checkpoint(
 
 The `epoch` parameter is removed. The output directory uses `step_{global_step}` instead of `epoch_{epoch}/global_step_{global_step}`.
 
-*`ssi/train.py`* — `resume_training_state` simplified:
+*`ssi/train.py`* — `resume_training_state` simplified (uses direct `[]` access for all required fields — no `.get()` fallbacks):
 ```python
 def resume_training_state(ckpt_dict: dict[str, Any]) -> dict[str, Any]:
     """Extract resume state from a checkpoint dict. Returns a dict with all resume fields."""
+    if CHECKPOINT_VERSION_KEY not in ckpt_dict:
+        raise ValueError("Legacy checkpoints are not supported...")
     if SEED != ckpt_dict[SEED_KEY]:
         raise ValueError(f"Seed mismatch: config={SEED}, checkpoint={ckpt_dict[SEED_KEY]}")
     return {
         "global_step": ckpt_dict[GLOBAL_STEP_KEY],
         "optimizer_state": ckpt_dict[OPTIMIZER_KEY],
-        "lr_scheduler_state": ckpt_dict.get(LR_SCHEDULER_KEY),
-        "rng_state": ckpt_dict.get(RNG_STATE_KEY),
-        "training_hparams": ckpt_dict.get(TRAINING_HPARAMS_KEY),
-        "consumed_samples": ckpt_dict.get(CONSUMED_SAMPLES_KEY, 0),
-        "cumulative_metrics": ckpt_dict.get(CUMULATIVE_METRICS_KEY),
+        "lr_scheduler_state": ckpt_dict[LR_SCHEDULER_KEY],
+        "rng_state": ckpt_dict[RNG_KEY],
+        "training_hparams": ckpt_dict[TRAINING_HPARAMS_KEY],
+        "consumed_samples": ckpt_dict[CONSUMED_SAMPLES_KEY],
+        "cumulative_metrics": ckpt_dict[CUMULATIVE_METRICS_KEY],
     }
 ```
 
@@ -527,7 +530,7 @@ for epoch in range(epochs_run, n_epochs):
         ...
 ```
 
-### Phase 2: Per-sample deterministic RNG (separate commit)
+### ~~Phase 2: Per-sample deterministic RNG (separate commit)~~ DONE
 
 Replace the module-level stateful `PRNG` in `cpt.py` with per-sample deterministic RNG seeded by `(seed, epoch, sample_index)`. This eliminates the PRNG state management problem entirely — there is no PRNG state to checkpoint.
 
@@ -539,9 +542,9 @@ Replace the module-level stateful `PRNG` in `cpt.py` with per-sample determinist
 | `ssi/data/__init__.py` | No PRNG-related changes needed (seed comes from the existing `SEED` constant) |
 | `ssi/train.py` | Call `data_train.dataset.set_epoch(epoch)` alongside `sampler_train.set_epoch(epoch)` in the epoch loop. No PRNG state saving/restoring needed. |
 
-### Phase 3: Tests (separate commit)
+### ~~Phase 3: Tests (separate commit)~~ DONE
 
-See Section 12.
+See Section 12. All 46 tests implemented and passing.
 
 ---
 
