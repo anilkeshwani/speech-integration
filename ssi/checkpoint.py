@@ -176,7 +176,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         # converted_state_dict is the final state_dict passed to the recipe after the
         # keys are converted into the torchtune format. This optionally also contains
         # the recipe state
-        converted_state_dict: Dict[str, Dict[str, torch.Tensor]] = {}
+        converted_state_dict: Dict[str, Any] = {}
 
         # _checkpoint_paths are already sorted so simply enumerate to generate the right id
         for cpt_idx, cpt_path in enumerate(self._checkpoint_paths):
