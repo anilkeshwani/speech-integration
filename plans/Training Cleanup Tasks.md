@@ -108,9 +108,9 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 
 ---
 
-**D0. Dead import `from ast import Not` in `ssi/checkpoint.py:5`**
-- Unused import, likely a copy-paste artifact.
-- Fix: remove.
+~~**D0. Dead import `from ast import Not` in `ssi/checkpoint.py:5`**~~
+- ~~Removed.~~
+- Also removed dead adapter imports (`ADAPTER_CONFIG_FNAME`, `ADAPTER_MODEL_FNAME`, `REPO_ID_FNAME`) and all adapter-related methods/parameters as part of the adapter removal. See `plans/Removed - Adapter and LoRA Checkpoint Support.md`.
 
 ## Dead / Redundant Code
 
