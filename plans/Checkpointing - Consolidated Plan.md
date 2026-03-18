@@ -34,6 +34,12 @@ Implementation refinements vs original plan:
 
 Files: `ssi/constants.py`, `ssi/checkpoint.py`, `ssi/train.py`, `conf/training.yaml`, `scripts/extend_llama3_2.py`.
 
+### ~~Step 2b: Remove adapter/LoRA checkpoint support~~ DONE
+
+Adapter support was unused (all code paths were marked `# NOTE not used currently`). Removed: `adapter_checkpoint` constructor parameter, `save_adapter_weights`, `save_adapter_config`, `adapter_only` parameter, `repo_id` loading, `ADAPTER_KEY` constant, `adapter_checkpoint` config entry. See `plans/Removed - Adapter and LoRA Checkpoint Support.md` for full details and restoration guide.
+
+Files: `ssi/checkpoint.py`, `ssi/constants.py`, `conf/training.yaml`.
+
 ### ~~Step 3: Tests (Plan Phase 3)~~ DONE
 
 46 tests across two files. Unit tests for schema contract, validation, and resume arithmetic. Integration tests for round-trip save/load and RNG state. Per-sample interleaving reproducibility and order-independence tests. All pass.
@@ -73,9 +79,11 @@ MLS is 44k hours. Our training budget is 48 GPU-hours on a single A6000. One epo
 
 ---
 
-## 2. Current State and Its Bugs
+## 2. Pre-Refactor State and Its Bugs
 
-### What the checkpoint currently saves (`save_checkpoint` in `ssi/checkpoint.py:339-370`)
+This section documents the state of the code **before** the checkpoint schema v1 refactor (Steps 1–3 above). It is preserved for context on the bugs that motivated the design.
+
+### What the checkpoint saved (`save_checkpoint` in `ssi/checkpoint.py:339-370`, pre-refactor)
 
 ```python
 ckpt_dict = {
@@ -462,7 +470,7 @@ CHECKPOINT_VERSION_KEY: str = "checkpoint_version"
 CHECKPOINT_VERSION: int = 1
 ```
 
-*`ssi/checkpoint.py`* — `save_checkpoint` gains parameters:
+*`ssi/checkpoint.py`* — `save_checkpoint` signature (as implemented, after adapter removal):
 ```python
 def save_checkpoint(
     self,
@@ -472,9 +480,8 @@ def save_checkpoint(
     seed: int,
     *,
     lr_scheduler_state_dict: dict[str, Any] | None = None,
-    rng_state: dict[str, Any] | None = None,
     training_hparams: dict[str, Any] | None = None,
-    consumed_samples: int | None = None,
+    consumed_samples: int = 0,
     cumulative_metrics: dict[str, Any] | None = None,
     save_training_state: bool = True,
     output_dir: Path | None = None,
@@ -482,7 +489,11 @@ def save_checkpoint(
 ) -> tuple[dict[str, Any], Path]:
 ```
 
-The `epoch` parameter is removed. The output directory uses `step_{global_step}` instead of `epoch_{epoch}/global_step_{global_step}`.
+The `epoch` parameter is removed. The output directory uses `step_{global_step}` instead of `epoch_{epoch}/global_step_{global_step}`. Adapter-related parameters (`adapter_only`, `adapter_checkpoint`) and methods (`save_adapter_weights`, `save_adapter_config`) were removed — see `plans/Removed - Adapter and LoRA Checkpoint Support.md`.
+
+Implementation notes vs the original plan:
+- `rng_state` is not a parameter — RNG state is captured internally via `save_rng_states()` at save time, since it is a snapshot of global process state (Python, NumPy, PyTorch CPU/CUDA generators) that the caller does not construct or own.
+- `consumed_samples` defaults to `0` (not `None`) since it is always an integer count.
 
 *`ssi/train.py`* — `resume_training_state` simplified (uses direct `[]` access for all required fields — no `.get()` fallbacks):
 ```python
