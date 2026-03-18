@@ -36,5 +36,4 @@ checkpointer:
   config_json: null # if null -> resolved to ${checkpointer.checkpoint_dir}  / LLAMA_3_2_CONFIG_RELPATH
   output_dir: null # if null -> resolved to ${output_dir}/${wandb_run_name}-id_{wandb_run_id}/checkpoints
   recipe_checkpoint: null
-  adapter_checkpoint: null
   safe_serialization: True

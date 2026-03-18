@@ -63,9 +63,6 @@ TORCHTUNE_CONFIG_FILENAME = "torchtune_config.yaml"  # used by WandBLoggerPatche
 
 from torchtune import training  # isort: skip # noqa: E402
 
-ADAPTER_KEY: str = training.ADAPTER_KEY  # adapter weights such as LoRA weights
-assert ADAPTER_KEY == "adapter"
-
 EPOCHS_KEY: str = training.EPOCHS_KEY  # number of epochs completed thus far
 assert EPOCHS_KEY == "epochs_run"
 

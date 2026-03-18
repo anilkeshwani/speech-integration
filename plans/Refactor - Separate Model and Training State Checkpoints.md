@@ -130,7 +130,6 @@ Deleted. The two new methods are called independently. There is no wrapper that 
 
 Deleted. Its responsibilities are absorbed:
 - Model save logic → `save_model_checkpoint`
-- Adapter save logic → `save_model_checkpoint` (conditional, as today)
 - File copy logic → `save_model_checkpoint`
 - Recipe state logic → `save_training_state`
 
@@ -281,10 +280,6 @@ def save_model_checkpoint(self, model_state_dict, global_step, *,
         ignore_suffixes = SUFFIXES_TO_NOT_COPY + ["torchtune_config.yaml"]
     state_dict = {training.MODEL_KEY: model_state_dict}
     self.save_full_model(state_dict, output_dir)
-    if training.ADAPTER_KEY in state_dict:
-        self.save_adapter_weights(state_dict, output_dir)
-    if training.ADAPTER_CONFIG in state_dict:
-        self.save_adapter_config(state_dict, output_dir)
     copy_files(self.checkpoint_dir, output_dir, ignore_suffixes=ignore_suffixes)
     return output_dir
 ```
@@ -307,5 +302,4 @@ Update disk round-trip tests (T12–T15) to call `save_training_state` with expl
 ## Out of Scope
 
 - **`load_checkpoint` refactor**: The load side merges model weights and recipe state into one dict. This works and the resume path handles it correctly. Splitting the load is a separate concern and not needed now.
-- **Adapter checkpoint handling**: The adapter save/load paths are currently unused (marked with `# NOTE not used currently`). They are preserved as-is inside `save_model_checkpoint` for forward compatibility but not actively tested or changed.
 - **Checkpoint retention policy**: Deciding how many `step_N/` directories to keep on disk is orthogonal to this refactor (F4 in Checkpointing - Consolidated Plan).
