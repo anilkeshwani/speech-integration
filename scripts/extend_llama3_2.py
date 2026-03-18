@@ -91,12 +91,9 @@ def main(args: Namespace) -> None:
     # Save extended model
     HF_TOKENIZER_CONFIGS = ["tokenizer_config.json", "tokenizer.json"]
     ignore_suffixes: list[str] = SUFFIXES_TO_NOT_COPY + [".txt", ".md"] + HF_TOKENIZER_CONFIGS
-    checkpointer.save_checkpoint(
+    checkpointer.save_model_checkpoint(
         model.state_dict(),
-        optimizer_state_dict=None,
         global_step=0,
-        seed=SEED,
-        save_training_state=False,
         output_dir=args.output_dir,
         ignore_suffixes=ignore_suffixes,
     )
