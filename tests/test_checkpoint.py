@@ -6,7 +6,7 @@ Covers:
 - ``validate_resume_hparams()`` mismatch detection and force_resume override
 - Resume position arithmetic (epochs_run, batches_to_skip)
 - Legacy checkpoint rejection
-- On-disk round-trip via ``save_recipe_state()``
+- On-disk round-trip via ``save_training_state()``
 - Framework RNG state save/restore round-trip
 
 GPU required: No. All tests use CPU tensors and temporary directories.
@@ -238,47 +238,83 @@ _skip_disk = pytest.mark.skipif(
 
 
 @_skip_disk
-def test_round_trip_recipe_state(tmp_path, v1_ckpt_dict):
+def test_round_trip_training_state(tmp_path):
     # tmp_path: pytest built-in fixture — unique temporary directory per test, auto-cleaned
-    """T12: save_recipe_state then load returns identical training state."""
+    """T12: save_training_state then load returns identical training state."""
     checkpointer = FullModelHFCheckpointer(
         checkpoint_dir=LLAMA_3_2_1B_BASE_DIR,
         checkpoint_files=["model.safetensors"],
         output_dir=tmp_path,
     )
-    checkpointer.save_recipe_state(v1_ckpt_dict)
+    checkpointer.save_training_state(
+        optimizer_state_dict={"state": {}, "param_groups": []},
+        lr_scheduler_state_dict={"last_epoch": 150, "_last_lr": [2e-4]},
+        global_step=150,
+        seed=SEED,
+        training_hparams=dict(HPARAMS),
+        consumed_samples=9600,
+        cumulative_metrics={
+            "tokens_train_total": 100_000,
+            "token_type_counts": {"text": 80_000, "dsu": 15_000, "special_text": 5_000},
+            "wall_clock_seconds": 3600.0,
+        },
+    )
     loaded = torch.load(tmp_path / "recipe_state.pt", weights_only=False)
     assert loaded[GLOBAL_STEP_KEY] == 150
     assert loaded[CONSUMED_SAMPLES_KEY] == 9600
     assert loaded[CHECKPOINT_VERSION_KEY] == CHECKPOINT_VERSION
     assert loaded[CUMULATIVE_METRICS_KEY]["tokens_train_total"] == 100_000
-    # Model weights should be excluded from recipe state
+    # Model weights should not be in training state
     assert MODEL_KEY not in loaded
 
 
 @_skip_disk
-def test_recipe_state_contains_global_step_not_steps_run(tmp_path, v1_ckpt_dict):
+def test_training_state_contains_global_step_not_steps_run(tmp_path):
     """T13: Regression guard — GLOBAL_STEP_KEY present, legacy 'steps_run' absent."""
     checkpointer = FullModelHFCheckpointer(
         checkpoint_dir=LLAMA_3_2_1B_BASE_DIR,
         checkpoint_files=["model.safetensors"],
         output_dir=tmp_path,
     )
-    checkpointer.save_recipe_state(v1_ckpt_dict)
+    checkpointer.save_training_state(
+        optimizer_state_dict={"state": {}, "param_groups": []},
+        lr_scheduler_state_dict=None,
+        global_step=150,
+        seed=SEED,
+        training_hparams=dict(HPARAMS),
+        consumed_samples=9600,
+        cumulative_metrics={
+            "tokens_train_total": 100_000,
+            "token_type_counts": {"text": 80_000, "dsu": 15_000, "special_text": 5_000},
+            "wall_clock_seconds": 3600.0,
+        },
+    )
     loaded = torch.load(tmp_path / "recipe_state.pt", weights_only=False)
     assert GLOBAL_STEP_KEY in loaded
     assert "steps_run" not in loaded
 
 
 @_skip_disk
-def test_recipe_state_does_not_contain_epochs_key(tmp_path, v1_ckpt_dict):
+def test_training_state_does_not_contain_epochs_key(tmp_path):
     """T14: EPOCHS_KEY is not in v1 checkpoints."""
     checkpointer = FullModelHFCheckpointer(
         checkpoint_dir=LLAMA_3_2_1B_BASE_DIR,
         checkpoint_files=["model.safetensors"],
         output_dir=tmp_path,
     )
-    checkpointer.save_recipe_state(v1_ckpt_dict)
+    checkpointer.save_training_state(
+        optimizer_state_dict={"state": {}, "param_groups": []},
+        lr_scheduler_state_dict={"last_epoch": 150, "_last_lr": [2e-4]},
+        global_step=150,
+        seed=SEED,
+        training_hparams=dict(HPARAMS),
+        consumed_samples=9600,
+        cumulative_metrics={
+            "tokens_train_total": 100_000,
+            "token_type_counts": {"text": 80_000, "dsu": 15_000, "special_text": 5_000},
+            "wall_clock_seconds": 3600.0,
+        },
+    )
     loaded = torch.load(tmp_path / "recipe_state.pt", weights_only=False)
     assert EPOCHS_KEY not in loaded
 

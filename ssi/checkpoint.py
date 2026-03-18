@@ -157,7 +157,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
 
         The keys and weights from across all checkpoint files are merged into a single state_dict.
         We preserve the "state_dict key" <-> "checkpoint file" mapping in weight_map so we can
-        write the state dict correctly in ``save_checkpoint``.
+        write the state dict correctly in ``save_model_checkpoint``.
 
         Before returning, the model state dict is converted to a torchtune-compatible format using
         Llama 3.2 conversion.
@@ -274,78 +274,66 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
 
         LOGGER.info(f"The full model checkpoint has been saved to {output_dir}")
 
-    def save_recipe_state(self, state_dict: dict[str, Any]) -> None:
-        """Save training state to a single file at the top-level output directory.
-
-        Always overwrites the previous file — only the latest training state is kept
-        on disk. Model weights are saved separately per checkpoint step.
-        """
-        output_path = self.output_dir / "recipe_state.pt"
-        exclude_keys = (training.MODEL_KEY,)
-        torch.save({k: v for k, v in state_dict.items() if k not in exclude_keys}, output_path)
-        LOGGER.info(f"Recipe state ({os.path.getsize(output_path) / 1024**3:.2f} GiB) saved to {output_path}")
-
-    def _save_checkpoint(
-        self,
-        state_dict: dict[str, Any],
-        output_dir: Path,
-        save_training_state: bool,
-        ignore_suffixes: list[str],
-    ) -> None:
-        self.save_full_model(state_dict, output_dir)
-
-        # Save all files in ckpt_dir except model weights and mapping -> facilitate inference
-        copy_files(self.checkpoint_dir, output_dir, ignore_suffixes=ignore_suffixes)
-
-        if save_training_state:
-            self.save_recipe_state(state_dict)
-        else:
-            LOGGER.info("No training state saved.")
-
-    def save_checkpoint(
+    def save_model_checkpoint(
         self,
         model_state_dict: dict[str, Any],
-        optimizer_state_dict: dict[str, Any] | None,
         global_step: int,
-        seed: int,
         *,
-        lr_scheduler_state_dict: dict[str, Any] | None = None,
-        training_hparams: dict[str, Any] | None = None,
-        consumed_samples: int = 0,
-        cumulative_metrics: dict[str, Any] | None = None,
-        save_training_state: bool = True,
         output_dir: Path | None = None,
         ignore_suffixes: list[str] | None = None,
-    ) -> tuple[dict[str, Any], Path]:
+    ) -> Path:
+        """Save model weights in HF safetensors format to step_N/ directory.
+
+        Copies config.json, tokenizer files, etc. alongside the weights so the
+        checkpoint directory is self-contained and usable by HF tooling.
+
+        Returns the output directory path.
+        """
+        if output_dir is None:
+            output_dir = self.output_dir / f"step_{global_step}"
         if ignore_suffixes is None:
             ignore_suffixes = SUFFIXES_TO_NOT_COPY + ["torchtune_config.yaml"]
-        ckpt_dict: dict[str, Any] = {
-            MODEL_KEY: model_state_dict,
+        state_dict = {training.MODEL_KEY: model_state_dict}
+        self.save_full_model(state_dict, output_dir)
+        copy_files(self.checkpoint_dir, output_dir, ignore_suffixes=ignore_suffixes)
+        return output_dir
+
+    def save_training_state(
+        self,
+        *,
+        optimizer_state_dict: dict[str, Any],
+        lr_scheduler_state_dict: dict[str, Any] | None,
+        global_step: int,
+        seed: int,
+        training_hparams: dict[str, Any],
+        consumed_samples: int,
+        cumulative_metrics: dict[str, Any],
+    ) -> Path:
+        """Save training resume state to recipe_state.pt at self.output_dir.
+
+        Always overwrites the previous file. All fields except
+        lr_scheduler_state_dict are mandatory — a checkpoint written by this
+        method is guaranteed to be resumable.
+
+        Returns the output file path.
+        """
+        state_dict = {
+            CHECKPOINT_VERSION_KEY: CHECKPOINT_VERSION,
             GLOBAL_STEP_KEY: global_step,
             SEED_KEY: seed,
-            CHECKPOINT_VERSION_KEY: CHECKPOINT_VERSION,
+            training.OPT_KEY: optimizer_state_dict,
+            LR_SCHEDULER_KEY: lr_scheduler_state_dict,
+            RNG_KEY: save_rng_states(),
+            TRAINING_HPARAMS_KEY: training_hparams,
+            CONSUMED_SAMPLES_KEY: consumed_samples,
+            CUMULATIVE_METRICS_KEY: cumulative_metrics,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "ssi_version": __version__,
         }
-        if optimizer_state_dict is not None:
-            ckpt_dict[training.OPT_KEY] = optimizer_state_dict
-        if lr_scheduler_state_dict is not None:
-            ckpt_dict[LR_SCHEDULER_KEY] = lr_scheduler_state_dict
-        ckpt_dict[RNG_KEY] = save_rng_states()
-        if training_hparams is not None:
-            ckpt_dict[TRAINING_HPARAMS_KEY] = training_hparams
-        ckpt_dict[CONSUMED_SAMPLES_KEY] = consumed_samples
-        if cumulative_metrics is not None:
-            ckpt_dict[CUMULATIVE_METRICS_KEY] = cumulative_metrics
-        if output_dir is None:
-            output_dir = self.output_dir / f"step_{global_step}"
-        self._save_checkpoint(
-            ckpt_dict,
-            output_dir=output_dir,
-            save_training_state=save_training_state,
-            ignore_suffixes=ignore_suffixes,
-        )
-        return ckpt_dict, output_dir
+        output_path = self.output_dir / "recipe_state.pt"
+        torch.save(state_dict, output_path)
+        LOGGER.info(f"Training state ({os.path.getsize(output_path) / 1024**3:.2f} GiB) saved to {output_path}")
+        return output_path
 
 
 def resolve_checkpointer_output_dir(cfg: DictConfig, wandb_logger: WandBLogger) -> Path:
