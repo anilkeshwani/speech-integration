@@ -477,7 +477,6 @@ def save_checkpoint(
     consumed_samples: int | None = None,
     cumulative_metrics: dict[str, Any] | None = None,
     save_training_state: bool = True,
-    adapter_only: bool = False,
     output_dir: Path | None = None,
     ignore_suffixes: list[str] | None = None,
 ) -> tuple[dict[str, Any], Path]:

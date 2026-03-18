@@ -15,13 +15,10 @@ from torchtune import training
 from torchtune.models import convert_weights
 from torchtune.training.checkpointing._checkpointer import _CheckpointerInterface
 from torchtune.training.checkpointing._utils import (
-    ADAPTER_CONFIG_FNAME,
-    ADAPTER_MODEL_FNAME,
     check_outdir_not_in_ckptdir,
     copy_files,
     FormattedCheckpointFiles,
     get_path,
-    REPO_ID_FNAME,
     safe_torch_load,
     SAFETENSOR_INDEX_FNAME,
     SHARD_FNAME,
@@ -107,7 +104,6 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             of sorting by file ID, the order in this list does not matter.
         config_json (Path): Path to the model config JSON file. Required for state dict conversion.
         output_dir (str): Directory to save the checkpoint files
-        adapter_checkpoint (Path | None): Path to the adapter weights. Default is None.
         recipe_checkpoint (Path | None): Path to the recipe state checkpoint file. Default is None.
         safe_serialization (bool): If True, the checkpointer will save the checkpoint file using `safetensors`.
             Default is True.
@@ -121,14 +117,12 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         config_json: Path | str | None = None,
         output_dir: Path | str,
         recipe_checkpoint: Path | str | None = None,
-        adapter_checkpoint: Path | str | None = None,
         safe_serialization: bool = True,
     ) -> None:
         self.checkpoint_dir = Path(checkpoint_dir)
         self.safe_serialization = safe_serialization
         self.output_dir = Path(output_dir)  # idempotent
         self.recipe_checkpoint = Path(recipe_checkpoint) if recipe_checkpoint is not None else None
-        self.adapter_checkpoint = Path(adapter_checkpoint) if adapter_checkpoint else None
         if isinstance(checkpoint_files, ListConfig):
             checkpoint_files = OmegaConf.to_object(checkpoint_files)
 
@@ -146,15 +140,6 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             config_json = self.checkpoint_dir / LLAMA_3_2_CONFIG_RELPATH
         self._config = json.loads(Path(config_json).read_text())  # gives model params needed for state dict conversion
 
-        # repo_id necessary to save adapter config for HF compatibility. JSON produced and saved at download step.
-        # contents are {"repo_id": "some_model/some_model_version"}
-        repo_id_path = Path.joinpath(self.checkpoint_dir, REPO_ID_FNAME).with_suffix(".json")
-        self.repo_id = None
-        if repo_id_path.exists():
-            with open(repo_id_path, "r") as json_file:
-                data = json.load(json_file)
-                self.repo_id = data.get("repo_id")
-
         self._checkpoint_paths = get_model_checkpoint_paths(
             checkpoint_files=checkpoint_files,
             checkpoint_dir=self.checkpoint_dir,
@@ -165,8 +150,6 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             LOGGER.info(f"Resuming optimizer and recipe state from: {self.recipe_checkpoint}")
         else:
             LOGGER.info("No recipe state checkpoint passed. Will initialize optimizer state from scratch.")
-        if self.adapter_checkpoint:
-            LOGGER.info(f"Resuming adapter from checkpoint: {self.adapter_checkpoint}")
 
     def load_checkpoint(self) -> Dict[str, Any]:
         """
@@ -192,7 +175,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
 
         # converted_state_dict is the final state_dict passed to the recipe after the
         # keys are converted into the torchtune format. This optionally also contains
-        # the recipe state and adapter weights
+        # the recipe state
         converted_state_dict: Dict[str, Dict[str, torch.Tensor]] = {}
 
         # _checkpoint_paths are already sorted so simply enumerate to generate the right id
@@ -220,10 +203,6 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             dim=self._config["hidden_size"],
             head_dim=self._config.get("head_dim", None),
         )
-
-        if self.adapter_checkpoint:
-            adapter_state_dict = safe_torch_load(self.adapter_checkpoint)
-            converted_state_dict[training.ADAPTER_KEY] = adapter_state_dict
 
         if self.recipe_checkpoint is not None:
             recipe_state = safe_torch_load(self.recipe_checkpoint, mmap=False)
@@ -295,45 +274,6 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
 
         LOGGER.info(f"The full model checkpoint has been saved to {output_dir}")
 
-    def save_adapter_weights(self, state_dict: dict[str, Any], output_dir: Path) -> None:
-        # TODO [Meta] saving it "as is" is a requirement because, if we only save with
-        # convert_weights.tune_to_peft_adapter_weights, we do NOT have a fn
-        # convert_weights.peft_to_tune. The .pt format is not needed, but
-        # it is an easy way to distinguish the adapters. Ideally we should save only one.
-        output_path = (output_dir / ADAPTER_MODEL_FNAME).with_suffix(".pt")
-        output_dir.mkdir(parents=True, exist_ok=True)
-        torch.save(state_dict[training.ADAPTER_KEY], output_path)
-        _ckpt_sz = os.path.getsize(output_path) / 1024**3
-        LOGGER.info(f"Adapter checkpoint of size {_ckpt_sz:.2f} GiB saved to {output_path}")
-
-        state_dict[training.ADAPTER_KEY] = convert_weights.tune_to_peft_adapter_weights(
-            state_dict[training.ADAPTER_KEY],
-            num_heads=self._config["num_attention_heads"],
-            num_kv_heads=self._config["num_key_value_heads"],
-            dim=self._config["hidden_size"],
-            head_dim=self._config.get("head_dim", None),
-        )
-        output_path = output_dir / ADAPTER_MODEL_FNAME
-        output_dir.mkdir(parents=True, exist_ok=True)
-        if not self.safe_serialization:
-            output_path = output_path.with_suffix(".bin")
-            torch.save(state_dict[training.ADAPTER_KEY], output_path)
-        else:
-            output_path = output_path.with_suffix(".safetensors")
-            save_file(state_dict[training.ADAPTER_KEY], output_path, metadata={"format": "pt"})
-        _ckpt_sz = os.path.getsize(output_path) / 1024**3
-        LOGGER.info(f"Adapter checkpoint of size {_ckpt_sz:.2f} GiB saved to {output_path}")
-
-    def save_adapter_config(self, state_dict: dict[str, Any], output_dir: Path) -> None:
-        state_dict[training.ADAPTER_CONFIG] = convert_weights.tune_to_peft_adapter_config(
-            adapter_config=state_dict[training.ADAPTER_CONFIG],
-            base_model_name_or_path=self.repo_id,
-        )
-        output_path = (output_dir / ADAPTER_CONFIG_FNAME).with_suffix(".json")
-        with open(output_path, "w") as f:
-            json.dump(state_dict[training.ADAPTER_CONFIG], f)
-        LOGGER.info(f"Adapter config saved to {output_path}")
-
     def save_recipe_state(self, state_dict: dict[str, Any]) -> None:
         """Save training state to a single file at the top-level output directory.
 
@@ -341,7 +281,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         on disk. Model weights are saved separately per checkpoint step.
         """
         output_path = self.output_dir / "recipe_state.pt"
-        exclude_keys = (training.MODEL_KEY, training.ADAPTER_KEY, training.ADAPTER_CONFIG)
+        exclude_keys = (training.MODEL_KEY,)
         torch.save({k: v for k, v in state_dict.items() if k not in exclude_keys}, output_path)
         LOGGER.info(f"Recipe state ({os.path.getsize(output_path) / 1024**3:.2f} GiB) saved to {output_path}")
 
@@ -350,24 +290,9 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         state_dict: dict[str, Any],
         output_dir: Path,
         save_training_state: bool,
-        adapter_only: bool,
         ignore_suffixes: list[str],
     ) -> None:
-        # convert the state_dict back to hf format; do this in place
-        if adapter_only:
-            if training.ADAPTER_KEY not in state_dict:
-                raise ValueError("Adapter checkpoint not in state_dict. Ensure the state_dict contains adapter weights")
-            LOGGER.info("Note: Set adapter_only=True so only adapter weights will be saved.")
-        else:
-            self.save_full_model(state_dict, output_dir)
-
-        # NOTE not used currently; Save the adapter weights if present (even when adapter_only is False)
-        if training.ADAPTER_KEY in state_dict:
-            self.save_adapter_weights(state_dict, output_dir)
-
-        # NOTE not used currently
-        if training.ADAPTER_CONFIG in state_dict:
-            self.save_adapter_config(state_dict, output_dir)
+        self.save_full_model(state_dict, output_dir)
 
         # Save all files in ckpt_dir except model weights and mapping -> facilitate inference
         copy_files(self.checkpoint_dir, output_dir, ignore_suffixes=ignore_suffixes)
@@ -389,7 +314,6 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         consumed_samples: int = 0,
         cumulative_metrics: dict[str, Any] | None = None,
         save_training_state: bool = True,
-        adapter_only: bool = False,
         output_dir: Path | None = None,
         ignore_suffixes: list[str] | None = None,
     ) -> tuple[dict[str, Any], Path]:
@@ -419,7 +343,6 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             ckpt_dict,
             output_dir=output_dir,
             save_training_state=save_training_state,
-            adapter_only=adapter_only,
             ignore_suffixes=ignore_suffixes,
         )
         return ckpt_dict, output_dir
