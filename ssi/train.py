@@ -348,12 +348,12 @@ def train(cfg: DictConfig) -> None:
                 t0 = time.perf_counter()
                 # Save checkpoint
                 if global_step != 0 and global_step % cfg.save_steps == 0:
-                    checkpointer.save_checkpoint(
-                        model_state_dict=model.state_dict(),
+                    checkpointer.save_model_checkpoint(model.state_dict(), global_step)
+                    checkpointer.save_training_state(
                         optimizer_state_dict=optimizer.state_dict(),
+                        lr_scheduler_state_dict=lr_scheduler.state_dict() if lr_scheduler else None,
                         global_step=global_step,
                         seed=SEED,
-                        lr_scheduler_state_dict=lr_scheduler.state_dict() if lr_scheduler else None,
                         training_hparams={
                             "batch_size": batch_size,
                             "gradient_accumulation_steps": cfg.gradient_accumulation_steps,
