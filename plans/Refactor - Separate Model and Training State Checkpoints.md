@@ -12,7 +12,36 @@
 
 **P1: The `save_training_state` flag is a code smell.** A single function that behaves fundamentally differently based on a boolean flag is trying to serve two masters. `extend_llama3_2.py` calls `save_checkpoint` with `save_training_state=False`, `optimizer_state_dict=None`, dummy `global_step=0`, dummy `seed=SEED` — it only wants to save model weights but has to navigate a training-oriented API.
 
-**P2: Optional training state fields produce unresumable checkpoints.** `save_checkpoint` accepts `training_hparams=None`, `cumulative_metrics=None`, `lr_scheduler_state_dict=None` as defaults. But `resume_training_state` accesses all of these with direct `[]` indexing (no `.get()` fallbacks). A caller using the default `save_training_state=True` without providing these fields writes a `recipe_state.pt` that raises `KeyError` on resume. The current code works only because `train.py` happens to pass everything — but the API does not enforce this.
+**P2: Optional training state fields produce unresumable checkpoints.** The save side (`checkpoint.py:380-425`) declares permissive defaults on training state parameters:
+
+- `lr_scheduler_state_dict: dict[str, Any] | None = None` (line 387)
+- `training_hparams: dict[str, Any] | None = None` (line 388)
+- `cumulative_metrics: dict[str, Any] | None = None` (line 390)
+
+These `None`-valued parameters are conditionally inserted into the checkpoint dict (lines 408-415):
+
+```python
+if lr_scheduler_state_dict is not None:   # line 408 — key omitted when None
+    ckpt_dict[LR_SCHEDULER_KEY] = ...
+if training_hparams is not None:          # line 411 — key omitted when None
+    ckpt_dict[TRAINING_HPARAMS_KEY] = ...
+if cumulative_metrics is not None:        # line 414 — key omitted when None
+    ckpt_dict[CUMULATIVE_METRICS_KEY] = ...
+```
+
+When any of these are left at the default `None`, the corresponding key is **silently omitted** from the saved `recipe_state.pt`.
+
+The load side (`train.py:70-87`, `resume_training_state`) uses direct `[]` subscripts on every one of those keys:
+
+```python
+"lr_scheduler_state": ckpt_dict[LR_SCHEDULER_KEY],    # line 82
+"training_hparams": ckpt_dict[TRAINING_HPARAMS_KEY],  # line 84
+"cumulative_metrics": ckpt_dict[CUMULATIVE_METRICS_KEY],  # line 86
+```
+
+There are no `.get()` fallbacks — these are hard subscripts that raise `KeyError` if the key is absent.
+
+**The bug**: A caller can invoke `save_checkpoint(...)` with `save_training_state=True` (the default, line 391) while leaving `training_hparams`, `lr_scheduler_state_dict`, or `cumulative_metrics` at their default `None`. The function writes a `recipe_state.pt` missing required keys. On resume, `resume_training_state` crashes with `KeyError`. This works today only because `train.py` happens to pass all fields — the API signature does not enforce it.
 
 **P3: Everything flows through one dict.** `save_checkpoint` builds a single `ckpt_dict` containing model weights, optimizer state, RNG states, metrics, and metadata. This dict is then passed to `_save_checkpoint`, which passes the whole thing to `save_full_model` (which reads `MODEL_KEY`) and `save_recipe_state` (which filters out `MODEL_KEY`). The model weights and training state never need to be in the same dict — they go to different files in different locations.
 
