@@ -17,6 +17,7 @@ Adapter/LoRA checkpoint support was removed because this research project uses f
 
 **`load_checkpoint()`:**
 - Conditional adapter weight loading via `safe_torch_load(self.adapter_checkpoint)` into `converted_state_dict[training.ADAPTER_KEY]`
+- Comment updated: "the recipe state and adapter weights" simplified to "the recipe state"
 
 **`save_adapter_weights()` — entire method:**
 Saved adapter weights in two formats:
@@ -107,9 +108,10 @@ class AdapterCheckpointer:
 - `torchtune.training.ADAPTER_KEY` — state dict key for adapter weights
 - `torchtune.training.ADAPTER_CONFIG` — state dict key for adapter config
 - `torchtune.models.convert_weights.tune_to_peft_adapter_weights()` — weight conversion
-- `torchtune.models.convert_weights.tune_to_peft_adapter_config()` — config conversion
+- `torchtune.models.convert_weights.tune_to_peft_adapter_config()` — config conversion; requires `base_model_name_or_path` (previously sourced from `{checkpoint_dir}/.repo_id.json` via `REPO_ID_FNAME`)
 - `torchtune.training.checkpointing._utils.ADAPTER_MODEL_FNAME` — standard filename
 - `torchtune.training.checkpointing._utils.ADAPTER_CONFIG_FNAME` — standard filename
+- `torchtune.training.checkpointing._utils.REPO_ID_FNAME` — filename for the JSON file containing `repo_id` (needed by `tune_to_peft_adapter_config`)
 
 ### Configuration changes
 - Add `adapter_checkpoint` to config YAML (or new adapter-specific config)
