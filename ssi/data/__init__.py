@@ -58,6 +58,8 @@ def setup_text_completion_data(
         sampler=sampler,
         drop_last=cfg_dataset.dataloader.drop_last,
         collate_fn=collate_fn,
+        num_workers=cfg_dataset.dataloader.get("num_workers", 0),
+        persistent_workers=cfg_dataset.dataloader.get("persistent_workers", False),
     )
     LOGGER.info(f"Dataset and Sampler initialized from {cfg_dataset.dataset.source}.")
     return dataloader, sampler
@@ -93,6 +95,8 @@ def setup_sft_data(
         sampler=sampler,
         drop_last=cfg_dataset.dataloader.drop_last,
         collate_fn=collate_fn,
+        num_workers=cfg_dataset.dataloader.get("num_workers", 0),
+        persistent_workers=cfg_dataset.dataloader.get("persistent_workers", False),
     )
     return dataloader, sampler
 
