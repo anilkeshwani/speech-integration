@@ -46,14 +46,8 @@ Keys match the `speech_encoder` field returned by `parse_hf_repo_id()` in `ssi/u
 - Drop the trailing `/checkpoints` — it was always redundant
 - Flags: `dedup`/`nodedup` always; `nomodtok` only when `use_modality_tokens=False` (True is default)
 
-**(b) Simplify step directory in `save_checkpoint()` (line 546-547):**
-```python
-# Before:
-output_dir = self.output_dir / f"epoch_{epoch}" / f"global_step_{global_step}"
-# After:
-output_dir = self.output_dir / f"step_{global_step}"
-```
-Epoch is still saved in `recipe_state.pt` — no information lost.
+**(b) Step directory naming — DONE:**
+`save_model_checkpoint()` (formerly `save_checkpoint()`) now defaults to `self.output_dir / f"step_{global_step}"`. The old `epoch_{epoch}/global_step_{global_step}` nesting was removed as part of the checkpoint schema v1 refactor. Epoch is derived from `global_step // steps_per_epoch` — no information lost.
 
 ### Phase 2: Downstream consumers
 

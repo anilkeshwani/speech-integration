@@ -52,7 +52,7 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 - For exact resume (bit-identical continuation): also save/load RNG state and intra-epoch dataloader position.
 
 ~~**B2. Epoch semantics on resume are wrong**~~
-- ~~Fixed by checkpoint schema v1: `epoch` parameter removed from `save_checkpoint`, `EPOCHS_KEY` removed from checkpoints, epoch derived from `global_step // steps_per_epoch`, islice skip for mid-epoch resume. See `Checkpointing - Consolidated Plan.md`.~~
+- ~~Fixed by checkpoint schema v1: `epoch` parameter removed from checkpoint saving (now `save_model_checkpoint` + `save_training_state`), `EPOCHS_KEY` removed from checkpoints, epoch derived from `global_step // steps_per_epoch`, islice skip for mid-epoch resume. See `Checkpointing - Consolidated Plan.md` and `Refactor - Separate Model and Training State Checkpoints.md`.~~
 
 **B3. Gradient normalization uses wrong token count**
 - `num_tokens_iter` counted from **unshifted** labels — `ssi/train.py:180`
