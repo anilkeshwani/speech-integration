@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-This is a research codebase intended address the research questions outlined in the Objectives and Key Results.md document in plans/. 
+This is a research codebase intended to address the research questions outlined in the Objectives and Key Results.md document in plans/. 
 
 ## Notes
 
