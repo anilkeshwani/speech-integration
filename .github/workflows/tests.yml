@@ -25,4 +25,4 @@ jobs:
         run: uv sync --extra dev
 
       - name: Run checkpoint tests
-        run: uv run pytest tests/test_checkpoint.py -v
+        run: uv run pytest tests -v
