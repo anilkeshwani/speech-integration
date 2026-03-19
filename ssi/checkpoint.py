@@ -47,7 +47,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 def validate_checkpoint_files(checkpoint_files: list[str], input_dir: Path, missing_ok=False) -> list[Path]:
-    """Validates that the checkpoint files exist and sorts based on ID"""
+    """Validate that checkpoint files exist in input_dir and return paths sorted by name."""
     checkpoint_paths: list[Path] = []
     for f in checkpoint_files:
         checkpoint_path = get_path(input_dir, f, missing_ok)
@@ -56,6 +56,7 @@ def validate_checkpoint_files(checkpoint_files: list[str], input_dir: Path, miss
 
 
 def get_model_checkpoint_paths(checkpoint_files: list[str] | dict[str, str], checkpoint_dir: Path) -> list[Path]:
+    """Resolve checkpoint file names to sorted, validated paths under checkpoint_dir."""
     if not isinstance(checkpoint_files, list):
         formatted_checkpoint_files = FormattedCheckpointFiles.from_dict(checkpoint_files)
         checkpoint_files = formatted_checkpoint_files.build_checkpoint_filenames()
@@ -63,7 +64,7 @@ def get_model_checkpoint_paths(checkpoint_files: list[str] | dict[str, str], che
 
 
 def save_rng_states() -> dict[str, Any]:
-    """Capture the 4 standard framework RNG states for checkpointing."""
+    """Capture Python, NumPy, and PyTorch RNG states including CUDA if available."""
     rng_state: dict[str, Any] = {
         "python": random.getstate(),
         "numpy_global": np.random.get_state(),
@@ -75,7 +76,7 @@ def save_rng_states() -> dict[str, Any]:
 
 
 def restore_rng_states(rng_state: dict[str, Any]) -> None:
-    """Restore the 4 standard framework RNG states from a checkpoint."""
+    """Restore Python, NumPy, and PyTorch RNG states from a dict produced by save_rng_states."""
     random.setstate(rng_state["python"])
     np.random.set_state(rng_state["numpy_global"])
     torch.set_rng_state(rng_state["torch_cpu"])
@@ -84,29 +85,23 @@ def restore_rng_states(rng_state: dict[str, Any]) -> None:
 
 
 class FullModelHFCheckpointer(_CheckpointerInterface):
-    """
-    Checkpointer which reads and writes checkpoints in HF's format for Llama 3.2 1B.
+    """Reads and writes HF-format checkpoints with torchtune key conversion for Llama 3.2.
 
-    Note:
-        HF checkpoint names are usually ordered by ID (eg: 0001_of_0003, 0002_of_0003, etc.) To ensure \
-        we read the files in the right order, we sort the checkpoint file names before reading.
-
-    Note:
-        Checkpoint conversion to and from HF's format requires access to model params which are \
-        read directly from the ``config.json`` file. This helps ensure we either load the weights \
-        correctly or error out in case of discrepancy between the HF checkpoint file and torchtune's \
-        model implementations.
+    Checkpoint files are sorted by shard ID before reading. Conversion between HF and
+    torchtune key formats uses model params read from ``config.json``.
 
     Args:
-        checkpoint_dir (Path): Directory containing the checkpoint files
-        checkpoint_files (list[str] | dict[str, str]): List of checkpoint files to load or a dictionary
-            containing the keys keys ["filename_format", "max_filename"]. Since the checkpointer takes care
-            of sorting by file ID, the order in this list does not matter.
-        config_json (Path): Path to the model config JSON file. Required for state dict conversion.
-        output_dir (str): Directory to save the checkpoint files
-        recipe_checkpoint (Path | None): Path to the recipe state checkpoint file. Default is None.
-        safe_serialization (bool): If True, the checkpointer will save the checkpoint file using `safetensors`.
-            Default is True.
+        checkpoint_dir: Directory containing the source checkpoint files.
+        checkpoint_files: Checkpoint file names (list) or a dict with keys
+            ``filename_format`` and ``max_filename``. Order does not matter — files
+            are sorted by shard ID.
+        config_json: Path to the model ``config.json``. Defaults to the Llama 3.2
+            config relative path under checkpoint_dir.
+        output_dir: Root directory for saved checkpoints and training state.
+        recipe_checkpoint: Path to a ``recipe_state.pt`` file for resuming training.
+            None when starting from scratch.
+        safe_serialization: If True (default), save weights as safetensors; otherwise
+            save as ``.bin`` via ``torch.save``.
     """
 
     def __init__(
@@ -152,21 +147,14 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             LOGGER.info("No recipe state checkpoint passed. Will initialize optimizer state from scratch.")
 
     def load_checkpoint(self) -> Dict[str, Any]:
-        """
-        Load HF checkpoint from file.
+        """Load and merge HF checkpoint shards, converting to torchtune key format.
 
-        The keys and weights from across all checkpoint files are merged into a single state_dict.
-        We preserve the "state_dict key" <-> "checkpoint file" mapping in weight_map so we can
-        write the state dict correctly in ``save_model_checkpoint``.
-
-        Before returning, the model state dict is converted to a torchtune-compatible format using
-        Llama 3.2 conversion.
-
-        Returns:
-            state_dict (Dict[str, Any]): torchtune checkpoint state dict
+        Populates ``_weight_map`` (key -> shard ID) so that ``save_model_checkpoint``
+        can partition weights back into the same shard layout. If ``recipe_checkpoint``
+        was provided at init, the training state is merged into the returned dict.
 
         Raises:
-            ValueError: If the values in the input state_dict are not Tensors
+            ValueError: If any value in a checkpoint file is not a ``torch.Tensor``.
         """
         self._weight_map = {}
 
@@ -211,6 +199,15 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         return converted_state_dict
 
     def save_full_model(self, state_dict: dict[str, Any], output_dir: Path) -> None:
+        """Convert torchtune weights to HF format and write sharded checkpoint files.
+
+        Uses ``_weight_map`` (populated by ``load_checkpoint``) to partition weights
+        across shards. Format (safetensors vs .bin) is controlled by
+        ``self.safe_serialization``. Does not modify ``state_dict``.
+
+        Raises:
+            ValueError: If ``_weight_map`` has not been initialised by a prior load.
+        """
         if self._weight_map is None:
             raise ValueError("Weight map is not initialized. Please load a checkpoint before saving.")
 
@@ -282,12 +279,11 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         output_dir: Path | None = None,
         ignore_suffixes: list[str] | None = None,
     ) -> Path:
-        """Save model weights in HF safetensors format to step_N/ directory.
+        """Save model weights to a self-contained ``step_N/`` directory.
 
-        Copies config.json, tokenizer files, etc. alongside the weights so the
-        checkpoint directory is self-contained and usable by HF tooling.
-
-        Returns the output directory path.
+        Writes sharded HF-format weights (safetensors or .bin per
+        ``self.safe_serialization``) and copies config, tokenizer, and other
+        non-weight files so the directory is directly usable by HF tooling.
         """
         if output_dir is None:
             output_dir = self.output_dir / f"step_{global_step}"
@@ -309,13 +305,11 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         consumed_samples: int,
         cumulative_metrics: dict[str, Any],
     ) -> Path:
-        """Save training resume state to recipe_state.pt at self.output_dir.
+        """Save training resume state to ``recipe_state.pt`` at ``self.output_dir``.
 
         Always overwrites the previous file. All fields except
-        lr_scheduler_state_dict are mandatory — a checkpoint written by this
+        ``lr_scheduler_state_dict`` are mandatory — a checkpoint written by this
         method is guaranteed to be resumable.
-
-        Returns the output file path.
         """
         state_dict = {
             CHECKPOINT_VERSION_KEY: CHECKPOINT_VERSION,
@@ -337,6 +331,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
 
 
 def resolve_checkpointer_output_dir(cfg: DictConfig, wandb_logger: WandBLogger) -> Path:
+    """Build the checkpoint output path as ``{cfg.output_dir}/{run_name}-id_{run_id}/checkpoints``."""
     if wandb_logger._wandb.run is None:
         raise RuntimeError("wandb run not initialized")
     run_name = wandb_logger._wandb.run.name

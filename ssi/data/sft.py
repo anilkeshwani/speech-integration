@@ -86,23 +86,28 @@ class SFTDataset(Dataset):
     into ``model_tokenizer``. Tokenizers handle prompt templating, if configured.
 
     Args:
-        source (str): path to dataset repository on Hugging Face. For local datasets,
+        source: Path to dataset repository on Hugging Face. For local datasets,
             define source as the data file type (e.g. "json", "csv", "text") and pass
-            in the filepath in ``data_files``. See `Hugging Face's
-            <https://huggingface.co/docs/datasets/en/package_reference/loading_methods#datasets.load_dataset.path>`_
-            ``load_dataset`` for more details.
-        message_transform (Transform): callable that keys into the desired fields in the sample
-            and converts text content to a list of :class:`~torchtune.data.Message`. It is expected that the final list
-            of messages are stored in the ``"messages"`` key.
-        model_tokenizer (Transform): callable that applies model-specific pre-processing to the sample after the list of
-            messages is created from ``message_transform``. This includes tokenization and any modality-specific
-            transforms. It is expected to return at minimum ``"tokens"`` and ``"mask"`` keys.
-        filter_fn (Optional[Callable]): callable used to filter the dataset prior to any pre-processing. See
-            the Hugging Face `docs <https://huggingface.co/docs/datasets/v2.20.0/process#select-and-filter>`_ for more
-            details.
-        **load_dataset_kwargs (dict[str, Any]): additional keyword arguments to pass to ``load_dataset``. See Hugging
-            Face's `API ref <https://huggingface.co/docs/datasets/en/package_reference/loading_methods#datasets.load_dataset>`_
-            for more details.
+            in the filepath in ``data_files``. See Hugging Face's ``load_dataset`` for
+            more details.
+        model_tokenizer: Tokenizer that converts messages to token IDs. Must return
+            at minimum ``"tokens"`` and ``"mask"`` keys.
+        inference: If True, assistant message content is left empty for generation.
+            Default is False.
+        deduplicate: Whether to deduplicate consecutive duplicate speech tokens.
+        use_modality_tokens: Whether to wrap speech spans with modality boundary tokens.
+        filter_fn: Callable used to filter the dataset prior to any pre-processing.
+            Default is None.
+        train_on_input: Whether to compute loss on user prompt tokens.
+        column_map: Mapping from expected column names (``"input"``, ``"output"``) to
+            actual column names in the dataset. Default is None.
+        new_system_prompt: If specified, prepend a system message. Default is None.
+        image_dir: Directory prepended to image paths in the dataset for multimodal
+            samples. Default is None.
+        additional_keys: Extra dataset columns to pass through to each sample dict.
+            Default is ``[]``.
+        **load_dataset_kwargs: Additional keyword arguments passed to
+            ``datasets.load_dataset``.
     """
 
     def __init__(
