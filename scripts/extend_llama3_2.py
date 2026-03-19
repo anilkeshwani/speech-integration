@@ -61,7 +61,7 @@ def parse_args() -> Namespace:
         "--no-modality-tokens",
         action="store_false",
         dest="use_modality_tokens",
-        help="Do no prepend special modality tokens to spans of text/speech tokens",
+        help="Do not prepend special modality tokens to spans of text/speech tokens",
     )
     args = parser.parse_args()
     if args.output_dir is None:

@@ -5,8 +5,6 @@ defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
 # standard value overrides for parameters not used in embedding visualisation script
 tokenizer:
   max_seq_len: null
-speech:
-  deduplicate: null
 
 # repurpose output_dir for saving t-SNE plots
 output_dir: ???

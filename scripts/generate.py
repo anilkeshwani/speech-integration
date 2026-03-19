@@ -165,13 +165,6 @@ def main(cfg):
             LOGGER.info(f"Auto-setting cfg.speech.n_dsus to {cfg.speech.n_dsus} from training config.")
         else:
             raise ValueError("cfg.speech.n_dsus must be specified in either training or generation config.")
-    if cfg.speech.deduplicate is None:
-        if "speech" in train_cfg and train_cfg.speech.deduplicate is not None:
-            cfg.speech.deduplicate = train_cfg.speech.deduplicate
-            LOGGER.info(f"Auto-setting cfg.speech.deduplicate to {cfg.speech.deduplicate} from training config.")
-        else:
-            raise ValueError("cfg.speech.deduplicate must be specified in either training or generation config.")
-
     # NOTE cfg.speech options must be resolved before cfg.data due to interpolation in cfg.data fields
     if cfg.get("data") is None:
         config_sources = HydraConfig.get().runtime.config_sources  # calls HydraConfig.instance

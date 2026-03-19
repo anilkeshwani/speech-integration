@@ -6,7 +6,7 @@ defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
 speech:
   n_dsus: ???
   use_modality_tokens: True
-  deduplicate: ???
+  deduplicate: True
 
 # Base models directory
 extended_models_dir: /mnt/scratch-artemis/anilkeshwani/models/extended/

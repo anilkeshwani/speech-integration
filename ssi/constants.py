@@ -31,7 +31,6 @@ WANDB_PROJECT_DEFAULT: str = "speech-integration"
 
 # Defaults used before these became experimentation parameters
 N_DSUS_DEFAULT: int = 5_000  # Default number of DSUs
-SPEECH_DEDUPLICATE_DEFAULT: bool = False  # Default for speech deduplication
 
 ####################################################################################################
 # Constants - Checkpoints and Artefacts

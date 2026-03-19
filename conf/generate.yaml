@@ -2,11 +2,9 @@ defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
   - common
   - data: null
 
-# Speech-specific parameters - DSUs & Modality Tokens
+# Speech-specific parameters - DSUs
 speech:
   n_dsus: null # inferred from training config if null (downgraded from mandatory in common)
-  use_modality_tokens: True
-  deduplicate: null # inferred from training config if null (downgraded from mandatory in common)
 
 tokenizer:
   max_seq_len: null # null implies no truncation by the tokenizer; can set to match training e.g. 768, 2048, or else
