@@ -214,7 +214,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         if self._weight_map is None:
             raise ValueError("Weight map is not initialized. Please load a checkpoint before saving.")
 
-        state_dict[training.MODEL_KEY] = convert_weights.tune_to_hf(
+        hf_model_state_dict = convert_weights.tune_to_hf(
             state_dict[training.MODEL_KEY],
             num_heads=self._config["num_attention_heads"],
             num_kv_heads=self._config["num_key_value_heads"],
@@ -225,7 +225,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         # split the state_dict into separate dicts, one for each output checkpoint file, by _weight_map
         split_state_dicts: Dict[str, Dict[str, torch.Tensor]] = {}
         total_size = 0
-        for key, weight in state_dict[training.MODEL_KEY].items():
+        for key, weight in hf_model_state_dict.items():
             cpt_idx = self._weight_map[key]
             # initialize dict
             if cpt_idx not in split_state_dicts:
