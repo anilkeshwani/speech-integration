@@ -29,17 +29,19 @@ Included a TODO noting that ideally only one format should be saved, but `peft_t
 **`save_adapter_config()` — entire method:**
 Converted and saved adapter configuration (LoRA rank, target modules, etc.) as `adapter_config.json` via `convert_weights.tune_to_peft_adapter_config()`.
 
-**`save_recipe_state()`:**
+**`save_recipe_state()`:** *(subsequently deleted — replaced by `save_training_state()` in the checkpoint refactor)*
 `exclude_keys` simplified from `(MODEL_KEY, ADAPTER_KEY, ADAPTER_CONFIG)` to `(MODEL_KEY,)`.
 
-**`_save_checkpoint()`:**
+**`_save_checkpoint()`:** *(subsequently deleted — responsibilities absorbed by `save_model_checkpoint()` and `save_training_state()`)*
 - `adapter_only: bool` parameter removed
 - `adapter_only` validation and conditional model-skip logic removed
 - Conditional calls to `save_adapter_weights` and `save_adapter_config` removed (these were marked `# NOTE not used currently`)
 
-**`save_checkpoint()`:**
+**`save_checkpoint()`:** *(subsequently deleted — replaced by `save_model_checkpoint()` + `save_training_state()`)*
 - `adapter_only: bool = False` parameter removed
 - Passthrough of `adapter_only` to `_save_checkpoint` removed
+
+**Note:** The adapter removal preceded the checkpoint refactor (`Refactor - Separate Model and Training State Checkpoints.md`), which subsequently deleted `save_checkpoint`, `_save_checkpoint`, and `save_recipe_state` entirely, replacing them with `save_model_checkpoint` and `save_training_state`.
 
 ### `ssi/constants.py`
 
