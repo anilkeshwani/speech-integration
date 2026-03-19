@@ -270,31 +270,13 @@ Updated disk round-trip tests (T12–T14) in `tests/test_checkpoint.py` to call 
 
 ## Known Issues and Follow-ups
 
-### I1: Test kwargs duplication (low priority)
+### I1: Test kwargs duplication — Resolved
 
-T12, T13, and T14 each inline identical `save_training_state(...)` keyword arguments. Before this refactor they shared the `v1_ckpt_dict` fixture; now each test repeats ~12 lines of kwargs. Extract a shared constant or fixture:
+Extracted `TRAINING_STATE_KWARGS` constant in `tests/test_checkpoint.py`. T12 and T14 use `**TRAINING_STATE_KWARGS` directly; T13 overrides `lr_scheduler_state_dict` to `None` via `**{**TRAINING_STATE_KWARGS, "lr_scheduler_state_dict": None}`.
 
-```python
-TRAINING_STATE_KWARGS = dict(
-    optimizer_state_dict={"state": {}, "param_groups": []},
-    lr_scheduler_state_dict={"last_epoch": 150, "_last_lr": [2e-4]},
-    global_step=150,
-    seed=SEED,
-    training_hparams=dict(HPARAMS),
-    consumed_samples=9600,
-    cumulative_metrics={
-        "tokens_train_total": 100_000,
-        "token_type_counts": {"text": 80_000, "dsu": 15_000, "special_text": 5_000},
-        "wall_clock_seconds": 3600.0,
-    },
-)
-```
+### I2: `save_full_model` mutates its `state_dict` argument in place — Resolved
 
-Note: T13 passes `lr_scheduler_state_dict=None` while T12/T14 pass a dict, so T13 would override that one field.
-
-### I2: `save_full_model` mutates its `state_dict` argument in place (pre-existing)
-
-`save_full_model` (`checkpoint.py:217`) overwrites `state_dict[training.MODEL_KEY]` with the HF-converted weights via `convert_weights.tune_to_hf(...)`. This mutates the dict passed in by the caller. In `save_model_checkpoint`, the dict is constructed locally (`state_dict = {training.MODEL_KEY: model_state_dict}`), so the outer reference `model_state_dict` still points to the original tensors — but the semantics are fragile. A future caller that reuses the dict after calling `save_full_model` would get converted weights. Not introduced by this refactor, but worth noting for a future cleanup pass.
+`save_full_model` no longer writes back into `state_dict[training.MODEL_KEY]`. The HF-converted weights are stored in a local `hf_model_state_dict` variable, and all downstream code (splitting, sharding, writing) operates on that local variable instead of the caller's dict.
 
 ### I3: Return values unused at call sites (informational)
 
