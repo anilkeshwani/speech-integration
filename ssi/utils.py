@@ -127,7 +127,7 @@ def get_terminal_width(default_width: int = 120) -> int:
     return TERMINAL_WIDTH
 
 
-def batch_to_device(batch: dict, device: torch.device, exclude_keys: list[str] = []) -> None:
+def batch_to_device(batch: dict, device: torch.device, exclude_keys: list[str] | None = None) -> None:
     """Function that takes a dictionary (or nested dictionary) of tensors and sets them
     all to the same device. This utility is intended to be used for batches of data to be
     moved to device, the update is inplace.
@@ -140,6 +140,8 @@ def batch_to_device(batch: dict, device: torch.device, exclude_keys: list[str] =
     Raises:
         AttributeError: if batch dict contains anything other than tensors
     """
+    if exclude_keys is None:
+        exclude_keys = []
     for k, v in batch.items():
         if k in exclude_keys:
             continue  # skip this key

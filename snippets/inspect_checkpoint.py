@@ -14,8 +14,8 @@ def inspect_checkpoint(checkpoint_dir: str):
     # and the global_step_X subfolder contains the HF model shards.
     recipe_paths = [
         ckpt_path / "recipe_state.pt",
-        ckpt_path.parents[1] / "recipe_state.pt", # if ckpt_path is epoch_X/global_step_Y
-        ckpt_path.parent / "recipe_state.pt"
+        ckpt_path.parents[1] / "recipe_state.pt",  # if ckpt_path is epoch_X/global_step_Y
+        ckpt_path.parent / "recipe_state.pt",
     ]
 
     recipe_found = False
@@ -46,8 +46,8 @@ def inspect_checkpoint(checkpoint_dir: str):
         print(f"--- Found Model Index: {index_files[0]} ---")
         with open(index_files[0]) as f:
             index_data = json.load(f)
-            metadata = index_data.get('metadata', {})
-            total_size_gb = metadata.get('total_size', 0) / (1024 ** 3)
+            metadata = index_data.get("metadata", {})
+            total_size_gb = metadata.get("total_size", 0) / (1024**3)
             print(f"Total size: {total_size_gb:.2f} GiB")
             weight_map = index_data.get("weight_map", {})
             print(f"Number of weight tensors mapped: {len(weight_map)}")
@@ -65,7 +65,7 @@ def inspect_checkpoint(checkpoint_dir: str):
     # 3. Inspect Model Shards
     if weight_map:
         print("\n--- Inspecting Model Shards on Disk ---")
-        unique_shards = sorted(list(set(weight_map.values())))
+        unique_shards = sorted(set(weight_map.values()))
         for shard_name in unique_shards:
             shard_path = ckpt_path / shard_name
             if not shard_path.exists():
@@ -73,7 +73,7 @@ def inspect_checkpoint(checkpoint_dir: str):
                 continue
 
             # Read the shard
-            shard_size_gb = shard_path.stat().st_size / (1024 ** 3)
+            shard_size_gb = shard_path.stat().st_size / (1024**3)
             print(f"  [OK] {shard_name} ({shard_size_gb:.2f} GiB)")
 
             try:
@@ -83,6 +83,7 @@ def inspect_checkpoint(checkpoint_dir: str):
                 if shard_name.endswith(".safetensors"):
                     try:
                         from safetensors import safe_open
+
                         with safe_open(shard_path, framework="pt", device="cpu") as f:
                             # Safetensors allows us to check shape/dtype without loading everything into memory
                             keys = f.keys()
@@ -107,7 +108,7 @@ def inspect_checkpoint(checkpoint_dir: str):
                 elif shard_name.endswith(".bin") or shard_name.endswith(".pt"):
                     # Use mmap=True to avoid loading the whole file into active memory immediately
                     state_dict = torch.load(shard_path, map_location="cpu", weights_only=True, mmap=True)
-                    for k, v in state_dict.items():
+                    for v in state_dict.values():
                         num_params += v.numel()
                         dtypes.add(str(v.dtype))
                 else:
@@ -120,8 +121,13 @@ def inspect_checkpoint(checkpoint_dir: str):
             except Exception as e:
                 print(f"       [ERROR] Failed to read shard: {e}")
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Inspect a training checkpoint.")
-    parser.add_argument("checkpoint_dir", type=str, help="Path to the checkpoint directory (e.g. checkpointer_output/epoch_0/global_step_100)")
+    parser.add_argument(
+        "checkpoint_dir",
+        type=str,
+        help="Path to the checkpoint directory (e.g. checkpointer_output/epoch_0/global_step_100)",
+    )
     args = parser.parse_args()
     inspect_checkpoint(args.checkpoint_dir)

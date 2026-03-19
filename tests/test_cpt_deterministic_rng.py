@@ -71,16 +71,12 @@ def test_span_idxs_order_independent():
     indices = list(range(20))
 
     # Sequential
-    sequential_results = {
-        idx: get_span_idxs_binomial(n, p, seq_len, rng=make_rng(seed, epoch, idx))
-        for idx in indices
-    }
+    sequential_results = {idx: get_span_idxs_binomial(n, p, seq_len, rng=make_rng(seed, epoch, idx)) for idx in indices}
 
     # Shuffled (deterministic shuffle for test reproducibility)
     shuffled_indices = [13, 7, 2, 18, 0, 15, 9, 4, 11, 19, 6, 1, 16, 3, 14, 8, 17, 5, 12, 10]
     shuffled_results = {
-        idx: get_span_idxs_binomial(n, p, seq_len, rng=make_rng(seed, epoch, idx))
-        for idx in shuffled_indices
+        idx: get_span_idxs_binomial(n, p, seq_len, rng=make_rng(seed, epoch, idx)) for idx in shuffled_indices
     }
 
     for idx in indices:

@@ -177,7 +177,7 @@ def train(cfg: DictConfig) -> None:
     )
     model.to(device=DEVICE)
     model.train()
-    tokenizer, special_tokens = setup_llama3_tokenizer(**cfg.tokenizer)
+    tokenizer, _special_tokens = setup_llama3_tokenizer(**cfg.tokenizer)
     token_type_ranges = get_token_type_ranges(llama_config=configllama3_2_1b)
 
     # === Resume state ===
@@ -207,10 +207,10 @@ def train(cfg: DictConfig) -> None:
     # TODO clean this up later -> use hydra.utils.instantiate (requires refactoring configs)
     if cfg.config_name == "sft":
         data_train, sampler_train = setup_sft_data(cfg_dataset=cfg.data.train, model_tokenizer=tokenizer)
-        data_dev, sampler_dev = setup_sft_data(cfg_dataset=cfg.data.dev, model_tokenizer=tokenizer)
+        data_dev, _sampler_dev = setup_sft_data(cfg_dataset=cfg.data.dev, model_tokenizer=tokenizer)
     elif cfg.config_name == "cpt":
         data_train, sampler_train = setup_text_completion_data(cfg.data.train, tokenizer)
-        data_dev, sampler_dev = setup_text_completion_data(cfg.data.dev, tokenizer)
+        data_dev, _sampler_dev = setup_text_completion_data(cfg.data.dev, tokenizer)
     else:
         raise NotImplementedError
 

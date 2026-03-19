@@ -50,19 +50,19 @@ HPARAMS = {
     "steps_per_epoch": 500,
 }
 
-TRAINING_STATE_KWARGS = dict(
-    optimizer_state_dict={"state": {}, "param_groups": []},
-    lr_scheduler_state_dict={"last_epoch": 150, "_last_lr": [2e-4]},
-    global_step=150,
-    seed=SEED,
-    training_hparams=dict(HPARAMS),
-    consumed_samples=9600,
-    cumulative_metrics={
+TRAINING_STATE_KWARGS = {
+    "optimizer_state_dict": {"state": {}, "param_groups": []},
+    "lr_scheduler_state_dict": {"last_epoch": 150, "_last_lr": [2e-4]},
+    "global_step": 150,
+    "seed": SEED,
+    "training_hparams": dict(HPARAMS),
+    "consumed_samples": 9600,
+    "cumulative_metrics": {
         "tokens_train_total": 100_000,
         "token_type_counts": {"text": 80_000, "dsu": 15_000, "special_text": 5_000},
         "wall_clock_seconds": 3600.0,
     },
-)
+}
 
 
 @pytest.fixture
@@ -132,7 +132,7 @@ _REQUIRED_KEYS = [
 ]
 
 
-@pytest.mark.parametrize("key", _REQUIRED_KEYS, ids=[k for k in _REQUIRED_KEYS])
+@pytest.mark.parametrize("key", _REQUIRED_KEYS, ids=list(_REQUIRED_KEYS))
 def test_missing_key_raises(v1_ckpt_dict, key):
     del v1_ckpt_dict[key]
     with pytest.raises(KeyError):
@@ -190,9 +190,7 @@ def test_force_resume_warns_instead_of_raising(caplog):
     current = dict(HPARAMS)
     current["batch_size"] = 32
     # Should not raise, but should log a warning
-    validate_resume_hparams(
-        ckpt_hparams=dict(HPARAMS), current_hparams=current, force_resume=True
-    )
+    validate_resume_hparams(ckpt_hparams=dict(HPARAMS), current_hparams=current, force_resume=True)
     assert any("batch_size" in record.message for record in caplog.records)
     assert any(record.levelname == "WARNING" for record in caplog.records)
 

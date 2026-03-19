@@ -106,7 +106,7 @@ def padded_collate_sft(
     batch: list[dict[str, Any]],  # NOTE list[dict[str, list[int]]] in torchtune.data._collate.padded_collate_sft
     padding_idx: int = 0,
     ignore_idx: int = CROSS_ENTROPY_IGNORE_IDX,
-    additional_keys: list[str] = [],
+    additional_keys: list[str] | None = None,
 ) -> dict[str, Tensor] | dict[str, Any]:
     """Pad a batch of sequences to the longest sequence length in the batch, and
     convert integer lists to tensors.
@@ -135,6 +135,8 @@ def padded_collate_sft(
         >>> collated["labels"]
         >>> tensor([[4, 5, 6], [10, -100, -100]])
     """
+    if additional_keys is None:
+        additional_keys = []
     input_ids = pad_sequence(
         [torch.tensor(x["tokens"]) for x in batch],
         batch_first=True,

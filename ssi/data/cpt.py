@@ -160,7 +160,7 @@ class TextCompletionDataset(Dataset):
 
 def get_span_idxs_binomial(n: int, p: float, seq_len: int, rng: np.random.Generator) -> list[int]:
     subspan_idxs = np.maximum(rng.binomial(n, p, size=seq_len), 1).cumsum()  # NOTE sample lower bounded to 1
-    return [0] + subspan_idxs[subspan_idxs < seq_len].tolist() + [seq_len]
+    return [0, *subspan_idxs[subspan_idxs < seq_len].tolist(), seq_len]
 
 
 def interleave(
@@ -181,7 +181,8 @@ def interleave(
     speech_tokens: list[int] = sample[SPEECH_TOKENS_KEY]
     span_idxs = get_span_idxs_binomial(int(mean_seq_len_tokens), binom_prob, len(tokens), rng=rng)
     # idxs: list of 2-tuples of start and end indices of subspans e.g. [(0, 4), (11, 16), (21, 25), (28, 31)]
-    idxs1, idxs2 = zip(span_idxs[:-1:2], span_idxs[1::2]), zip(span_idxs[1:-1:2], span_idxs[2::2])
+    idxs1 = zip(span_idxs[:-1:2], span_idxs[1::2], strict=True)
+    idxs2 = zip(span_idxs[1:-1:2], span_idxs[2::2], strict=True)
     text_idxs, dsu_idxs = (idxs1, idxs2) if start_with_text else (idxs2, idxs1)
     text_spans: list[str] = [" ".join(tokens[start_idx:end_idx]) for start_idx, end_idx in text_idxs]
     dsu_spans: list[str] = []

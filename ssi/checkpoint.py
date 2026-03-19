@@ -173,7 +173,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                 # will break recipe code
                 if not isinstance(value, torch.Tensor):
                     raise ValueError(
-                        f"Expected all values in the state dict to be torch.Tensor. " f"Found {type(value)} instead."
+                        f"Expected all values in the state dict to be torch.Tensor. Found {type(value)} instead."
                     )
                 # idx is written in the 4 digit format (eg: 0001, 0002, etc.)
                 self._weight_map[key] = f"{cpt_idx + 1:04}"
@@ -287,7 +287,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         if output_dir is None:
             output_dir = self.output_dir / f"step_{global_step}"
         if ignore_suffixes is None:
-            ignore_suffixes = SUFFIXES_TO_NOT_COPY + ["torchtune_config.yaml"]
+            ignore_suffixes = [*SUFFIXES_TO_NOT_COPY, "torchtune_config.yaml"]
         state_dict = {training.MODEL_KEY: model_state_dict}
         self.save_full_model(state_dict, output_dir)
         copy_files(self.checkpoint_dir, output_dir, ignore_suffixes=ignore_suffixes)

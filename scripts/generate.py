@@ -114,12 +114,14 @@ def generate(cfg: DictConfig) -> Path:
     # Generate
     with open(gen_output_dir / cfg.gen.output_filename, "x") as f:
         # TODO optionally refactor this to delegate batching to vLLM per their docs (generate all prompts upfront)
-        for i, prompt_token_ids in enumerate(tqdm(data)):
+        for _i, prompt_token_ids in enumerate(tqdm(data)):
             outputs: list[RequestOutput] = llm.generate(prompt_token_ids, sampling_params, use_tqdm=False)
             model_generations_s: list[list[CompletionOutput]] = [output.outputs for output in outputs]
             observability_metrics: list[RequestMetrics | None] = [output.metrics for output in outputs]
             outputs_json_serialisable = []
-            for output, generations, observability in zip(outputs, model_generations_s, observability_metrics):
+            for output, generations, observability in zip(
+                outputs, model_generations_s, observability_metrics, strict=True
+            ):
                 output_d = {k: v for k, v in vars(output).items() if k not in ("outputs", "metrics")}
                 # Manually add decoded prompt text
                 output_d["prompt"] = tokenizer.decode(output_d["prompt_token_ids"], **cfg.tokenizer_decoding)
@@ -176,7 +178,7 @@ def main(cfg):
         config_source_main = Path([s.path for s in config_sources if s.provider == "main"].pop())
         _owner, train_dataset = (train_cfg.data.train.dataset.source).split("/")  # HF repo ID
         if train_dataset == "MLS_english_train_strat_sample_aligned_hubert":
-            raise NotImplementedError("Legacy MLS dataset deprecated. Supported datasets: " f"{SUPPORTED_DATASETS}")
+            raise NotImplementedError(f"Legacy MLS dataset deprecated. Supported datasets: {SUPPORTED_DATASETS}")
         if train_dataset.split("-")[0] not in SUPPORTED_DATASETS:
             raise RuntimeError(f"Unsupported dataset for generation: {train_dataset}")
         test_config_groups = global_hydra.config_loader().get_group_options(TEST_CONFIG_GROUPS_SUBDIR)

@@ -35,10 +35,10 @@ def main():
     if args.generations_dir is None:
         args.generations_dir = checkpoints_dir.parent / "generations"
 
-    ckpts = set(_.parts[-1] for _ in checkpoints_dir.rglob("global_step_*") if _.is_dir())
-    gnrts = set(
+    ckpts = {_.parts[-1] for _ in checkpoints_dir.rglob("global_step_*") if _.is_dir()}
+    gnrts = {
         _.parts[-1] for _ in args.generations_dir.rglob("global_step_*") if gen_exists(_, args.dataset, args.split)
-    )
+    }
     missing = ckpts - gnrts
 
     print(f"Found {len(ckpts)} checkpoint directories")

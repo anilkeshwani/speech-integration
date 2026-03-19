@@ -19,12 +19,16 @@ def setup_llama3_2_1b(
     cfg: DictConfig,
     llama_config: ConfigLlama3_2,
     model_state_dict: dict[str, Any],
-    dtype_default: torch.dtype | str = torch.get_default_dtype(),  # type: ignore
-    device_default: torch.device | str = torch.get_default_device(),  # type: ignore
+    dtype_default: torch.dtype | str | None = None,
+    device_default: torch.device | str | None = None,
 ) -> TransformerDecoder:
-    if isinstance(dtype_default, str):
+    if dtype_default is None:
+        dtype_default = torch.get_default_dtype()
+    elif isinstance(dtype_default, str):
         dtype_default: torch.dtype = get_dtype(cfg.dtype)
-    if isinstance(device_default, str):
+    if device_default is None:
+        device_default = torch.get_default_device()
+    elif isinstance(device_default, str):
         device_default: torch.device = get_device(cfg.device)
     with training.set_default_dtype(dtype_default), device_default:
         model = llama3_2(**llama_config.parameters)

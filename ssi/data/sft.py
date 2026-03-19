@@ -83,7 +83,8 @@ class SFTDataset(Dataset):
     Tokenization is handled by the ``model_tokenizer``. All :class:`~torchtune.modules.tokenizers.ModelTokenizer`
     can be treated as a ``model_tokenizer`` since it uses the model-specific tokenizer to
     transform the list of messages outputted from the ``message_transform`` into tokens
-    used by the model for training. Text-only datasets will simply pass the :class:`~torchtune.modules.tokenizers.ModelTokenizer`
+    used by the model for training. Text-only datasets will simply pass the
+    :class:`~torchtune.modules.tokenizers.ModelTokenizer`
     into ``model_tokenizer``. Tokenizers handle prompt templating, if configured.
 
     Args:
@@ -124,9 +125,11 @@ class SFTDataset(Dataset):
         column_map: dict[str, str] | None = None,
         new_system_prompt: str | None = None,
         image_dir: Path | None = None,
-        additional_keys: list[str] = [],
+        additional_keys: list[str] | None = None,
         **load_dataset_kwargs: dict[str, Any],
     ) -> None:
+        if additional_keys is None:
+            additional_keys = []
         self._message_transform = InputOutputToMessages(
             train_on_input=train_on_input,
             column_map=column_map,
@@ -205,7 +208,7 @@ class SFTDataset(Dataset):
         if not ("tokens" in tokenized_dict and "mask" in tokenized_dict):
             keys_str = ", ".join(tokenized_dict.keys())
             error_message = (
-                "model_tokenizer returned the following keys: " f"{keys_str}. Must return 'tokens' and 'mask' as keys."
+                f"model_tokenizer returned the following keys: {keys_str}. Must return 'tokens' and 'mask' as keys."
             )
             raise ValueError(error_message)
 
@@ -272,7 +275,7 @@ class InputOutputToMessages:
         else:
             self.column_map = {"input": "input", "output": "output", "image": "image"}
         # Ensure that if a user seems to want to construct a multimodal transform, they provide a proper column_mapping
-        if "image" not in self.column_map.keys() and image_dir is not None:
+        if "image" not in self.column_map and image_dir is not None:
             raise ValueError(
                 f"image_dir is specified as {image_dir} but 'image' is not in column_map. "
                 "Please specify an 'image' key in column_map."
@@ -332,5 +335,5 @@ class InputOutputToMessages:
             ),
         ]
         if self.new_system_prompt is not None:
-            messages = [Message(role="system", content=self.new_system_prompt, masked=True, eot=True)] + messages
+            messages = [Message(role="system", content=self.new_system_prompt, masked=True, eot=True), *messages]
         return {"messages": messages}

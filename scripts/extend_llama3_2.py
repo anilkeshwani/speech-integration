@@ -54,7 +54,7 @@ def parse_args() -> Namespace:
         "--input_dir",
         type=Path,
         default=LLAMA_3_2_1B_BASE_DIR,
-        help="Input Llama 3.2 directory from tune download." f" Default: {LLAMA_3_2_1B_BASE_DIR}",
+        help=f"Input Llama 3.2 directory from tune download. Default: {LLAMA_3_2_1B_BASE_DIR}",
     )
     parser.add_argument("--output_dir", type=Path, default=None, help="Output directory to save the extended files")
     parser.add_argument(
@@ -90,7 +90,7 @@ def main(args: Namespace) -> None:
     extend_model(args.n_new_dsus, args.use_modality_tokens, model, llama_config=LLAMA_CFG)
     # Save extended model
     HF_TOKENIZER_CONFIGS = ["tokenizer_config.json", "tokenizer.json"]
-    ignore_suffixes: list[str] = SUFFIXES_TO_NOT_COPY + [".txt", ".md"] + HF_TOKENIZER_CONFIGS
+    ignore_suffixes: list[str] = [*SUFFIXES_TO_NOT_COPY, ".txt", ".md", *HF_TOKENIZER_CONFIGS]
     checkpointer.save_model_checkpoint(
         model.state_dict(),
         global_step=0,
