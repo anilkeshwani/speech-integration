@@ -1,8 +1,9 @@
+from collections.abc import Callable, Mapping
 from enum import Enum
 from functools import partial
 from itertools import groupby, zip_longest
 import logging
-from typing import Any, Callable, Mapping
+from typing import Any
 
 from datasets import load_dataset
 import numpy as np

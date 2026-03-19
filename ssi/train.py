@@ -22,6 +22,7 @@ from tqdm import tqdm
 from ssi._version import __version__
 from ssi.checkpoint import FullModelHFCheckpointer, resolve_checkpointer_output_dir, restore_rng_states
 from ssi.constants import (
+    CHECKPOINT_VERSION,
     CHECKPOINT_VERSION_KEY,
     CONSUMED_SAMPLES_KEY,
     CUMULATIVE_METRICS_KEY,
@@ -80,7 +81,7 @@ def resume_training_state(ckpt_dict: dict[str, Any]) -> dict[str, Any]:
             f"Checkpoint version mismatch: checkpoint has version {ckpt_version}, "
             f"but this code expects version {CHECKPOINT_VERSION}."
         )
-    if SEED != ckpt_dict[SEED_KEY]:
+    if ckpt_dict[SEED_KEY] != SEED:
         raise ValueError(f"Seed mismatch: config={SEED}, checkpoint={ckpt_dict[SEED_KEY]}")
     return {
         "global_step": ckpt_dict[GLOBAL_STEP_KEY],

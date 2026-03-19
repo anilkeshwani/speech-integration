@@ -4,12 +4,12 @@
 Script to tabulate frequencies of DSUs given a Hugging Face dataset.
 """
 
-import logging
-import os
-import sys
 from argparse import ArgumentParser, Namespace
 from collections import Counter
+import logging
+import os
 from pathlib import Path
+import sys
 
 from datasets import load_dataset
 from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL

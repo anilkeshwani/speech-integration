@@ -15,13 +15,13 @@ import argparse
 import json
 import logging
 import os
-import sys
 from pathlib import Path
+import sys
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-import wandb
 from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
+import wandb
 
 from ssi.constants import WANDB_ENTITY_DEFAULT, WANDB_PROJECT_DEFAULT
 
@@ -64,7 +64,7 @@ def extract_wer_data(generations_dir: Path, dataset: str, split: str = "dev") ->
             step_num = int(step_dir.name.removeprefix("global_step_"))
             wer_file = step_dir / dataset / split / "wer.json"
             if wer_file.exists():
-                with open(wer_file, "r") as f:
+                with open(wer_file) as f:
                     wer_json = json.load(f)
                     wer_value = wer_json.get("wer")
                     if wer_value is not None:

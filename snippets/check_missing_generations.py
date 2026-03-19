@@ -2,7 +2,6 @@
 
 import argparse
 from pathlib import Path
-from pprint import pprint
 
 from natsort import natsorted
 

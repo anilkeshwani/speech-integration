@@ -1,4 +1,4 @@
-from typing import Callable
+from collections.abc import Callable
 
 import torch
 from torchtune.modules import TransformerDecoder
@@ -7,10 +7,10 @@ from torchtune.modules import TransformerDecoder
 def compute_loss(batch: dict[str, torch.Tensor], model: TransformerDecoder, loss_fn: Callable) -> torch.Tensor:
     logits = model(  # NOTE TODO add activation offloading context for model forward pass
         tokens=batch["tokens"],
-        mask=batch.get("mask", None),
-        encoder_input=batch.get("encoder_input", None),
-        encoder_mask=batch.get("encoder_mask", None),
-        input_pos=batch.get("input_pos", None),
+        mask=batch.get("mask"),
+        encoder_input=batch.get("encoder_input"),
+        encoder_mask=batch.get("encoder_mask"),
+        input_pos=batch.get("input_pos"),
     )
     labels = batch.pop("labels")  # shape [b, s] needed for the loss not the model
     labels = torch.hstack((labels[..., 1:], torch.full_like(labels[..., -1:], loss_fn.ignore_index)))

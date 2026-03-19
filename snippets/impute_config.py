@@ -1,16 +1,15 @@
 #!/usr/bin/env python
 
 import logging
-import os
-import sys
 from pathlib import Path
+import sys
 
-import wandb
 from omegaconf import OmegaConf
-from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
+from sardalign.config import LOG_DATEFMT, LOG_FORMAT
+import wandb
 
 from ssi.constants import TORCHTUNE_CONFIG_FILENAME
-from ssi.utils import _parse_model_path, extract_wandb_run_cfg, parse_hf_repo_id
+from ssi.utils import extract_wandb_run_cfg
 
 
 logging.basicConfig(

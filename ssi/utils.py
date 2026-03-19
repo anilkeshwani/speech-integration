@@ -1,15 +1,15 @@
+from hashlib import sha256
 import json
 import os
+from pathlib import Path
 import pdb
 import sys
 import traceback
-from hashlib import sha256
-from pathlib import Path
 from typing import Any
 
-import torch
 from datasets import load_dataset
 from omegaconf import DictConfig, OmegaConf
+import torch
 from torchtune.utils._import_guard import _SUPPORTS_FLEX_ATTENTION
 from wandb.apis.public.runs import Run
 
@@ -28,7 +28,7 @@ else:
 
 def extract_texts_from_generations_jsonl(generations_jsonl: Path) -> list[str]:
     texts = []
-    with open(generations_jsonl, "r") as f:
+    with open(generations_jsonl) as f:
         for line in f:
             data = json.loads(line)
             is_single_generation = len(data["outputs"]) == 1
@@ -146,9 +146,7 @@ def batch_to_device(batch: dict, device: torch.device, exclude_keys: list[str] =
 
         if isinstance(v, dict):
             batch_to_device(v, device, [])  # NOTE explicit - we only exclude keys at the *top* level
-        elif isinstance(v, torch.Tensor):
-            batch[k] = v.to(device)
-        elif _SUPPORTS_FLEX_ATTENTION and isinstance(v, BlockMask):
+        elif isinstance(v, torch.Tensor) or (_SUPPORTS_FLEX_ATTENTION and isinstance(v, BlockMask)):
             batch[k] = v.to(device)
         else:
             raise ValueError(

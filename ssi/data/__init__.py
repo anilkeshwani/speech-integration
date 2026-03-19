@@ -1,15 +1,16 @@
+from collections.abc import Callable
+from functools import partial
 import logging
 import sys
-from functools import partial
-from typing import Any, Callable
+from typing import Any
 
-import torch
-import torch.nn.functional as F
-import torchtune.data
 from omegaconf import DictConfig, ListConfig
+import torch
 from torch import Tensor
+import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset, DistributedSampler
+import torchtune.data
 from torchtune.data import padded_collate_packed
 from torchtune.data._common import CROSS_ENTROPY_IGNORE_IDX
 from torchtune.datasets import PackedDataset

@@ -1,11 +1,12 @@
-import logging
+from collections.abc import Callable, Mapping
 from itertools import groupby
+import logging
 from pathlib import Path
-from typing import Any, Callable, Mapping, Optional
+from typing import Any
 
 import datasets
-import numpy as np
 from datasets import load_dataset
+import numpy as np
 from sardalign.constants import MODALITY_TOKEN_SPEECH, MODALITY_TOKEN_TEXT
 from sardalign.utils import dsu2pua
 from torch.utils.data import Dataset
@@ -118,11 +119,11 @@ class SFTDataset(Dataset):
         inference: bool = False,
         deduplicate: bool,
         use_modality_tokens: bool,
-        filter_fn: Optional[Callable] = None,
+        filter_fn: Callable | None = None,
         train_on_input: bool,
-        column_map: Optional[dict[str, str]] = None,
-        new_system_prompt: Optional[str] = None,
-        image_dir: Optional[Path] = None,
+        column_map: dict[str, str] | None = None,
+        new_system_prompt: str | None = None,
+        image_dir: Path | None = None,
         additional_keys: list[str] = [],
         **load_dataset_kwargs: dict[str, Any],
     ) -> None:
@@ -256,9 +257,9 @@ class InputOutputToMessages:
     def __init__(
         self,
         train_on_input: bool,
-        column_map: Optional[dict[str, str]] = None,
-        new_system_prompt: Optional[str] = None,
-        image_dir: Optional[Path] = None,
+        column_map: dict[str, str] | None = None,
+        new_system_prompt: str | None = None,
+        image_dir: Path | None = None,
     ):
         self.train_on_input = train_on_input
         self.new_system_prompt = new_system_prompt

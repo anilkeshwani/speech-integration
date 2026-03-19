@@ -1,29 +1,29 @@
+from datetime import datetime, timezone
 import gc
 import json
 import logging
 import os
-import random
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict
+import random
+from typing import Any
 
 import numpy as np
-import torch
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from safetensors.torch import save_file
+import torch
 from torchtune import training
 from torchtune.models import convert_weights
 from torchtune.training.checkpointing._checkpointer import _CheckpointerInterface
 from torchtune.training.checkpointing._utils import (
-    check_outdir_not_in_ckptdir,
-    copy_files,
-    FormattedCheckpointFiles,
-    get_path,
-    safe_torch_load,
     SAFETENSOR_INDEX_FNAME,
     SHARD_FNAME,
     SUFFIXES_TO_NOT_COPY,
     TORCH_INDEX_FNAME,
+    FormattedCheckpointFiles,
+    check_outdir_not_in_ckptdir,
+    copy_files,
+    get_path,
+    safe_torch_load,
 )
 from torchtune.training.metric_logging import WandBLogger
 
@@ -36,7 +36,6 @@ from ssi.constants import (
     GLOBAL_STEP_KEY,
     LLAMA_3_2_CONFIG_RELPATH,
     LR_SCHEDULER_KEY,
-    MODEL_KEY,
     RNG_KEY,
     SEED_KEY,
     TRAINING_HPARAMS_KEY,
@@ -146,7 +145,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         else:
             LOGGER.info("No recipe state checkpoint passed. Will initialize optimizer state from scratch.")
 
-    def load_checkpoint(self) -> Dict[str, Any]:
+    def load_checkpoint(self) -> dict[str, Any]:
         """Load and merge HF checkpoint shards, converting to torchtune key format.
 
         Populates ``_weight_map`` (key -> shard ID) so that ``save_model_checkpoint``
@@ -159,12 +158,12 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         self._weight_map = {}
 
         # merged state_dict contains keys and weights from all the checkpoint files
-        merged_state_dict: Dict[str, torch.Tensor] = {}
+        merged_state_dict: dict[str, torch.Tensor] = {}
 
         # converted_state_dict is the final state_dict passed to the recipe after the
         # keys are converted into the torchtune format. This optionally also contains
         # the recipe state
-        converted_state_dict: Dict[str, Any] = {}
+        converted_state_dict: dict[str, Any] = {}
 
         # _checkpoint_paths are already sorted so simply enumerate to generate the right id
         for cpt_idx, cpt_path in enumerate(self._checkpoint_paths):
@@ -220,7 +219,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         )
 
         # split the state_dict into separate dicts, one for each output checkpoint file, by _weight_map
-        split_state_dicts: Dict[str, Dict[str, torch.Tensor]] = {}
+        split_state_dicts: dict[str, dict[str, torch.Tensor]] = {}
         total_size = 0
         for key, weight in hf_model_state_dict.items():
             cpt_idx = self._weight_map[key]

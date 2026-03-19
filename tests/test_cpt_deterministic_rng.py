@@ -99,7 +99,7 @@ def test_span_idxs_boundary_invariants():
         spans = get_span_idxs_binomial(n, p, seq_len, rng=make_rng(42, 0, idx))
         assert spans[0] == 0, f"First span index should be 0, got {spans[0]}"
         assert spans[-1] == seq_len, f"Last span index should be {seq_len}, got {spans[-1]}"
-        assert spans == sorted(spans), f"Span indices should be monotonically increasing"
+        assert spans == sorted(spans), "Span indices should be monotonically increasing"
         assert len(spans) >= 2, "Need at least [0, seq_len]"
 
 

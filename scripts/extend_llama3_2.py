@@ -1,15 +1,15 @@
 #!/usr/bin/env python
 
+from argparse import ArgumentParser, Namespace
 import logging
 import os
-import sys
-from argparse import ArgumentParser, Namespace
 from pathlib import Path
+import sys
 from typing import Any
 
-import torchtune.training
 from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
 from sardalign.utils import seed_everything
+import torchtune.training
 from torchtune.training.checkpointing._utils import SUFFIXES_TO_NOT_COPY
 
 from ssi.checkpoint import FullModelHFCheckpointer

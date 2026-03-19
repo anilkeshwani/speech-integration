@@ -11,15 +11,12 @@ from omegaconf import DictConfig, OmegaConf, open_dict
 from torch.utils.data import DataLoader
 from torchtune import training
 from tqdm import tqdm
-from vllm import CompletionOutput, LLM, RequestOutput, SamplingParams
+from vllm import LLM, CompletionOutput, RequestOutput, SamplingParams
 from vllm.inputs.data import TokensPrompt
 from vllm.sequence import RequestMetrics
 
-from ssi._version import __version__
 from ssi.constants import (
-    N_DSUS_DEFAULT,
     SEED,
-    SPEECH_DEDUPLICATE_DEFAULT,
     SUPPORTED_DATASETS,
     TORCHTUNE_CONFIG_FILENAME,
 )
