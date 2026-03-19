@@ -24,13 +24,13 @@ Files: `ssi/data/cpt.py`, `ssi/train.py`.
 
 ### ~~Step 2: Checkpoint schema and resume logic (Plan Phase 1)~~ DONE
 
-New checkpoint schema (version 1), `save_checkpoint` signature change (drop `epoch`, add scheduler/RNG/metrics/hparams), `resume_training_state` rewrite, hparam validation, islice skip logic, cumulative metrics restore, LR scheduler save/restore, framework RNG state save/restore, `step_N/` directory naming.
+New checkpoint schema (version 1), checkpoint save split into `save_model_checkpoint` + `save_training_state` (drop `epoch`, add scheduler/RNG/metrics/hparams), `resume_training_state` rewrite, hparam validation, islice skip logic, cumulative metrics restore, LR scheduler save/restore, framework RNG state save/restore, `step_N/` directory naming.
 
 Implementation refinements vs original plan:
 - `resume_training_state` uses direct `[]` access (not `.get()`) for all required fields — missing keys raise `KeyError` immediately rather than propagating `None`.
 - `recipe_state.pt` is saved as a single file at the top-level `self.output_dir`, always overwritten — conserves disk (AdamW state is large) while model weights are saved per-step in `step_N/` directories.
 - `force_resume` config entry added to `conf/training.yaml`.
-- `scripts/extend_llama3_2.py` updated to match new `save_checkpoint` signature (dropped `epoch` parameter).
+- `scripts/extend_llama3_2.py` updated to use `save_model_checkpoint` (dropped `epoch`, `optimizer_state_dict`, `seed`, `save_training_state` parameters).
 
 Files: `ssi/constants.py`, `ssi/checkpoint.py`, `ssi/train.py`, `conf/training.yaml`, `scripts/extend_llama3_2.py`.
 
@@ -453,7 +453,7 @@ On resume, initialize from checkpoint values instead of 0. On fresh start, initi
 | File | Changes |
 |------|---------|
 | `ssi/constants.py` | Add new key constants (`TRAINING_HPARAMS_KEY`, `LR_SCHEDULER_KEY`, `RNG_STATE_KEY`, etc.) |
-| `ssi/checkpoint.py` | Update `save_checkpoint` to accept and save all new fields; add `save_rng_states()` / `restore_rng_states()` helpers for the 4 standard RNG states |
+| `ssi/checkpoint.py` | Split checkpoint saving into `save_model_checkpoint` (model weights) and `save_training_state` (optimizer, RNG, metrics, hparams); add `save_rng_states()` / `restore_rng_states()` helpers |
 | `ssi/train.py` | Update `resume_training_state` to return new fields; add `validate_resume_hparams`; update save call site; update training loop for islice skip; restore cumulative metrics |
 | `ssi/lr_schedule.py` | No changes to `setup_lr_scheduler`; scheduler state_dict saved/restored in `train.py` |
 
@@ -470,30 +470,36 @@ CHECKPOINT_VERSION_KEY: str = "checkpoint_version"
 CHECKPOINT_VERSION: int = 1
 ```
 
-*`ssi/checkpoint.py`* — `save_checkpoint` signature (as implemented, after adapter removal):
+*`ssi/checkpoint.py`* — checkpoint saving is split into two methods (see `plans/Refactor - Separate Model and Training State Checkpoints.md`):
+
 ```python
-def save_checkpoint(
+def save_model_checkpoint(
     self,
     model_state_dict: dict[str, Any],
-    optimizer_state_dict: dict[str, Any] | None,
     global_step: int,
-    seed: int,
     *,
-    lr_scheduler_state_dict: dict[str, Any] | None = None,
-    training_hparams: dict[str, Any] | None = None,
-    consumed_samples: int = 0,
-    cumulative_metrics: dict[str, Any] | None = None,
-    save_training_state: bool = True,
     output_dir: Path | None = None,
     ignore_suffixes: list[str] | None = None,
-) -> tuple[dict[str, Any], Path]:
+) -> Path:
+
+def save_training_state(
+    self,
+    *,
+    optimizer_state_dict: dict[str, Any],
+    lr_scheduler_state_dict: dict[str, Any] | None,
+    global_step: int,
+    seed: int,
+    training_hparams: dict[str, Any],
+    consumed_samples: int,
+    cumulative_metrics: dict[str, Any],
+) -> Path:
 ```
 
-The `epoch` parameter is removed. The output directory uses `step_{global_step}` instead of `epoch_{epoch}/global_step_{global_step}`. Adapter-related parameters (`adapter_only`, `adapter_checkpoint`) and methods (`save_adapter_weights`, `save_adapter_config`) were removed — see `plans/Removed - Adapter and LoRA Checkpoint Support.md`.
+`save_model_checkpoint` writes HF-format model weights to `step_{global_step}/`. `save_training_state` writes all resume state to `recipe_state.pt`. The old monolithic `save_checkpoint`, `_save_checkpoint`, and `save_recipe_state` methods are deleted. Adapter-related methods were removed earlier — see `plans/Removed - Adapter and LoRA Checkpoint Support.md`.
 
 Implementation notes vs the original plan:
 - `rng_state` is not a parameter — RNG state is captured internally via `save_rng_states()` at save time, since it is a snapshot of global process state (Python, NumPy, PyTorch CPU/CUDA generators) that the caller does not construct or own.
-- `consumed_samples` defaults to `0` (not `None`) since it is always an integer count.
+- All training state fields except `lr_scheduler_state_dict` are mandatory keyword arguments — the function signature enforces the checkpoint schema contract.
 
 *`ssi/train.py`* — `resume_training_state` simplified (uses direct `[]` access for all required fields — no `.get()` fallbacks):
 ```python
@@ -640,9 +646,9 @@ Each decision records what we chose, what we rejected, and why.
 - Per-instance PRNG on `TextCompletionDataset` (considered in earlier draft) — still stateful, still requires checkpointing, still order-dependent, still broken with `num_workers > 0`.
 **Why**: The per-sample approach eliminates the entire class of PRNG-state-management problems. There is no state to save, restore, or synchronize. Each sample's interleaving is deterministic given its identity, regardless of processing order, parallelism, or resume point. NumPy's `SeedSequence` ensures the per-sample streams are well-distributed and independent.
 
-### D7: Drop `epoch` parameter from `save_checkpoint`
+### D7: Drop `epoch` parameter from checkpoint saving
 
-**Chose**: Remove `epoch` from `save_checkpoint` signature; use `step_{global_step}` directory naming.
+**Chose**: Remove `epoch` from the checkpoint save API; use `step_{global_step}` directory naming. (The old `save_checkpoint` method was subsequently split into `save_model_checkpoint` + `save_training_state` — see `Refactor - Separate Model and Training State Checkpoints.md`.)
 **Rejected**: Keep `epoch` in the API.
 **Why**: Per principle P5, epoch is derived from global_step. Having it as a parameter creates a source of inconsistency. The directory structure `step_N/` is clearer than `epoch_E/global_step_N/`.
 
