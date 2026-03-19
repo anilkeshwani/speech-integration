@@ -10,6 +10,20 @@ assert CL100K_PATTERN_PUA != CL100K_PATTERN
 
 
 class Llama3TokenizerPUA(Llama3Tokenizer):
+    """Llama 3 tokenizer patched to support Unicode Private Use Area (PUA) codepoints.
+
+    Replaces the underlying ``TikTokenBaseTokenizer`` with one whose regex pattern
+    (``CL100K_PATTERN_PUA``) matches PUA codepoints (``\\p{Co}``), allowing discrete
+    speech unit tokens encoded as PUA characters to be tokenized as individual tokens
+    rather than being split or treated as unknown.
+
+    Args:
+        path: Path to the tiktoken BPE model file.
+        special_tokens: Optional mapping of special token strings to IDs.
+        max_seq_len: Optional maximum sequence length for truncation.
+        prompt_template: Optional prompt template applied during tokenization.
+    """
+
     def __init__(
         self,
         path: str,

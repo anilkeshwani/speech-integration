@@ -11,6 +11,13 @@ LOGGER = logging.getLogger(__name__)
 
 
 class WandBLoggerPatched(WandBLogger):
+    """WandBLogger subclass that saves the resolved config to the checkpoint directory.
+
+    Overrides ``log_config`` to write a local copy of the resolved OmegaConf config
+    to ``checkpointer.output_dir`` and upload it to W&B Files, in addition to the
+    base class behaviour of updating ``wandb.config``.
+    """
+
     def log_config(self, config: DictConfig) -> None:
         """PATCHED. Saves the config locally and logs it to W&B.
         Patch: The config is stored in the checkpointer output directory.
