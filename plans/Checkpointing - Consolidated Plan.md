@@ -137,13 +137,20 @@ experiments/
         recipe_state.pt
 ```
 
-**Proposed layout** — organized by speech tokenizer, with n_dsus auto-determined:
+**Proposed layout** — organized by speech tokenizer, with BPE as a subdirectory:
 ```
 experiments/
   {tokenizer}/                                          <- top-level by speech tokenizer
-    base_model/                                         <- extended Llama 3.2 1B for this tokenizer
+    base_model/                                         <- extended Llama 3.2 1B for raw DSUs
       model-*.safetensors, config.json, tokenizer.model
-    {stage}_{flags}_{wandb_id}/                         <- self-describing run directory
+    bpe/                                                <- BPE-compressed speech representations
+      base_model/                                       <- extended Llama 3.2 1B for BPE vocab
+        model-*.safetensors, config.json, tokenizer.model
+      {stage}_{wandb_id}/                               <- runs using BPE compression
+        step_N/
+        recipe_state.pt
+        torchtune_config.yaml
+    {stage}_{wandb_id}/                                 <- runs using raw DSUs
       step_N/                                           <- model checkpoint (HF-format, self-contained)
         model-*.safetensors
         model.safetensors.index.json
@@ -159,18 +166,31 @@ experiments/
 experiments/
   hubert/
     base_model/                                         <- Llama 3.2 1B + 5000 HuBERT DSUs
-    cpt_interleaved_dedup_9h3htysc/
+    bpe/
+      base_model/                                       <- Llama 3.2 1B + BPE-compressed HuBERT vocab
+      cpt_interleaved_c3d4e5f6/
+        step_5000/
+        recipe_state.pt
+        torchtune_config.yaml
+      sft_d4e5f6a7/
+        ...
+    cpt_interleaved_9h3htysc/
       step_5000/
       step_10000/
       recipe_state.pt
       torchtune_config.yaml
-    sft_dedup_a7b2cdef/
+    cpt_concatenated_a1b2c3d4/
+      ...
+    sft_a7b2cdef/
       step_2000/
       recipe_state.pt
       torchtune_config.yaml
   speechtokenizer/
-    base_model/                                         <- Llama 3.2 1B + N SpeechTokenizer DSUs
-    cpt_concatenated_nodedup_f1e2d3c4/
+    base_model/
+    bpe/
+      base_model/
+      ...
+    cpt_concatenated_f1e2d3c4/
       ...
   mimi/
     ...
@@ -184,16 +204,21 @@ experiments/
 
 2. **`base_model/` per tokenizer**: A pre-extended Llama 3.2 1B with the tokenizer vocabulary and embedding layer sized for that tokenizer's `n_dsus`. Built once by `extend_llama3_2.py`, used as the starting point for all runs under that tokenizer.
 
-3. **`n_dsus` not in directory name**: Since `n_dsus` is determined by the tokenizer and constant within a tokenizer directory, encoding it in the run name is redundant. It can be read from the config snapshot if needed.
+3. **`bpe/` as a subdirectory within each tokenizer**: The BPE vocabulary is derived from a specific tokenizer's codebook, so it nests naturally under the tokenizer. BPE runs require a separate `base_model/` because the BPE vocabulary size differs from the raw codebook size. Non-BPE runs (the majority) sit directly under the tokenizer directory with no extra nesting.
 
-4. **Run directory name**: `{stage}_{flags}_{wandb_id}` where:
+4. **`n_dsus` not in directory name**: Since `n_dsus` is determined by the tokenizer (or BPE merge count) and is constant within a given `base_model/`, encoding it in the run name is redundant. It can be read from the config snapshot if needed.
+
+5. **No dedup/modality flags in directory name**: Deduplication and modality tokens are always enabled (hardcoded in `conf/common.yaml`). No flags needed.
+
+6. **Run directory name**: `{stage}_{wandb_id}` where:
    - `stage`: `cpt_interleaved`, `cpt_concatenated`, or `sft`
-   - `flags`: `dedup`/`nodedup` always; `nomodtok` only when `use_modality_tokens=False` (True is default). Exception-based — default state produces no flag.
    - `wandb_id`: 8-character W&B run ID for uniqueness and cross-referencing
 
-5. **No `checkpoints/` nesting**: The constant `checkpoints/` intermediate directory is dropped — `step_N/` directories and `recipe_state.pt` live directly in the run directory.
+7. **No `checkpoints/` nesting**: The constant `checkpoints/` intermediate directory is dropped — `step_N/` directories and `recipe_state.pt` live directly in the run directory.
 
-6. **`torchtune_config.yaml` at run level**: A snapshot of the resolved training config, saved once at training start. Enables auditability and re-running without hunting for the original config.
+8. **`torchtune_config.yaml` at run level**: A snapshot of the resolved training config, saved once at training start. Enables auditability and re-running without hunting for the original config.
+
+9. **CPT+SFT has no special directory convention**: The SFT run that follows CPT points to a CPT checkpoint as its starting model. The `torchtune_config.yaml` inside the SFT run records which CPT checkpoint it started from.
 
 ### 4.2. Model Checkpoint Contents (`step_N/`)
 
@@ -276,8 +301,8 @@ When the directory structure changes (§4.1), all downstream code is updated to 
 
 | File | What changes | Details |
 |------|-------------|---------|
-| `ssi/checkpoint.py` | `resolve_checkpointer_output_dir()` | Build path from `{experiments_root_dir}/{tokenizer}/{stage}_{flags}_{wandb_id}` using `cfg.experiments_root_dir` directly. Add `TOKENIZER_SHORT_NAMES` mapping in `ssi/constants.py`. |
-| `ssi/utils.py` | `_parse_model_path()` | Parse new run dir name (`run_dir/step_M`) to extract stage, flags, wandb_id. Remove legacy parsing. |
+| `ssi/checkpoint.py` | `resolve_checkpointer_output_dir()` | Build path from `{experiments_root_dir}/{tokenizer}/{stage}_{wandb_id}` using `cfg.experiments_root_dir` directly. Add `TOKENIZER_SHORT_NAMES` mapping in `ssi/constants.py`. |
+| `ssi/utils.py` | `_parse_model_path()` | Parse new run dir name (`run_dir/step_M`) to extract stage, wandb_id. |
 | `scripts/generate.py` | `_resolve_gen_output_dir()` and `main()` | Output dir: `run_dir/generations/step_M`. Config lookup: `Path(cfg.model).parent` (1 level up). |
 | `scripts/plot_wandb_losses.py` | Glob pattern | Match `step_*`. |
 | `snippets/check_missing_generations.py` | Step dir discovery | Look for step dirs in run_dir directly. |
