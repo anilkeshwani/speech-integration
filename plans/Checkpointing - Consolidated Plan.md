@@ -1,6 +1,8 @@
-# Checkpointing: Design Rationale and Future Work
+# Checkpointing: Consolidated Plan
 
-This document records the design principles, decision rationale, and future work for the checkpoint and resume system. Implementation details are in the code itself (`ssi/checkpoint.py`, `ssi/train.py`, `ssi/constants.py`). The companion `Research - Checkpoint and Resume Best Practices.md` contains the web research that informed the design.
+This document consolidates all checkpoint-related design, implementation status, and future work. It supersedes checkpoint-specific content in `Training Cleanup Tasks.md` and absorbs the key content from `Refactor - Separate Model and Training State Checkpoints.md` and `Plan to Simplify Checkpoint Directory Structure.md`. The companion `Research - Checkpoint and Resume Best Practices.md` contains the web research that informed the design.
+
+Implementation lives in `ssi/checkpoint.py`, `ssi/train.py`, and `ssi/constants.py`.
 
 ---
 
@@ -9,13 +11,20 @@ This document records the design principles, decision rationale, and future work
 1. [Context](#1-context)
 2. [Design Principles](#2-design-principles)
 3. [Design Decision Log](#3-design-decision-log)
-4. [Future Work](#4-future-work)
+4. [Proposed Checkpoint Structure](#4-proposed-checkpoint-structure)
+5. [Downstream Consumers](#5-downstream-consumers)
+6. [Future Work](#6-future-work)
+7. [Remaining Open Items](#7-remaining-open-items)
 
 ---
 
 ## 1. Context
 
+This is a research codebase investigating approaches to integrating speech into Llama 3.2 1B via discrete speech tokens (see `MASTER PLAN.md`). We compare four speech tokenizers (HuBERT, SpeechTokenizer, Mimi, FocalCodec) across four training approaches (CPT-Concat, CPT-Interleave, SFT, CPT+SFT; the latter CPT+SFT chooses the better performing CPT) on the Multilingual LibriSpeech dataset (MLS), both using BPE to compress the speech tokens or not.
+
 MLS is 44k hours. Our training budget is 48 GPU-hours on a single A6000. One epoch of MLS will never complete, so every training run ends mid-epoch. The checkpoint system must correctly resume mid-epoch, detect configuration mismatches that would corrupt training, and produce deterministic results across resumes.
+
+The experiment matrix (4 tokenizers × 4 approaches × 2 compression settings) produces many runs. The checkpoint structure must make it easy to identify, browse, and compare results across this matrix.
 
 ---
 
@@ -29,7 +38,7 @@ These principles guide all checkpoint-related decisions. When evaluating future 
 
 ### P2: `consumed_samples` is the batch-size-independent progress counter
 
-We also track `consumed_samples` (total micro-batches processed x batch_size) as a secondary counter. This is Megatron-LM's approach and allows future flexibility if batch size ever needs to change between runs. For now, it serves primarily as a monitoring and auditability field.
+We also track `consumed_samples` (total micro-batches processed × batch_size) as a secondary counter. This is Megatron-LM's approach and allows future flexibility if batch size ever needs to change between runs. For now, it serves primarily as a monitoring and auditability field.
 
 ### P3: Strict validation, not silent corruption
 
@@ -105,9 +114,186 @@ Each decision records what we chose, what we rejected, and why.
 **Rejected**: Keep `epoch` in the API.
 **Why**: Per principle P5, epoch is derived from global_step. Having it as a parameter creates a source of inconsistency. The directory structure `step_N/` is clearer than `epoch_E/global_step_N/`.
 
+### D8: Separate `save_model_checkpoint` and `save_training_state` (not single `save_checkpoint`)
+
+**Chose**: Two public methods with distinct signatures and responsibilities.
+**Rejected**: Single `save_checkpoint` with `save_training_state` boolean flag.
+**Why**: The old API conflated two operations with different purposes, lifecycles, and storage requirements. Model checkpoints are per-step HF-format directories used for inference/evaluation; training state is a single overwritten file used only for resume. The boolean flag was a code smell — callers like `extend_llama3_2.py` had to pass dummy `optimizer_state_dict=None`, `seed=SEED`, `save_training_state=False`. Optional `None` defaults on training state fields created a latent bug: a caller could write a `recipe_state.pt` missing required keys that would crash on resume. The new API enforces the schema v1 contract via mandatory keyword arguments — it is impossible to create an unresumable checkpoint.
+
 ---
 
-## 4. Future Work
+## 4. Proposed Checkpoint Structure
+
+### 4.1. Directory Layout
+
+**Current layout:**
+```
+experiments/
+  {base_model_name}-{config_name}/
+    {wandb_run_name}-id_{wandb_run_id}/
+      checkpoints/
+        step_N/
+          model-*.safetensors, config.json, tokenizer.model, ...
+        recipe_state.pt
+```
+
+**Proposed layout** — organized by speech tokenizer, with n_dsus auto-determined:
+```
+experiments/
+  {tokenizer}/                                          <- top-level by speech tokenizer
+    base_model/                                         <- extended Llama 3.2 1B for this tokenizer
+      model-*.safetensors, config.json, tokenizer.model
+    {stage}_{flags}_{wandb_id}/                         <- self-describing run directory
+      step_N/                                           <- model checkpoint (HF-format, self-contained)
+        model-*.safetensors
+        model.safetensors.index.json
+        config.json
+        tokenizer.model
+        generation_config.json
+      recipe_state.pt                                   <- training state (single file, always overwritten)
+      torchtune_config.yaml                             <- resolved config snapshot
+```
+
+**Concrete example:**
+```
+experiments/
+  hubert/
+    base_model/                                         <- Llama 3.2 1B + 5000 HuBERT DSUs
+    cpt_interleaved_dedup_9h3htysc/
+      step_5000/
+      step_10000/
+      recipe_state.pt
+      torchtune_config.yaml
+    sft_dedup_a7b2cdef/
+      step_2000/
+      recipe_state.pt
+      torchtune_config.yaml
+  speechtokenizer/
+    base_model/                                         <- Llama 3.2 1B + N SpeechTokenizer DSUs
+    cpt_concatenated_nodedup_f1e2d3c4/
+      ...
+  mimi/
+    ...
+  focalcodec/
+    ...
+```
+
+**Key design decisions:**
+
+1. **Top-level by tokenizer**: Each tokenizer defines a fixed `n_dsus` (e.g., 5000 for HuBERT). Grouping by tokenizer makes it natural to pre-build an extended base model per tokenizer and share it across runs.
+
+2. **`base_model/` per tokenizer**: A pre-extended Llama 3.2 1B with the tokenizer vocabulary and embedding layer sized for that tokenizer's `n_dsus`. Built once by `extend_llama3_2.py`, used as the starting point for all runs under that tokenizer.
+
+3. **`n_dsus` not in directory name**: Since `n_dsus` is determined by the tokenizer and constant within a tokenizer directory, encoding it in the run name is redundant. It can be read from the config snapshot if needed.
+
+4. **Run directory name**: `{stage}_{flags}_{wandb_id}` where:
+   - `stage`: `cpt_interleaved`, `cpt_concatenated`, or `sft`
+   - `flags`: `dedup`/`nodedup` always; `nomodtok` only when `use_modality_tokens=False` (True is default). Exception-based — default state produces no flag.
+   - `wandb_id`: 8-character W&B run ID for uniqueness and cross-referencing
+
+5. **No `checkpoints/` nesting**: The constant `checkpoints/` intermediate directory is dropped — `step_N/` directories and `recipe_state.pt` live directly in the run directory.
+
+6. **`torchtune_config.yaml` at run level**: A snapshot of the resolved training config, saved once at training start. Enables auditability and re-running without hunting for the original config.
+
+### 4.2. Model Checkpoint Contents (`step_N/`)
+
+Each `step_N/` directory is a self-contained HF-format model directory, usable directly by HuggingFace tooling, `generate.py`, and evaluation scripts.
+
+```
+step_N/
+  model-00001-of-00004.safetensors      <- sharded model weights
+  model-00002-of-00004.safetensors
+  model-00003-of-00004.safetensors
+  model-00004-of-00004.safetensors
+  model.safetensors.index.json          <- weight map and metadata
+  config.json                           <- model config (copied from source)
+  tokenizer.model                       <- tokenizer (copied from source)
+  generation_config.json                <- generation defaults (copied from source)
+```
+
+Produced by `save_model_checkpoint()`. Files other than weights are copied from the source model directory so each checkpoint is independently loadable.
+
+### 4.3. Training State Contents (`recipe_state.pt`)
+
+A single `recipe_state.pt` file at the run directory level, always overwritten on save. Contains everything needed for exact resume.
+
+**Schema v1** (current):
+
+```python
+{
+    # --- Versioning ---
+    "checkpoint_version": 1,                    # schema version for forward compat
+    "timestamp": "2026-03-19T14:30:00+00:00",   # ISO 8601 UTC
+    "ssi_version": "0.1.0",                     # package version
+
+    # --- Progress ---
+    "global_step": 10000,                       # canonical counter (P1)
+    "consumed_samples": 160000,                 # batch-size-independent counter (P2)
+
+    # --- Reproducibility ---
+    "seed": 42831,                              # training seed (validated on resume)
+    "rng_state": {                              # all framework RNG states
+        "python": random.getstate(),
+        "numpy": numpy.random.get_state(),
+        "torch_cpu": torch.get_rng_state(),
+        "torch_cuda": torch.cuda.get_rng_state_all(),
+    },
+
+    # --- Optimizer & Scheduler ---
+    "optimizer": optimizer.state_dict(),         # full optimizer state
+    "lr_scheduler": scheduler.state_dict(),      # or None if no scheduler
+
+    # --- Validation on Resume ---
+    "training_hparams": {                       # hard-error on mismatch (P3)
+        "batch_size": 16,
+        "gradient_accumulation_steps": 4,
+        "world_size": 1,
+        "steps_per_epoch": 5000,
+    },
+
+    # --- Monitoring & Auditability ---
+    "cumulative_metrics": {
+        "tokens_train_total": 10_000_000,
+        "token_type_counts": {
+            "text": 8_000_000,
+            "dsu": 1_500_000,
+            "special_text": 500_000,
+        },
+        "wall_clock_seconds": 36000.0,
+    },
+}
+```
+
+The only gap vs. the "complete checkpoint" from the Research doc is DataLoader/sampler state (currently handled via islice skip per D3; StatefulDataLoader planned as F1).
+
+---
+
+## 5. Downstream Consumers
+
+When the directory structure changes (§4.1), all downstream code is updated to the new format. No legacy format support is needed — old checkpoints will not be loaded.
+
+### Files requiring updates
+
+| File | What changes | Details |
+|------|-------------|---------|
+| `ssi/checkpoint.py` | `resolve_checkpointer_output_dir()` | Build path from `{experiments_root_dir}/{tokenizer}/{stage}_{flags}_{wandb_id}` using `cfg.experiments_root_dir` directly. Add `TOKENIZER_SHORT_NAMES` mapping in `ssi/constants.py`. |
+| `ssi/utils.py` | `_parse_model_path()` | Parse new run dir name (`run_dir/step_M`) to extract stage, flags, wandb_id. Remove legacy parsing. |
+| `scripts/generate.py` | `_resolve_gen_output_dir()` and `main()` | Output dir: `run_dir/generations/step_M`. Config lookup: `Path(cfg.model).parent` (1 level up). |
+| `scripts/plot_wandb_losses.py` | Glob pattern | Match `step_*`. |
+| `snippets/check_missing_generations.py` | Step dir discovery | Look for step dirs in run_dir directly. |
+| `snippets/generation_launcher.sh` | `find` pattern | Match `step_*`. |
+| `snippets/impute_config.py` | Config lookup | Check for `torchtune_config.yaml` at run_dir level. |
+| `conf/training.yaml` | Comment | Update to reflect new auto-resolution format. |
+
+### Files NOT changed
+
+- `conf/common.yaml` — `output_dir` stays as-is (still used for `wandb.log_dir`). The resolver uses `cfg.experiments_root_dir` directly.
+- `ssi/metric_logging.py` — Already saves to `config.checkpointer.output_dir`. Works as-is.
+- Data config YAMLs — No `short_name` field needed. Tokenizer short name derived from HF source string via `parse_hf_repo_id()` + `TOKENIZER_SHORT_NAMES`.
+
+---
+
+## 6. Future Work
 
 These items are explicitly out of scope for the current implementation but are documented for planning.
 
@@ -123,7 +309,7 @@ Pre-shuffle the dataset with a deterministic seed and use `consumed_samples` to 
 
 ### F3: WSD learning rate schedule
 
-Implement Warmup-Stable-Decay schedule for checkpoint-friendly training. The stable phase has trivial scheduler state (constant LR), making resume simpler. Natural branching for producing final models at different compute budgets. No need to know `total_steps` in advance (unlike cosine). See research doc section 2 for details.
+Implement Warmup-Stable-Decay schedule for checkpoint-friendly training. The stable phase has trivial scheduler state (constant LR), making resume simpler. Natural branching for producing final models at different compute budgets. No need to know `total_steps` in advance (unlike cosine). See Research doc §2 for details.
 
 ### F4: Checkpoint retention policy
 
@@ -136,3 +322,16 @@ Save checkpoints without blocking training. PyTorch DCP and torchtitan support t
 ### F6: Batch size change support
 
 Using `consumed_samples` as the primary counter would allow changing batch size between runs. The training loop would derive the step count from `consumed_samples / new_effective_batch_size`. This requires F2 (consumed_samples indexing) to work correctly for data position.
+
+### F7: Pre-built extended base models per tokenizer
+
+Build and store an extended Llama 3.2 1B per tokenizer in the `{tokenizer}/base_model/` directory (see §4.1). Each extended model has the tokenizer vocabulary and embedding layer sized for that tokenizer's `n_dsus`. Built once by `extend_llama3_2.py`, shared across all runs for that tokenizer. This is a prerequisite for the directory structure simplification.
+
+---
+
+## 7. Remaining Open Items
+
+| ID | Description | Status |
+|----|-------------|--------|
+| T17 | GPU smoke test: end-to-end save/resume roundtrip on GPU (few steps → save → resume → verify step continuity, LR continuity, no duplicate batches) | Pending |
+| R1 | Directory structure simplification (§4.1 + §5 of this document). Blocked on deciding `n_dsus` per tokenizer and building extended base models (F7). | Pending |
