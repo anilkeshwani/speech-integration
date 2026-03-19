@@ -19,6 +19,8 @@ train:
   dataloader:
     batch_size: 16
     drop_last: True
+    num_workers: 0
+    persistent_workers: False
   shuffle: True
   packed: False # TODO packing performed a priori at training time and leads to CPU RAM overflow for e.g. MLS interleaved
 dev:
@@ -42,5 +44,7 @@ dev:
   dataloader:
     batch_size: 16
     drop_last: False
+    num_workers: 0
+    persistent_workers: False
   shuffle: False
   packed: False

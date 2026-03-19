@@ -17,6 +17,8 @@ train:
   dataloader:
     batch_size: 2
     drop_last: True
+    num_workers: 0
+    persistent_workers: False
   shuffle: True # passed to DistributedSampler
   packed: False # passed to pack_dataset to create a PackedDataset
 
@@ -39,6 +41,8 @@ dev:
   dataloader:
     batch_size: 2
     drop_last: False
+    num_workers: 0
+    persistent_workers: False
   shuffle: False # passed to DistributedSampler <- NOTE different from train
   packed: False # passed to pack_dataset to create a PackedDataset
 
@@ -64,5 +68,7 @@ test:
   dataloader:
     batch_size: 2
     # NOTE drop_last not used - hard coded to False for testing
+    num_workers: 0
+    persistent_workers: False
   # Note shuffle not used - hard coded to False for testing
   packed: False # passed to pack_dataset to create a PackedDataset
