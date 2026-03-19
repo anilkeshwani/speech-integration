@@ -77,26 +77,16 @@ class TextCompletionDataset(Dataset):
         deduplicate: bool,
         use_modality_tokens: bool,
         add_eos: bool = True,
-        tokenized_key: str | None = None,
-        alignment_start_time_key: str | None = None,
-        alignment_end_time_key: str | None = None,
-        speech_tokens_key: str | None = None,
+        tokenized_key: str = TOKENIZED_KEY,
+        alignment_start_time_key: str = ALIGNMENT_START_TIME_KEY,
+        alignment_end_time_key: str = ALIGNMENT_END_TIME_KEY,
+        speech_tokens_key: str = SPEECH_TOKENS_KEY,
         filter_fn: Callable | None = None,
         interleave_kwargs: dict[str, Any] | None = None,
     ) -> None:
         self._tokenizer = tokenizer
         self._data = load_dataset(source, split=split)
         self.add_eos = add_eos
-
-        # dataset columns
-        if tokenized_key is None:
-            tokenized_key = TOKENIZED_KEY
-        if alignment_start_time_key is None:
-            alignment_start_time_key = ALIGNMENT_START_TIME_KEY
-        if alignment_end_time_key is None:
-            alignment_end_time_key = ALIGNMENT_END_TIME_KEY
-        if speech_tokens_key is None:
-            speech_tokens_key = SPEECH_TOKENS_KEY
 
         self.sequence_type = CompletionSequenceType(sequence_type)
         match self.sequence_type:
