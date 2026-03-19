@@ -49,6 +49,20 @@ HPARAMS = {
     "steps_per_epoch": 500,
 }
 
+TRAINING_STATE_KWARGS = dict(
+    optimizer_state_dict={"state": {}, "param_groups": []},
+    lr_scheduler_state_dict={"last_epoch": 150, "_last_lr": [2e-4]},
+    global_step=150,
+    seed=SEED,
+    training_hparams=dict(HPARAMS),
+    consumed_samples=9600,
+    cumulative_metrics={
+        "tokens_train_total": 100_000,
+        "token_type_counts": {"text": 80_000, "dsu": 15_000, "special_text": 5_000},
+        "wall_clock_seconds": 3600.0,
+    },
+)
+
 
 @pytest.fixture
 def v1_ckpt_dict():
@@ -246,19 +260,7 @@ def test_round_trip_training_state(tmp_path):
         checkpoint_files=["model.safetensors"],
         output_dir=tmp_path,
     )
-    checkpointer.save_training_state(
-        optimizer_state_dict={"state": {}, "param_groups": []},
-        lr_scheduler_state_dict={"last_epoch": 150, "_last_lr": [2e-4]},
-        global_step=150,
-        seed=SEED,
-        training_hparams=dict(HPARAMS),
-        consumed_samples=9600,
-        cumulative_metrics={
-            "tokens_train_total": 100_000,
-            "token_type_counts": {"text": 80_000, "dsu": 15_000, "special_text": 5_000},
-            "wall_clock_seconds": 3600.0,
-        },
-    )
+    checkpointer.save_training_state(**TRAINING_STATE_KWARGS)
     loaded = torch.load(tmp_path / "recipe_state.pt", weights_only=False)
     assert loaded[GLOBAL_STEP_KEY] == 150
     assert loaded[CONSUMED_SAMPLES_KEY] == 9600
@@ -276,19 +278,7 @@ def test_training_state_contains_global_step_not_steps_run(tmp_path):
         checkpoint_files=["model.safetensors"],
         output_dir=tmp_path,
     )
-    checkpointer.save_training_state(
-        optimizer_state_dict={"state": {}, "param_groups": []},
-        lr_scheduler_state_dict=None,
-        global_step=150,
-        seed=SEED,
-        training_hparams=dict(HPARAMS),
-        consumed_samples=9600,
-        cumulative_metrics={
-            "tokens_train_total": 100_000,
-            "token_type_counts": {"text": 80_000, "dsu": 15_000, "special_text": 5_000},
-            "wall_clock_seconds": 3600.0,
-        },
-    )
+    checkpointer.save_training_state(**{**TRAINING_STATE_KWARGS, "lr_scheduler_state_dict": None})
     loaded = torch.load(tmp_path / "recipe_state.pt", weights_only=False)
     assert GLOBAL_STEP_KEY in loaded
     assert "steps_run" not in loaded
@@ -302,19 +292,7 @@ def test_training_state_does_not_contain_epochs_key(tmp_path):
         checkpoint_files=["model.safetensors"],
         output_dir=tmp_path,
     )
-    checkpointer.save_training_state(
-        optimizer_state_dict={"state": {}, "param_groups": []},
-        lr_scheduler_state_dict={"last_epoch": 150, "_last_lr": [2e-4]},
-        global_step=150,
-        seed=SEED,
-        training_hparams=dict(HPARAMS),
-        consumed_samples=9600,
-        cumulative_metrics={
-            "tokens_train_total": 100_000,
-            "token_type_counts": {"text": 80_000, "dsu": 15_000, "special_text": 5_000},
-            "wall_clock_seconds": 3600.0,
-        },
-    )
+    checkpointer.save_training_state(**TRAINING_STATE_KWARGS)
     loaded = torch.load(tmp_path / "recipe_state.pt", weights_only=False)
     assert EPOCHS_KEY not in loaded
 
