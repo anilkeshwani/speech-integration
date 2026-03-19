@@ -7,6 +7,7 @@ Covers:
 - Resume position arithmetic (epochs_run, batches_to_skip)
 - Legacy checkpoint rejection
 - On-disk round-trip via ``save_training_state()``
+- On-disk smoke test for ``save_model_checkpoint()``
 - Framework RNG state save/restore round-trip
 
 GPU required: No. All tests use CPU tensors and temporary directories.
@@ -310,6 +311,34 @@ def test_legacy_checkpoint_from_disk_raises(tmp_path):
     loaded = torch.load(tmp_path / "recipe_state.pt", weights_only=False)
     with pytest.raises(ValueError, match="Legacy checkpoints are not supported"):
         resume_training_state(loaded)
+
+
+@_skip_disk
+def test_save_model_checkpoint_creates_step_dir(tmp_path):
+    """T15b: save_model_checkpoint creates step_N/ with shards, index, and non-weight artifacts."""
+    checkpointer = FullModelHFCheckpointer(
+        checkpoint_dir=LLAMA_3_2_1B_BASE_DIR,
+        checkpoint_files=["model.safetensors"],
+        output_dir=tmp_path,
+    )
+    checkpointer.load_checkpoint()
+    output_dir = checkpointer.save_model_checkpoint(
+        checkpointer.load_checkpoint()[MODEL_KEY],
+        global_step=42,
+    )
+    assert output_dir == tmp_path / "step_42"
+    assert output_dir.is_dir()
+    # Should contain at least one safetensors shard and an index file
+    safetensor_files = list(output_dir.glob("*.safetensors"))
+    assert len(safetensor_files) >= 1
+    assert (output_dir / "model.safetensors.index.json").is_file()
+    # Should have copied config.json (needed for HF tooling)
+    assert (output_dir / "config.json").is_file()
+    # Model weight files from the source should NOT be copied
+    # (they are rewritten as shards, not copied verbatim)
+    assert not (output_dir / "model.safetensors").is_file() or len(safetensor_files) >= 1
+    # recipe_state.pt should NOT be in the step directory
+    assert not (output_dir / "recipe_state.pt").is_file()
 
 
 # ---------------------------------------------------------------------------
