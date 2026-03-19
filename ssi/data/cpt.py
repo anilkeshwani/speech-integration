@@ -38,23 +38,33 @@ class CompletionSequenceType(Enum):
 
 
 class TextCompletionDataset(Dataset):
-    """
-    Freeform dataset for any unstructured text corpus. Quickly load any dataset
-    from Hugging Face or local disk and tokenize it for your model.
+    """Completion-style dataset for text and speech token sequences.
+
+    Loads a dataset from Hugging Face or local disk and constructs sequences
+    according to the specified ``sequence_type`` (interleaved, concatenated, etc.).
 
     Args:
-        tokenizer (Llama3Tokenizer): Tokenizer used by the model that implements the ``tokenize_messages`` method.
-        source (str): path to dataset repository on Hugging Face. For local datasets,
-            define source as the data file type (e.g. "json", "csv", "text") and pass
-            in the filepath in ``data_files``. See Hugging Face's ``load_dataset``
-            (https://huggingface.co/docs/datasets/en/package_reference/loading_methods#datasets.load_dataset.path)
-            for more details.
-        add_eos (bool): Whether to add an EOS token to the end of the sequence. Default is True.
-        filter_fn (Callable | None): callable used to filter the dataset prior to any pre-processing. See
-            the Hugging Face `docs <https://huggingface.co/docs/datasets/v2.20.0/process#select-and-filter>`_ for more
-            details.
-        split (str): split of the dataset to load. Default is "train". See Hugging Face's
-            `load_dataset <https://huggingface.co/docs/datasets/en/package_reference/loading_methods#datasets.load_dataset>`_
+        tokenizer: Tokenizer used to encode the constructed prompt string.
+        source: Path to dataset repository on Hugging Face, or a data file type
+            (e.g. "json", "csv") for local datasets.
+        split: Dataset split to load (e.g. "train").
+        sequence_type: How text and speech tokens are arranged. One of the values
+            in ``CompletionSequenceType`` (e.g. "interleaved", "concatenated_txt_dsu").
+        deduplicate: Whether to deduplicate consecutive duplicate speech tokens.
+        use_modality_tokens: Whether to wrap spans with modality boundary tokens.
+        add_eos: Whether to append an EOS token. Default is True.
+        tokenized_key: Dataset column for pre-tokenized text. Defaults to
+            ``sardalign.constants.TOKENIZED_KEY``.
+        alignment_start_time_key: Dataset column for word-level alignment start
+            times. Defaults to ``sardalign.constants.ALIGNMENT_START_TIME_KEY``.
+        alignment_end_time_key: Dataset column for word-level alignment end times.
+            Defaults to ``sardalign.constants.ALIGNMENT_END_TIME_KEY``.
+        speech_tokens_key: Dataset column for discrete speech unit token IDs.
+            Defaults to ``sardalign.constants.SPEECH_TOKENS_KEY``.
+        filter_fn: Callable used to filter the dataset prior to any pre-processing.
+            Default is None.
+        interleave_kwargs: Additional keyword arguments passed to the ``interleave``
+            prompt function. Required when ``sequence_type`` is "interleaved".
     """
 
     def __init__(

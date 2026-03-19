@@ -5,6 +5,29 @@ from omegaconf import DictConfig
 
 @dataclass
 class ConfigLlama3_2:
+    """Llama 3.2 model configuration for use with torchtune's ``llama3_2`` builder.
+
+    Computes ``vocab_size`` dynamically from base text vocab, special tokens,
+    DSU tokens, and optional modality tokens. The ``parameters`` property returns
+    only the fields accepted by ``torchtune.models.llama3_2.llama3_2``.
+
+    Args:
+        _base_vocab_size_txt: Number of base text tokens in the tokenizer.
+        _n_special_txt: Number of reserved special text tokens.
+        num_layers: Number of transformer layers.
+        num_heads: Number of query attention heads.
+        num_kv_heads: Number of key/value attention heads (GQA).
+        embed_dim: Model hidden dimension.
+        max_seq_len: Maximum sequence length.
+        intermediate_dim: FFN intermediate dimension.
+        attn_dropout: Attention dropout probability.
+        norm_eps: RMSNorm epsilon.
+        rope_base: RoPE base frequency.
+        scale_factor: RoPE scaling factor.
+        _n_dsus: Number of discrete speech unit tokens. Default 0.
+        _modality_tokens: Whether modality boundary tokens are enabled. Default False.
+    """
+
     # NOTE attributes are hidden to prevent being exposed by parameters property to llama3_2 function
     _base_vocab_size_txt: int
     _n_special_txt: int
