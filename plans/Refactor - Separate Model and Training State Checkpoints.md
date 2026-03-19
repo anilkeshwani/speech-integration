@@ -243,59 +243,66 @@ Since the signature enforces mandatory kwargs, this is tested at the Python leve
 
 ## Implementation Steps
 
-### Step 1: Add `save_model_checkpoint` and `save_training_state` methods
+All steps completed in commit `0f9c65d`.
 
-Add both new methods to `FullModelHFCheckpointer`. They can coexist with the old `save_checkpoint` temporarily.
+### Step 1: Add `save_model_checkpoint` and `save_training_state` methods — Done
 
-`save_training_state` constructs the full v1 schema dict internally:
+Added both new methods to `FullModelHFCheckpointer` (`ssi/checkpoint.py:277-336`).
+
+`save_model_checkpoint` saves model weights in HF safetensors format to `step_N/`, copies config/tokenizer files alongside, and returns the output directory path.
+
+`save_training_state` constructs the full v1 schema dict internally from mandatory keyword arguments, saves to `recipe_state.pt`, and returns the output file path.
+
+### Step 2: Migrate callers — Done
+
+- `ssi/train.py:351-369`: replaced `save_checkpoint(...)` with `save_model_checkpoint(...)` + `save_training_state(...)`
+- `scripts/extend_llama3_2.py:94-97`: replaced `save_checkpoint(...)` with `save_model_checkpoint(...)` — removed dummy `optimizer_state_dict=None`, `seed=SEED`, `save_training_state=False`
+
+### Step 3: Delete old methods — Done
+
+Removed `save_checkpoint`, `_save_checkpoint`, and `save_recipe_state` from `FullModelHFCheckpointer`.
+
+### Step 4: Update tests — Done
+
+Updated disk round-trip tests (T12–T14) in `tests/test_checkpoint.py` to call `save_training_state` with explicit keyword arguments instead of passing a dict to the old `save_recipe_state`.
+
+---
+
+## Known Issues and Follow-ups
+
+### I1: Test kwargs duplication (low priority)
+
+T12, T13, and T14 each inline identical `save_training_state(...)` keyword arguments. Before this refactor they shared the `v1_ckpt_dict` fixture; now each test repeats ~12 lines of kwargs. Extract a shared constant or fixture:
+
 ```python
-def save_training_state(self, *, optimizer_state_dict, lr_scheduler_state_dict,
-                        global_step, seed, training_hparams, consumed_samples,
-                        cumulative_metrics) -> Path:
-    state_dict = {
-        CHECKPOINT_VERSION_KEY: CHECKPOINT_VERSION,
-        GLOBAL_STEP_KEY: global_step,
-        SEED_KEY: seed,
-        training.OPT_KEY: optimizer_state_dict,
-        LR_SCHEDULER_KEY: lr_scheduler_state_dict,
-        RNG_KEY: save_rng_states(),
-        TRAINING_HPARAMS_KEY: training_hparams,
-        CONSUMED_SAMPLES_KEY: consumed_samples,
-        CUMULATIVE_METRICS_KEY: cumulative_metrics,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "ssi_version": __version__,
-    }
-    output_path = self.output_dir / "recipe_state.pt"
-    torch.save(state_dict, output_path)
-    return output_path
+TRAINING_STATE_KWARGS = dict(
+    optimizer_state_dict={"state": {}, "param_groups": []},
+    lr_scheduler_state_dict={"last_epoch": 150, "_last_lr": [2e-4]},
+    global_step=150,
+    seed=SEED,
+    training_hparams=dict(HPARAMS),
+    consumed_samples=9600,
+    cumulative_metrics={
+        "tokens_train_total": 100_000,
+        "token_type_counts": {"text": 80_000, "dsu": 15_000, "special_text": 5_000},
+        "wall_clock_seconds": 3600.0,
+    },
+)
 ```
 
-`save_model_checkpoint` extracts the model-saving logic from `_save_checkpoint`:
-```python
-def save_model_checkpoint(self, model_state_dict, global_step, *,
-                          output_dir=None, ignore_suffixes=None) -> Path:
-    if output_dir is None:
-        output_dir = self.output_dir / f"step_{global_step}"
-    if ignore_suffixes is None:
-        ignore_suffixes = SUFFIXES_TO_NOT_COPY + ["torchtune_config.yaml"]
-    state_dict = {training.MODEL_KEY: model_state_dict}
-    self.save_full_model(state_dict, output_dir)
-    copy_files(self.checkpoint_dir, output_dir, ignore_suffixes=ignore_suffixes)
-    return output_dir
-```
+Note: T13 passes `lr_scheduler_state_dict=None` while T12/T14 pass a dict, so T13 would override that one field.
 
-### Step 2: Migrate callers
+### I2: `save_full_model` mutates its `state_dict` argument in place (pre-existing)
 
-- `ssi/train.py`: replace `save_checkpoint(...)` with `save_model_checkpoint(...)` + `save_training_state(...)`
-- `scripts/extend_llama3_2.py`: replace `save_checkpoint(...)` with `save_model_checkpoint(...)`
+`save_full_model` (`checkpoint.py:217`) overwrites `state_dict[training.MODEL_KEY]` with the HF-converted weights via `convert_weights.tune_to_hf(...)`. This mutates the dict passed in by the caller. In `save_model_checkpoint`, the dict is constructed locally (`state_dict = {training.MODEL_KEY: model_state_dict}`), so the outer reference `model_state_dict` still points to the original tensors — but the semantics are fragile. A future caller that reuses the dict after calling `save_full_model` would get converted weights. Not introduced by this refactor, but worth noting for a future cleanup pass.
 
-### Step 3: Delete old methods
+### I3: Return values unused at call sites (informational)
 
-Remove `save_checkpoint`, `_save_checkpoint`, and `save_recipe_state` from `FullModelHFCheckpointer`.
+Both `save_model_checkpoint` and `save_training_state` return paths, which is a clean improvement over the old `tuple[dict, Path]` return. Neither call site currently uses the return value. The returns are useful for testing and future callers — no action needed.
 
-### Step 4: Update tests
+### I4: `lr_scheduler_state_dict` always written, even when `None` (intentional change)
 
-Update disk round-trip tests (T12–T15) to call `save_training_state` with explicit arguments.
+The old code conditionally added `LR_SCHEDULER_KEY` to the checkpoint dict only when not `None`. The new code always writes it (as `None` when no scheduler is configured). This is an improvement — the key is always present so load-side code doesn't need `.get()` with a fallback. The resume path in `train.py` handles `None` correctly (`if resume_state and lr_scheduler is not None: lr_scheduler.load_state_dict(...)`).
 
 ---
 
