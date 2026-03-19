@@ -74,6 +74,12 @@ def resume_training_state(ckpt_dict: dict[str, Any]) -> dict[str, Any]:
             "Checkpoint predates the versioned schema (no 'checkpoint_version' key). "
             "Legacy checkpoints are not supported. Start a fresh training run."
         )
+    ckpt_version = ckpt_dict[CHECKPOINT_VERSION_KEY]
+    if ckpt_version != CHECKPOINT_VERSION:
+        raise ValueError(
+            f"Checkpoint version mismatch: checkpoint has version {ckpt_version}, "
+            f"but this code expects version {CHECKPOINT_VERSION}."
+        )
     if SEED != ckpt_dict[SEED_KEY]:
         raise ValueError(f"Seed mismatch: config={SEED}, checkpoint={ckpt_dict[SEED_KEY]}")
     return {
