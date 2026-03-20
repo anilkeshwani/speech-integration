@@ -1,0 +1,55 @@
+# Base CPT data config — tokenizer-specific configs inherit from this via `defaults: [_base_]`
+# Only `_source`, `_sampling_rate`, and optionally `_downsampling_ratio` need to be set per tokenizer.
+
+# Private keys — set by child configs, interpolated into train/dev below
+_source: ???
+_sampling_rate: ???
+_downsampling_ratio: 320  # samples -> 1 token; override per tokenizer if needed
+train:
+  dataset:
+    source: ${_source}
+    split: train
+    sequence_type: interleaved
+    interleave_kwargs:
+      sampling_rate: ${_sampling_rate}
+      downsampling_ratio: ${_downsampling_ratio}
+      mean_seq_len_tokens: 39.43  # mean seq len in tokens of the MLS en trainset stratified sample (25%)
+      binom_prob: 0.1  # fraction of sequence to make up subspans; binomial expectation = np
+    deduplicate: ${speech.deduplicate}
+    use_modality_tokens: ${speech.use_modality_tokens}
+    add_eos: true
+    tokenized_key: null  # null -> fall back to default key in sardalign.constants
+    alignment_start_time_key: null
+    alignment_end_time_key: null
+    speech_tokens_key: null
+  dataloader:
+    batch_size: 16
+    drop_last: true
+    num_workers: 0
+    persistent_workers: false
+  shuffle: true
+  packed: false  # TODO packing causes CPU RAM overflow for large datasets (e.g. MLS)
+dev:
+  dataset:
+    source: ${_source}
+    split: validation
+    sequence_type: interleaved
+    interleave_kwargs:
+      sampling_rate: ${_sampling_rate}
+      downsampling_ratio: ${_downsampling_ratio}
+      mean_seq_len_tokens: 39.43
+      binom_prob: 0.1
+    deduplicate: ${speech.deduplicate}
+    use_modality_tokens: ${speech.use_modality_tokens}
+    add_eos: true
+    tokenized_key: null
+    alignment_start_time_key: null
+    alignment_end_time_key: null
+    speech_tokens_key: null
+  dataloader:
+    batch_size: 16
+    drop_last: false
+    num_workers: 0
+    persistent_workers: false
+  shuffle: false
+  packed: false

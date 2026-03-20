@@ -24,5 +24,7 @@ handlers:
     filename: ${hydra.runtime.output_dir}/${hydra.job.name}.log
 root:
   level: INFO
-  handlers: [console, file]
+  handlers:
+    - console
+    - file
 disable_existing_loggers: false

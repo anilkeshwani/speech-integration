@@ -10,5 +10,6 @@ handlers:
     stream: ext://sys.stdout
 root:
   level: INFO
-  handlers: [console]
+  handlers:
+    - console
 disable_existing_loggers: false

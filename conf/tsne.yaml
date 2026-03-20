@@ -7,4 +7,7 @@ tokenizer:
 # repurpose output_dir for saving t-SNE plots
 output_dir: ???
 tsne:
-  perplexities: [5, 30, 50]  # list of perplexity values to try for t-SNE
+  perplexities:  # list of perplexity values to try for t-SNE
+    - 5
+    - 30
+    - 50
