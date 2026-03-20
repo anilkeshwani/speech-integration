@@ -64,6 +64,8 @@
 
 [tool.pytest.ini_options]
     testpaths = ["tests"]
+    tmp_path_retention_policy = "none"
+    basetemp = "/mnt/scratch-artemis/anilkeshwani/pytest_tmp"
 
 [tool.uv]
     environments = [
