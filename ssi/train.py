@@ -152,231 +152,305 @@ def count_token_types(tokens: Tensor, ranges: dict[str, tuple[int, int]], pad_id
     return counts
 
 
-def train(cfg: DictConfig) -> None:
-    validate_train_cfg(cfg)
-    training.set_seed(seed=SEED, debug_mode=cfg.debug_mode)
-    DEVICE: torch.device = get_device(cfg.device)
-    DTYPE: torch.dtype = get_dtype(cfg.dtype)
-    world_size, _ = get_world_size_and_rank()
-    wandb_tags = [__version__, cfg.config_name]
-    if os.getenv("SLURM_JOB_QOS") == "gpu-debug":
-        wandb_tags += [DEBUGGING_TAG]
-    wandb_logger = WandBLogger(**cfg.wandb, tags=wandb_tags)
-    if cfg.checkpointer.output_dir is None:
-        cfg.checkpointer.output_dir = resolve_checkpointer_output_dir(cfg, wandb_logger)
-        LOGGER.info(f"No checkpointer output dir provided. Resolved to: {cfg.checkpointer.output_dir!s}")
-    checkpointer = FullModelHFCheckpointer(**cfg.checkpointer)
-    ckpt_dict = checkpointer.load_checkpoint()
-    configllama3_2_1b.update_from_speech_cfg(cfg.speech)  # in-place
-    model = setup_llama3_2_1b(
-        cfg=cfg,
-        llama_config=configllama3_2_1b,
-        model_state_dict=ckpt_dict[MODEL_KEY],  # NOTE require model ckpt
-        dtype_default=DTYPE,
-        device_default=DEVICE,
-    )
-    model.to(device=DEVICE)
-    model.train()
-    tokenizer, _special_tokens = setup_llama3_tokenizer(**cfg.tokenizer)
-    token_type_ranges = get_token_type_ranges(llama_config=configllama3_2_1b)
+class Trainer:
+    """Stateful trainer for speech-language model continued pretraining and supervised fine-tuning."""
 
-    # === Resume state ===
-    global_step = 0
-    consumed_samples = 0
-    resume_state: dict[str, Any] | None = None
-    if checkpointer.recipe_checkpoint is not None:
-        resume_state = resume_training_state(ckpt_dict)
-        global_step = resume_state["global_step"]
-        consumed_samples = resume_state["consumed_samples"]
+    def __init__(self, cfg: DictConfig) -> None:
+        validate_train_cfg(cfg)
+        self.cfg = cfg
+        self.device = get_device(cfg.device)
+        self.dtype = get_dtype(cfg.dtype)
+        self.world_size, _ = get_world_size_and_rank()
 
-    optimizer: AdamW = setup_optimizer(cfg, model, resume_state["optimizer_state"] if resume_state else None)
-    lr_scheduler: LambdaLR | None = setup_lr_scheduler(
-        cfg=cfg,
-        optimizer=optimizer,
-        global_step=global_step - 1,  # see setup_lr_scheduler: LambdaLR steps once on init
-        num_training_steps=cfg.max_steps,
-    )
-    if resume_state and lr_scheduler is not None:
-        lr_scheduler.load_state_dict(resume_state["lr_scheduler_state"])
+    def setup(self) -> None:
+        cfg = self.cfg
+        training.set_seed(seed=SEED, debug_mode=cfg.debug_mode)
 
-    loss_fn = CEWithChunkedOutputLoss()
-    if cfg.compile:
-        training.compile_loss(loss_fn)
-    if isinstance(loss_fn, CEWithChunkedOutputLoss):
-        model.set_num_output_chunks(loss_fn.num_output_chunks)
-    # TODO clean this up later -> use hydra.utils.instantiate (requires refactoring configs)
-    if cfg.config_name == "sft":
-        data_train, sampler_train = setup_sft_data(cfg_dataset=cfg.data.train, model_tokenizer=tokenizer)
-        data_dev, _sampler_dev = setup_sft_data(cfg_dataset=cfg.data.dev, model_tokenizer=tokenizer)
-    elif cfg.config_name == "cpt":
-        data_train, sampler_train = setup_text_completion_data(cfg.data.train, tokenizer)
-        data_dev, _sampler_dev = setup_text_completion_data(cfg.data.dev, tokenizer)
-    else:
-        raise NotImplementedError
+        # === Logging ===
+        wandb_tags = [__version__, cfg.config_name]
+        if os.getenv("SLURM_JOB_QOS") == "gpu-debug":
+            wandb_tags += [DEBUGGING_TAG]
+        self.wandb_logger = WandBLogger(**cfg.wandb, tags=wandb_tags)
+        if cfg.checkpointer.output_dir is None:
+            cfg.checkpointer.output_dir = resolve_checkpointer_output_dir(cfg, self.wandb_logger)
+            LOGGER.info(f"No checkpointer output dir provided. Resolved to: {cfg.checkpointer.output_dir!s}")
 
-    # === Derived training geometry ===
-    batch_size = cfg.data.train.dataloader.batch_size
-    batches_per_epoch = len(data_train)
-    remainder_batches = batches_per_epoch % cfg.gradient_accumulation_steps
-    if remainder_batches > 0:
-        LOGGER.warning(
-            f"batches_per_epoch ({batches_per_epoch}) is not divisible by "
-            f"gradient_accumulation_steps ({cfg.gradient_accumulation_steps}): "
-            f"{remainder_batches} remainder batches will be discarded at each epoch boundary."
+        # === Checkpointer ===
+        self.checkpointer = FullModelHFCheckpointer(**cfg.checkpointer)
+        ckpt_dict = self.checkpointer.load_checkpoint()
+
+        # === Model ===
+        configllama3_2_1b.update_from_speech_cfg(cfg.speech)  # in-place
+        self.model = setup_llama3_2_1b(
+            cfg=cfg,
+            llama_config=configllama3_2_1b,
+            model_state_dict=ckpt_dict[MODEL_KEY],  # NOTE require model ckpt
+            dtype_default=self.dtype,
+            device_default=self.device,
         )
-    steps_per_epoch = batches_per_epoch // cfg.gradient_accumulation_steps
-    assert steps_per_epoch > 0, (
-        f"batches_per_epoch ({batches_per_epoch}) < gradient_accumulation_steps ({cfg.gradient_accumulation_steps})"
-    )
-    n_epochs = math.ceil(cfg.max_steps / steps_per_epoch)
+        self.model.to(device=self.device)
+        self.model.train()
 
-    # === Validate hparams on resume ===
-    if resume_state:
-        validate_resume_hparams(
-            ckpt_hparams=resume_state["training_hparams"],
-            current_hparams={
-                "batch_size": batch_size,
-                "gradient_accumulation_steps": cfg.gradient_accumulation_steps,
-                "world_size": world_size,
-                "steps_per_epoch": steps_per_epoch,
-            },
-            force_resume=cfg.get("force_resume", False),
+        # === Tokenizer ===
+        self.tokenizer, _special_tokens = setup_llama3_tokenizer(**cfg.tokenizer)
+        self.token_type_ranges = get_token_type_ranges(llama_config=configllama3_2_1b)
+
+        # === Resume state ===
+        self.global_step = 0
+        self.consumed_samples = 0
+        resume_state: dict[str, Any] | None = None
+        if self.checkpointer.recipe_checkpoint is not None:
+            resume_state = resume_training_state(ckpt_dict)
+            self.global_step = resume_state["global_step"]
+            self.consumed_samples = resume_state["consumed_samples"]
+
+        # === Optimizer ===
+        self.optimizer: AdamW = setup_optimizer(
+            cfg, self.model, resume_state["optimizer_state"] if resume_state else None
         )
 
-    # === Resume position ===
-    epochs_run = global_step // steps_per_epoch
-    batches_to_skip = (global_step % steps_per_epoch) * cfg.gradient_accumulation_steps
+        # === LR scheduler ===
+        self.lr_scheduler: LambdaLR | None = setup_lr_scheduler(
+            cfg=cfg,
+            optimizer=self.optimizer,
+            global_step=self.global_step - 1,  # see setup_lr_scheduler: LambdaLR steps once on init
+            num_training_steps=cfg.max_steps,
+        )
+        if resume_state and self.lr_scheduler is not None:
+            self.lr_scheduler.load_state_dict(resume_state["lr_scheduler_state"])
 
-    # usable_batches: only full accumulation windows — remainder batches are not processed
-    usable_batches = steps_per_epoch * cfg.gradient_accumulation_steps
+        # === Loss function ===
+        self.loss_fn = CEWithChunkedOutputLoss()
+        if cfg.compile:
+            training.compile_loss(self.loss_fn)
+        if isinstance(self.loss_fn, CEWithChunkedOutputLoss):
+            self.model.set_num_output_chunks(self.loss_fn.num_output_chunks)
 
-    # === Cumulative metrics (restore or initialize) ===
-    tokens_train_total: int = 0
-    token_type_counts_total: defaultdict[str, int] = defaultdict(int)
-    wall_clock_offset: float = 0.0
-    if resume_state:
-        cm = resume_state["cumulative_metrics"]
-        tokens_train_total = cm["tokens_train_total"]
-        for k, v in cm["token_type_counts"].items():
-            token_type_counts_total[k] = v
-        wall_clock_offset = cm["wall_clock_seconds"]
-
-    # === Restore framework RNG states (after all setup, before training loop) ===
-    if resume_state:
-        restore_rng_states(resume_state["rng_state"])
-        LOGGER.info("Restored framework RNG states from checkpoint.")
-
-    # === Training loop ===
-    optimizer.zero_grad()
-    t_train_start = time.perf_counter()
-    t0 = time.perf_counter()
-    loss_running = 0.0
-    num_tokens_step = 0
-    max_seq_len_step = 0
-    LOGGER.info(OmegaConf.to_yaml(cfg, resolve=True, sort_keys=False))
-    wandb_logger.log_config(cfg)  # log config after parameter resolution + overrides
-    for epoch in range(epochs_run, n_epochs):
-        sampler_train.set_epoch(epoch)  # distinct seed each epoch
-        if hasattr(data_train.dataset, "set_epoch"):
-            data_train.dataset.set_epoch(epoch)
-        # Skip already-processed batches on resume -> neatly eliminates need to zero grads for these
-        if epoch == epochs_run and batches_to_skip > 0:
-            LOGGER.info(f"Resuming: skipping {batches_to_skip} batches in epoch {epoch}")
-            data_iter = itertools.islice(enumerate(data_train), batches_to_skip, usable_batches)
-            n_batches = usable_batches - batches_to_skip
+        # === Data ===
+        # TODO clean this up later -> use hydra.utils.instantiate (requires refactoring configs)
+        if cfg.config_name == "sft":
+            self.data_train, self.sampler_train = setup_sft_data(
+                cfg_dataset=cfg.data.train, model_tokenizer=self.tokenizer
+            )
+            self.data_dev, _sampler_dev = setup_sft_data(
+                cfg_dataset=cfg.data.dev, model_tokenizer=self.tokenizer
+            )
+        elif cfg.config_name == "cpt":
+            self.data_train, self.sampler_train = setup_text_completion_data(cfg.data.train, self.tokenizer)
+            self.data_dev, _sampler_dev = setup_text_completion_data(cfg.data.dev, self.tokenizer)
         else:
-            data_iter = itertools.islice(enumerate(data_train), usable_batches)
-            n_batches = usable_batches
-        for i, batch in tqdm(data_iter, total=n_batches):
-            batch_to_device(batch, DEVICE)  # in-place
-            for tt, ttcnt in count_token_types(batch["tokens"], token_type_ranges, tokenizer.pad_id).items():
-                token_type_counts_total[tt] += ttcnt
-            max_seq_len_step = max(max_seq_len_step, batch["tokens"].size(1))
-            num_tokens_iter = int((batch["labels"] != loss_fn.ignore_index).sum().item())
-            num_tokens_step += num_tokens_iter
-            # loss is normalized -> multiply by number of tokens for renormalization later for grad. accum.
-            loss_batch = compute_loss(batch, model, loss_fn) * num_tokens_iter
-            loss_running += loss_batch
-            loss_batch.backward()
-            if (i + 1) % cfg.gradient_accumulation_steps == 0:
-                scale_grads(model, 1 / num_tokens_step)
-                if cfg.clip_grad_norm is not None:
-                    grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=float(cfg.clip_grad_norm))
-                optimizer.step()
-                optimizer.zero_grad(set_to_none=True)
-                if lr_scheduler is not None:
-                    lr_scheduler.step()
-                global_step += 1
-                consumed_samples += cfg.gradient_accumulation_steps * batch_size * world_size
-                loss_to_log = loss_running.item() / num_tokens_step  # loss per token
-                tokens_train_total += num_tokens_step  # total number of tokens trained on so far
-                # log metrics to console
-                LOGGER.info(
-                    " | ".join(
-                        (
-                            f"Epoch {epoch + 1:03d}",
-                            f"Iteration {i:0{len(str(batches_per_epoch))}d} / {batches_per_epoch}",
-                            f"Global Step {global_step}",
-                            f"Loss: {loss_to_log:.4f}",
-                            f"Tokens (num_tokens_step): {num_tokens_step}",
-                            *[f"Tokens ({tt}): {ttcnt}" for tt, ttcnt in token_type_counts_total.items()],
+            raise NotImplementedError
+
+        # === Derived training geometry ===
+        self.batch_size = cfg.data.train.dataloader.batch_size
+        self.batches_per_epoch = len(self.data_train)
+        remainder_batches = self.batches_per_epoch % cfg.gradient_accumulation_steps
+        if remainder_batches > 0:
+            LOGGER.warning(
+                f"batches_per_epoch ({self.batches_per_epoch}) is not divisible by "
+                f"gradient_accumulation_steps ({cfg.gradient_accumulation_steps}): "
+                f"{remainder_batches} remainder batches will be discarded at each epoch boundary."
+            )
+        self.steps_per_epoch = self.batches_per_epoch // cfg.gradient_accumulation_steps
+        assert self.steps_per_epoch > 0, (
+            f"batches_per_epoch ({self.batches_per_epoch}) < "
+            f"gradient_accumulation_steps ({cfg.gradient_accumulation_steps})"
+        )
+        self.usable_batches = self.steps_per_epoch * cfg.gradient_accumulation_steps
+        self.n_epochs = math.ceil(cfg.max_steps / self.steps_per_epoch)
+
+        # === Validate hparams on resume ===
+        if resume_state:
+            validate_resume_hparams(
+                ckpt_hparams=resume_state["training_hparams"],
+                current_hparams=self.training_hparams,
+                force_resume=cfg.get("force_resume", False),
+            )
+
+        # === Resume position ===
+        self.epochs_run = self.global_step // self.steps_per_epoch
+        self.batches_to_skip = (self.global_step % self.steps_per_epoch) * cfg.gradient_accumulation_steps
+
+        # === Cumulative metrics (restore or initialize) ===
+        self.tokens_train_total: int = 0
+        self.token_type_counts_total: defaultdict[str, int] = defaultdict(int)
+        self.wall_clock_offset: float = 0.0
+        if resume_state:
+            cm = resume_state["cumulative_metrics"]
+            self.tokens_train_total = cm["tokens_train_total"]
+            for k, v in cm["token_type_counts"].items():
+                self.token_type_counts_total[k] = v
+            self.wall_clock_offset = cm["wall_clock_seconds"]
+
+        # === Restore framework RNG states (after all setup, before training loop) ===
+        if resume_state:
+            restore_rng_states(resume_state["rng_state"])
+            LOGGER.info("Restored framework RNG states from checkpoint.")
+
+    def train(self) -> None:
+        cfg = self.cfg
+
+        # === Training loop ===
+        self.optimizer.zero_grad()
+        self._t_train_start = time.perf_counter()
+        t0 = time.perf_counter()
+        loss_running = 0.0
+        num_tokens_step = 0
+        max_seq_len_step = 0
+        grad_norm = None
+        LOGGER.info(OmegaConf.to_yaml(cfg, resolve=True, sort_keys=False))
+        self.wandb_logger.log_config(cfg)  # log config after parameter resolution + overrides
+        for epoch in range(self.epochs_run, self.n_epochs):
+            self.epoch = epoch
+            self.sampler_train.set_epoch(self.epoch)  # distinct seed each epoch
+            if hasattr(self.data_train.dataset, "set_epoch"):
+                self.data_train.dataset.set_epoch(self.epoch)
+            # Skip already-processed batches on resume -> neatly eliminates need to zero grads for these
+            if self.epoch == self.epochs_run and self.batches_to_skip > 0:
+                LOGGER.info(f"Resuming: skipping {self.batches_to_skip} batches in epoch {self.epoch}")
+                data_iter = itertools.islice(
+                    enumerate(self.data_train), self.batches_to_skip, self.usable_batches
+                )
+                n_batches = self.usable_batches - self.batches_to_skip
+            else:
+                data_iter = itertools.islice(enumerate(self.data_train), self.usable_batches)
+                n_batches = self.usable_batches
+            for i, batch in tqdm(data_iter, total=n_batches):
+                batch_to_device(batch, self.device)  # in-place
+                for tt, ttcnt in count_token_types(
+                    batch["tokens"], self.token_type_ranges, self.tokenizer.pad_id
+                ).items():
+                    self.token_type_counts_total[tt] += ttcnt
+                max_seq_len_step = max(max_seq_len_step, batch["tokens"].size(1))
+                num_tokens_iter = int((batch["labels"] != self.loss_fn.ignore_index).sum().item())
+                num_tokens_step += num_tokens_iter
+                # loss is normalized -> multiply by number of tokens for renormalization later for grad. accum.
+                loss_batch = compute_loss(batch, self.model, self.loss_fn) * num_tokens_iter
+                loss_running += loss_batch
+                loss_batch.backward()
+                if (i + 1) % cfg.gradient_accumulation_steps == 0:
+                    scale_grads(self.model, 1 / num_tokens_step)
+                    if cfg.clip_grad_norm is not None:
+                        grad_norm = torch.nn.utils.clip_grad_norm_(
+                            self.model.parameters(), max_norm=float(cfg.clip_grad_norm)
+                        )
+                    self.optimizer.step()
+                    self.optimizer.zero_grad(set_to_none=True)
+                    if self.lr_scheduler is not None:
+                        self.lr_scheduler.step()
+                    self.global_step += 1
+                    self.consumed_samples += cfg.gradient_accumulation_steps * self.batch_size * self.world_size
+                    loss_to_log = loss_running.item() / num_tokens_step  # loss per token
+                    self.tokens_train_total += num_tokens_step  # total number of tokens trained on so far
+                    # log metrics to console
+                    LOGGER.info(
+                        " | ".join(
+                            (
+                                f"Epoch {self.epoch + 1:03d}",
+                                f"Iteration {i:0{len(str(self.batches_per_epoch))}d} / {self.batches_per_epoch}",
+                                f"Global Step {self.global_step}",
+                                f"Loss: {loss_to_log:.4f}",
+                                f"Tokens (num_tokens_step): {num_tokens_step}",
+                                *[
+                                    f"Tokens ({tt}): {ttcnt}"
+                                    for tt, ttcnt in self.token_type_counts_total.items()
+                                ],
+                            )
                         )
                     )
-                )
-                # validate (evaluate on dev set)
-                if global_step % cfg.eval_steps == 0:
-                    dev_loss = compute_dataset_loss(
-                        model, data_dev, loss_fn, epoch, global_step, steps_per_epoch, DEVICE
-                    )
-                else:
+                    # evaluate on dev set
                     dev_loss = None
-                # log metrics to wandb
-                if global_step % cfg.log_interval == 0:
-                    dur_step = time.perf_counter() - t0
-                    log_dict = {
-                        "loss": loss_to_log,
-                        "lr": get_lr(optimizer),
-                        "duration_step": dur_step,
-                        "tokens_per_second_per_gpu": num_tokens_step / dur_step,
-                        "tokens_total": tokens_train_total,
-                        "train_clock_time": (wall_clock_offset + (time.perf_counter() - t_train_start)) / (60**2),
-                        "max_seq_len_step": max_seq_len_step,
-                        **{f"n_tokens.{tt}": ttcnt for tt, ttcnt in token_type_counts_total.items()},
-                    }
-                    if cfg.clip_grad_norm is not None:
-                        log_dict.update({"grad_norm": grad_norm})
-                    if dev_loss is not None:
-                        log_dict.update({"dev_loss": dev_loss})
-                    wandb_logger.log_dict(log_dict, step=global_step)
-                # reset step-level tracker variables
-                loss_running = 0.0
-                num_tokens_step = 0
-                max_seq_len_step = 0
-                t0 = time.perf_counter()
-                # Save checkpoint
-                if global_step != 0 and global_step % cfg.save_steps == 0:
-                    checkpointer.save_model_checkpoint(model.state_dict(), global_step)
-                    checkpointer.save_training_state(
-                        optimizer_state_dict=optimizer.state_dict(),
-                        lr_scheduler_state_dict=lr_scheduler.state_dict() if lr_scheduler else None,
-                        global_step=global_step,
-                        seed=SEED,
-                        training_hparams={
-                            "batch_size": batch_size,
-                            "gradient_accumulation_steps": cfg.gradient_accumulation_steps,
-                            "world_size": world_size,
-                            "steps_per_epoch": steps_per_epoch,
-                        },
-                        consumed_samples=consumed_samples,
-                        cumulative_metrics={
-                            "tokens_train_total": tokens_train_total,
-                            "token_type_counts": dict(token_type_counts_total),
-                            "wall_clock_seconds": wall_clock_offset + (time.perf_counter() - t_train_start),
-                        },
-                    )
-                    LOGGER.info(f"Checkpoint saved at step {global_step}")
-                if global_step >= cfg.max_steps:
-                    LOGGER.info("Training completed.")
-                    return
-            del batch  # Explicitly delete the batch to free memory; attempt to debug OOM
-            torch.cuda.empty_cache()  # Release all unoccupied cached memory; attempt to debug OOM
+                    if self.global_step % cfg.eval_steps == 0:
+                        dev_loss = self.evaluate()
+                    # log metrics to wandb
+                    if self.global_step % cfg.log_interval == 0:
+                        dur_step = time.perf_counter() - t0
+                        self.log_metrics(
+                            loss=loss_to_log,
+                            dev_loss=dev_loss,
+                            dur_step=dur_step,
+                            grad_norm=grad_norm,
+                            num_tokens_step=num_tokens_step,
+                            max_seq_len_step=max_seq_len_step,
+                        )
+                    # reset step-level tracker variables
+                    loss_running = 0.0
+                    num_tokens_step = 0
+                    max_seq_len_step = 0
+                    t0 = time.perf_counter()
+                    # Save checkpoint
+                    if self.global_step != 0 and self.global_step % cfg.save_steps == 0:
+                        self.save_checkpoint()
+                    if self.global_step >= cfg.max_steps:
+                        LOGGER.info("Training completed.")
+                        return
+                del batch  # Explicitly delete the batch to free memory; attempt to debug OOM
+                torch.cuda.empty_cache()  # Release all unoccupied cached memory; attempt to debug OOM
+
+    def save_checkpoint(self) -> None:
+        self.checkpointer.save_model_checkpoint(self.model.state_dict(), self.global_step)
+        self.checkpointer.save_training_state(
+            optimizer_state_dict=self.optimizer.state_dict(),
+            lr_scheduler_state_dict=self.lr_scheduler.state_dict() if self.lr_scheduler else None,
+            global_step=self.global_step,
+            seed=SEED,
+            training_hparams=self.training_hparams,
+            consumed_samples=self.consumed_samples,
+            cumulative_metrics=self.cumulative_metrics,
+        )
+        LOGGER.info(f"Checkpoint saved at step {self.global_step}")
+
+    def evaluate(self) -> float:
+        return compute_dataset_loss(
+            self.model, self.data_dev, self.loss_fn,
+            self.epoch, self.global_step, self.steps_per_epoch, self.device,
+        )
+
+    def log_metrics(
+        self,
+        *,
+        loss: float,
+        dev_loss: float | None,
+        dur_step: float,
+        grad_norm: float | None,
+        num_tokens_step: int,
+        max_seq_len_step: int,
+    ) -> None:
+        log_dict = {
+            "loss": loss,
+            "lr": get_lr(self.optimizer),
+            "duration_step": dur_step,
+            "tokens_per_second_per_gpu": num_tokens_step / dur_step,
+            "tokens_total": self.tokens_train_total,
+            "train_clock_time": (self.wall_clock_offset + (time.perf_counter() - self._t_train_start)) / (60**2),
+            "max_seq_len_step": max_seq_len_step,
+            **{f"n_tokens.{tt}": ttcnt for tt, ttcnt in self.token_type_counts_total.items()},
+        }
+        if self.cfg.clip_grad_norm is not None:
+            log_dict.update({"grad_norm": grad_norm})
+        if dev_loss is not None:
+            log_dict.update({"dev_loss": dev_loss})
+        self.wandb_logger.log_dict(log_dict, step=self.global_step)
+
+    @property
+    def training_hparams(self) -> dict[str, Any]:
+        return {
+            "batch_size": self.batch_size,
+            "gradient_accumulation_steps": self.cfg.gradient_accumulation_steps,
+            "world_size": self.world_size,
+            "steps_per_epoch": self.steps_per_epoch,
+        }
+
+    @property
+    def cumulative_metrics(self) -> dict[str, Any]:
+        return {
+            "tokens_train_total": self.tokens_train_total,
+            "token_type_counts": dict(self.token_type_counts_total),
+            "wall_clock_seconds": self.wall_clock_offset + (time.perf_counter() - self._t_train_start),
+        }
+
+
+def train(cfg: DictConfig) -> None:
+    trainer = Trainer(cfg)
+    trainer.setup()
+    trainer.train()
