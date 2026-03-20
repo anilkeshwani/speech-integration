@@ -113,6 +113,7 @@
             force-sort-within-sections = true
 
 [tool.yamlfix]
-    explicit_start      = false  # don't prepend --- to files (Hydra configs don't use document start markers)
-    line_length         = 120    # match project line length
-    none_representation = "null" # use explicit "null" instead of bare empty values
+    explicit_start      = false         # don't prepend --- to files (Hydra configs don't use document start markers)
+    line_length         = 120           # match project line length
+    none_representation = "null"        # use explicit "null" instead of bare empty values
+    sequence_style      = "block_style" # use dashed list style, not inline [a, b]
