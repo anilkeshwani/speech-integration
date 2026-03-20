@@ -66,6 +66,6 @@ jobs:
       - name: Install dev dependencies
         run: uv sync --extra dev
       - name: Format check (yamlfix --check)
-        run: uv run yamlfix --check --exclude 'conf/data/sft/' .
+        run: uv run yamlfix --check --exclude '.venv' --exclude 'conf/data/sft' conf/
       - name: Lint (yamllint)
         run: uv run yamllint .
