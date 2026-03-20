@@ -184,7 +184,7 @@ def train(cfg: DictConfig) -> None:
     global_step = 0
     consumed_samples = 0
     resume_state: dict[str, Any] | None = None
-    if checkpointer.recipe_checkpoint is not None:
+    if checkpointer.training_state_checkpoint is not None:
         resume_state = resume_training_state(ckpt_dict)
         global_step = resume_state["global_step"]
         consumed_samples = resume_state["consumed_samples"]

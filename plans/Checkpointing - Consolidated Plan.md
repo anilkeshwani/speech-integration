@@ -118,7 +118,7 @@ Each decision records what we chose, what we rejected, and why.
 
 **Chose**: Two public methods with distinct signatures and responsibilities.
 **Rejected**: Single `save_checkpoint` with `save_training_state` boolean flag.
-**Why**: The old API conflated two operations with different purposes, lifecycles, and storage requirements. Model checkpoints are per-step HF-format directories used for inference/evaluation; training state is a single overwritten file used only for resume. The boolean flag was a code smell — callers like `extend_llama3_2.py` had to pass dummy `optimizer_state_dict=None`, `seed=SEED`, `save_training_state=False`. Optional `None` defaults on training state fields created a latent bug: a caller could write a `recipe_state.pt` missing required keys that would crash on resume. The new API enforces the schema v1 contract via mandatory keyword arguments — it is impossible to create an unresumable checkpoint.
+**Why**: The old API conflated two operations with different purposes, lifecycles, and storage requirements. Model checkpoints are per-step HF-format directories used for inference/evaluation; training state is a single overwritten file used only for resume. The boolean flag was a code smell — callers like `extend_llama3_2.py` had to pass dummy `optimizer_state_dict=None`, `seed=SEED`, `save_training_state=False`. Optional `None` defaults on training state fields created a latent bug: a caller could write a `training_state.pt` missing required keys that would crash on resume. The new API enforces the schema v1 contract via mandatory keyword arguments — it is impossible to create an unresumable checkpoint.
 
 ---
 
@@ -134,7 +134,7 @@ experiments/
       checkpoints/
         step_N/
           model-*.safetensors, config.json, tokenizer.model, ...
-        recipe_state.pt
+        training_state.pt
 ```
 
 **Proposed layout** — organized by speech tokenizer, with BPE as a subdirectory:
@@ -148,7 +148,7 @@ experiments/
         model-*.safetensors, config.json, tokenizer.model
       {stage}_{wandb_id}/                               <- runs using BPE compression
         step_N/
-        recipe_state.pt
+        training_state.pt
         torchtune_config.yaml
     {stage}_{wandb_id}/                                 <- runs using raw DSUs
       step_N/                                           <- model checkpoint (HF-format, self-contained)
@@ -157,7 +157,7 @@ experiments/
         config.json
         tokenizer.model
         generation_config.json
-      recipe_state.pt                                   <- training state (single file, always overwritten)
+      training_state.pt                                   <- training state (single file, always overwritten)
       torchtune_config.yaml                             <- resolved config snapshot
 ```
 
@@ -170,20 +170,20 @@ experiments/
       base_model/                                       <- Llama 3.2 1B + BPE-compressed HuBERT vocab
       cpt_interleaved_c3d4e5f6/
         step_5000/
-        recipe_state.pt
+        training_state.pt
         torchtune_config.yaml
       sft_d4e5f6a7/
         ...
     cpt_interleaved_9h3htysc/
       step_5000/
       step_10000/
-      recipe_state.pt
+      training_state.pt
       torchtune_config.yaml
     cpt_concatenated_a1b2c3d4/
       ...
     sft_a7b2cdef/
       step_2000/
-      recipe_state.pt
+      training_state.pt
       torchtune_config.yaml
   speechtokenizer/
     base_model/
@@ -214,7 +214,7 @@ experiments/
    - `stage`: `cpt_interleaved`, `cpt_concatenated`, or `sft`
    - `wandb_id`: 8-character W&B run ID for uniqueness and cross-referencing
 
-7. **No `checkpoints/` nesting**: The constant `checkpoints/` intermediate directory is dropped — `step_N/` directories and `recipe_state.pt` live directly in the run directory.
+7. **No `checkpoints/` nesting**: The constant `checkpoints/` intermediate directory is dropped — `step_N/` directories and `training_state.pt` live directly in the run directory.
 
 8. **`torchtune_config.yaml` at run level**: A snapshot of the resolved training config, saved once at training start. Enables auditability and re-running without hunting for the original config.
 
@@ -238,9 +238,9 @@ step_N/
 
 Produced by `save_model_checkpoint()`. Files other than weights are copied from the source model directory so each checkpoint is independently loadable.
 
-### 4.3. Training State Contents (`recipe_state.pt`)
+### 4.3. Training State Contents (`training_state.pt`)
 
-A single `recipe_state.pt` file at the run directory level, always overwritten on save. Contains everything needed for exact resume.
+A single `training_state.pt` file at the run directory level, always overwritten on save. Contains everything needed for exact resume.
 
 **Schema v1** (current):
 

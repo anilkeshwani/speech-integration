@@ -142,7 +142,7 @@ class TextCompletionDataset(Dataset):
             # TODO -1 is odd and does not match the tokenize_messages method NOTE this is original torchtune code
             tokens = truncate(tokens, self._tokenizer.max_seq_len - 1)
 
-        # No need to offset labels by 1 - happens in the recipe # TODO find where this is done and update this comment
+        # No need to offset labels by 1 - happens in the training loop # TODO find where this is done and update this comment
         labels = tokens.copy()
 
         return {"tokens": tokens, "labels": labels}

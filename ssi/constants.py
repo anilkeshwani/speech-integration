@@ -75,7 +75,7 @@ assert SEED_KEY == "seed"
 TOTAL_EPOCHS_KEY: str = training.TOTAL_EPOCHS_KEY  # total number of epochs
 assert TOTAL_EPOCHS_KEY == "total_epochs"
 
-GLOBAL_STEP_KEY: str = "global_step"  # canonical key for global step in recipe checkpoints
+GLOBAL_STEP_KEY: str = "global_step"  # canonical key for global step in training state checkpoints
 
 RNG_KEY: str = training.RNG_KEY  # rng state for ensuring correct training resuming (original use in PPO impl.)
 assert RNG_KEY == "rng_state"

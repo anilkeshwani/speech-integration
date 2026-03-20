@@ -260,7 +260,7 @@ def test_round_trip_training_state(tmp_path):
         output_dir=tmp_path,
     )
     checkpointer.save_training_state(**TRAINING_STATE_KWARGS)
-    loaded = torch.load(tmp_path / "recipe_state.pt", weights_only=False)
+    loaded = torch.load(tmp_path / "training_state.pt", weights_only=False)
     assert loaded[GLOBAL_STEP_KEY] == 150
     assert loaded[CONSUMED_SAMPLES_KEY] == 9600
     assert loaded[CHECKPOINT_VERSION_KEY] == CHECKPOINT_VERSION
@@ -278,7 +278,7 @@ def test_training_state_contains_global_step_not_steps_run(tmp_path):
         output_dir=tmp_path,
     )
     checkpointer.save_training_state(**{**TRAINING_STATE_KWARGS, "lr_scheduler_state_dict": None})
-    loaded = torch.load(tmp_path / "recipe_state.pt", weights_only=False)
+    loaded = torch.load(tmp_path / "training_state.pt", weights_only=False)
     assert GLOBAL_STEP_KEY in loaded
     assert "steps_run" not in loaded
 
@@ -292,21 +292,21 @@ def test_training_state_does_not_contain_epochs_key(tmp_path):
         output_dir=tmp_path,
     )
     checkpointer.save_training_state(**TRAINING_STATE_KWARGS)
-    loaded = torch.load(tmp_path / "recipe_state.pt", weights_only=False)
+    loaded = torch.load(tmp_path / "training_state.pt", weights_only=False)
     assert EPOCHS_KEY not in loaded
 
 
 @_skip_disk
 def test_legacy_checkpoint_from_disk_raises(tmp_path):
-    """T15: A recipe_state.pt without checkpoint_version is rejected on resume."""
+    """T15: A training_state.pt without checkpoint_version is rejected on resume."""
     legacy_dict = {
         SEED_KEY: SEED,
         EPOCHS_KEY: 2,
         GLOBAL_STEP_KEY: 100,
         OPTIMIZER_KEY: {"state": {}, "param_groups": []},
     }
-    torch.save(legacy_dict, tmp_path / "recipe_state.pt")
-    loaded = torch.load(tmp_path / "recipe_state.pt", weights_only=False)
+    torch.save(legacy_dict, tmp_path / "training_state.pt")
+    loaded = torch.load(tmp_path / "training_state.pt", weights_only=False)
     with pytest.raises(ValueError, match="Legacy checkpoints are not supported"):
         resume_training_state(loaded)
 
@@ -335,8 +335,8 @@ def test_save_model_checkpoint_creates_step_dir(tmp_path):
     # Model weight files from the source should NOT be copied
     # (they are rewritten as shards, not copied verbatim)
     assert not (output_dir / "model.safetensors").is_file() or len(safetensor_files) >= 1
-    # recipe_state.pt should NOT be in the step directory
-    assert not (output_dir / "recipe_state.pt").is_file()
+    # training_state.pt should NOT be in the step directory
+    assert not (output_dir / "training_state.pt").is_file()
 
 
 # ---------------------------------------------------------------------------

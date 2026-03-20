@@ -97,7 +97,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         config_json: Path to the model ``config.json``. Defaults to the Llama 3.2
             config relative path under checkpoint_dir.
         output_dir: Root directory for saved checkpoints and training state.
-        recipe_checkpoint: Path to a ``recipe_state.pt`` file for resuming training.
+        training_state_checkpoint: Path to a ``training_state.pt`` file for resuming training.
             None when starting from scratch.
         safe_serialization: If True (default), save weights as safetensors; otherwise
             save as ``.bin`` via ``torch.save``.
@@ -110,20 +110,20 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         *,
         config_json: Path | str | None = None,
         output_dir: Path | str,
-        recipe_checkpoint: Path | str | None = None,
+        training_state_checkpoint: Path | str | None = None,
         safe_serialization: bool = True,
     ) -> None:
         self.checkpoint_dir = Path(checkpoint_dir)
         self.safe_serialization = safe_serialization
         self.output_dir = Path(output_dir)  # idempotent
-        self.recipe_checkpoint = Path(recipe_checkpoint) if recipe_checkpoint is not None else None
+        self.training_state_checkpoint = Path(training_state_checkpoint) if training_state_checkpoint is not None else None
         if isinstance(checkpoint_files, ListConfig):
             checkpoint_files = OmegaConf.to_object(checkpoint_files)
 
         check_outdir_not_in_ckptdir(ckpt_dir=self.checkpoint_dir, out_dir=self.output_dir)
 
-        if self.recipe_checkpoint is not None and not self.recipe_checkpoint.is_file():
-            raise FileNotFoundError(f"Recipe checkpoint file {self.recipe_checkpoint} not found.")
+        if self.training_state_checkpoint is not None and not self.training_state_checkpoint.is_file():
+            raise FileNotFoundError(f"Recipe checkpoint file {self.training_state_checkpoint} not found.")
 
         self.output_dir.mkdir(parents=True, exist_ok=True)  # TODO
 
@@ -140,16 +140,16 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         )
 
         LOGGER.info(f"Resuming from checkpoint(s): {[str(path) for path in self._checkpoint_paths]}")
-        if self.recipe_checkpoint is not None:
-            LOGGER.info(f"Resuming optimizer and recipe state from: {self.recipe_checkpoint}")
+        if self.training_state_checkpoint is not None:
+            LOGGER.info(f"Resuming optimizer and training state from: {self.training_state_checkpoint}")
         else:
-            LOGGER.info("No recipe state checkpoint passed. Will initialize optimizer state from scratch.")
+            LOGGER.info("No training state checkpoint passed. Will initialize optimizer state from scratch.")
 
     def load_checkpoint(self) -> dict[str, Any]:
         """Load and merge HF checkpoint shards, converting to torchtune key format.
 
         Populates ``_weight_map`` (key -> shard ID) so that ``save_model_checkpoint``
-        can partition weights back into the same shard layout. If ``recipe_checkpoint``
+        can partition weights back into the same shard layout. If ``training_state_checkpoint``
         was provided at init, the training state is merged into the returned dict.
 
         Raises:
@@ -160,9 +160,8 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         # merged state_dict contains keys and weights from all the checkpoint files
         merged_state_dict: dict[str, torch.Tensor] = {}
 
-        # converted_state_dict is the final state_dict passed to the recipe after the
-        # keys are converted into the torchtune format. This optionally also contains
-        # the recipe state
+        # converted_state_dict is the final state_dict after keys are converted into
+        # the torchtune format. This optionally also contains the training state.
         converted_state_dict: dict[str, Any] = {}
 
         # _checkpoint_paths are already sorted so simply enumerate to generate the right id
@@ -170,7 +169,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             state_dict = safe_torch_load(cpt_path)
             for key, value in state_dict.items():
                 # Ensure that the state dict is a flat dict of keys and tensors. Breaking this assumption
-                # will break recipe code
+                # will break downstream code
                 if not isinstance(value, torch.Tensor):
                     raise ValueError(
                         f"Expected all values in the state dict to be torch.Tensor. Found {type(value)} instead."
@@ -191,9 +190,9 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             head_dim=self._config.get("head_dim", None),
         )
 
-        if self.recipe_checkpoint is not None:
-            recipe_state = safe_torch_load(self.recipe_checkpoint, mmap=False)
-            converted_state_dict.update(recipe_state)
+        if self.training_state_checkpoint is not None:
+            training_state = safe_torch_load(self.training_state_checkpoint, mmap=False)
+            converted_state_dict.update(training_state)
 
         return converted_state_dict
 
@@ -304,7 +303,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         consumed_samples: int,
         cumulative_metrics: dict[str, Any],
     ) -> Path:
-        """Save training resume state to ``recipe_state.pt`` at ``self.output_dir``.
+        """Save training resume state to ``training_state.pt`` at ``self.output_dir``.
 
         Always overwrites the previous file. All fields except
         ``lr_scheduler_state_dict`` are mandatory — a checkpoint written by this
@@ -323,7 +322,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "ssi_version": __version__,
         }
-        output_path = self.output_dir / "recipe_state.pt"
+        output_path = self.output_dir / "training_state.pt"
         torch.save(state_dict, output_path)
         LOGGER.info(f"Training state ({os.path.getsize(output_path) / 1024**3:.2f} GiB) saved to {output_path}")
         return output_path

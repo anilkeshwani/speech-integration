@@ -6,7 +6,7 @@
 
 1. **Model checkpoint** — HF-format safetensors saved per step in `step_N/`. Used for inference, generation, fine-tuning, and evaluation. Lives on disk indefinitely, one directory per checkpoint step. Consumers: `generate.py`, `plt_embed_tsne.py`, downstream evaluation scripts, HuggingFace ecosystem tools.
 
-2. **Training state** — optimizer, LR scheduler, RNG states, training hparams, cumulative metrics, consumed_samples, saved as `recipe_state.pt`. Used exclusively for resuming training (crash recovery, multi-job training). Only the latest one matters — always overwritten. Consumers: `train.py` resume path only.
+2. **Training state** — optimizer, LR scheduler, RNG states, training hparams, cumulative metrics, consumed_samples, saved as `training_state.pt`. Used exclusively for resuming training (crash recovery, multi-job training). Only the latest one matters — always overwritten. Consumers: `train.py` resume path only.
 
 ### Problems with the current design
 
@@ -29,7 +29,7 @@ if cumulative_metrics is not None:        # line 338 — key omitted when None
     ckpt_dict[CUMULATIVE_METRICS_KEY] = ...
 ```
 
-When any of these are left at the default `None`, the corresponding key is **silently omitted** from the saved `recipe_state.pt`.
+When any of these are left at the default `None`, the corresponding key is **silently omitted** from the saved `training_state.pt`.
 
 The load side (`train.py:70-87`, `resume_training_state`) uses direct `[]` subscripts on every one of those keys:
 
@@ -41,11 +41,11 @@ The load side (`train.py:70-87`, `resume_training_state`) uses direct `[]` subsc
 
 There are no `.get()` fallbacks — these are hard subscripts that raise `KeyError` if the key is absent.
 
-**The bug**: A caller can invoke `save_checkpoint(...)` with `save_training_state=True` (the default, line 316) while leaving `training_hparams`, `lr_scheduler_state_dict`, or `cumulative_metrics` at their default `None`. The function writes a `recipe_state.pt` missing required keys. On resume, `resume_training_state` crashes with `KeyError`. This works today only because `train.py` happens to pass all fields — the API signature does not enforce it.
+**The bug**: A caller can invoke `save_checkpoint(...)` with `save_training_state=True` (the default, line 316) while leaving `training_hparams`, `lr_scheduler_state_dict`, or `cumulative_metrics` at their default `None`. The function writes a `training_state.pt` missing required keys. On resume, `resume_training_state` crashes with `KeyError`. This works today only because `train.py` happens to pass all fields — the API signature does not enforce it.
 
-**P3: Everything flows through one dict.** `save_checkpoint` builds a single `ckpt_dict` containing model weights, optimizer state, RNG states, metrics, and metadata. This dict is then passed to `_save_checkpoint`, which passes the whole thing to `save_full_model` (which reads `MODEL_KEY`) and `save_recipe_state` (which filters out `MODEL_KEY`). The model weights and training state never need to be in the same dict — they go to different files in different locations.
+**P3: Everything flows through one dict.** `save_checkpoint` builds a single `ckpt_dict` containing model weights, optimizer state, RNG states, metrics, and metadata. This dict is then passed to `_save_checkpoint`, which passes the whole thing to `save_full_model` (which reads `MODEL_KEY`) and `save_training_state` (which filters out `MODEL_KEY`). The model weights and training state never need to be in the same dict — they go to different files in different locations.
 
-**P4: Storage locations are tangled.** Model weights go to `step_N/` subdirectories; training state goes to `self.output_dir/recipe_state.pt`. But the logic for determining these paths is interleaved inside `save_checkpoint` and `_save_checkpoint`. The caller can't control them independently.
+**P4: Storage locations are tangled.** Model weights go to `step_N/` subdirectories; training state goes to `self.output_dir/training_state.pt`. But the logic for determining these paths is interleaved inside `save_checkpoint` and `_save_checkpoint`. The caller can't control them independently.
 
 ---
 
@@ -84,7 +84,7 @@ class FullModelHFCheckpointer:
         consumed_samples: int,
         cumulative_metrics: dict[str, Any],
     ) -> Path:
-        """Save training resume state to recipe_state.pt at self.output_dir.
+        """Save training resume state to training_state.pt at self.output_dir.
 
         Always overwrites the previous file. All fields except
         lr_scheduler_state_dict are mandatory — a checkpoint written by this
@@ -117,7 +117,7 @@ class FullModelHFCheckpointer:
     ...
   step_200/
     ...
-  recipe_state.pt            <- save_training_state (single file, always overwritten)
+  training_state.pt            <- save_training_state (single file, always overwritten)
 ```
 
 This is exactly the layout we already have. The refactor changes the code structure, not the disk structure.
@@ -133,9 +133,9 @@ Deleted. Its responsibilities are absorbed:
 - File copy logic → `save_model_checkpoint`
 - Recipe state logic → `save_training_state`
 
-### What happens to `save_recipe_state`
+### What happens to `save_training_state`
 
-Replaced by `save_training_state`. The current `save_recipe_state` takes an opaque dict and filters out model keys — the new method constructs the dict internally from explicit parameters, which is cleaner and self-documenting.
+Replaced by `save_training_state`. The current `save_training_state` takes an opaque dict and filters out model keys — the new method constructs the dict internally from explicit parameters, which is cleaner and self-documenting.
 
 ### What happens to `save_full_model`
 
@@ -175,7 +175,7 @@ checkpointer.save_training_state(
 )
 ```
 
-Two calls, clear intent. The model checkpoint goes to `step_N/`, the training state goes to `recipe_state.pt`.
+Two calls, clear intent. The model checkpoint goes to `step_N/`, the training state goes to `training_state.pt`.
 
 ### `scripts/extend_llama3_2.py` — model export only
 
@@ -206,7 +206,7 @@ No dummy parameters, no `save_training_state=False` flag, no confusion.
 
 ### `ssi/train.py` — resume path (`load_checkpoint`)
 
-**No change.** `load_checkpoint` already handles both model weights and recipe state in a single load (it merges `recipe_state.pt` into the returned dict when `recipe_checkpoint` is set). This is fine for now — the load side's concern separation is less urgent because it always needs both pieces when resuming. If we later want to load model-only (for evaluation), we just don't pass `recipe_checkpoint`.
+**No change.** `load_checkpoint` already handles both model weights and training state in a single load (it merges `training_state.pt` into the returned dict when `training_state_checkpoint` is set). This is fine for now — the load side's concern separation is less urgent because it always needs both pieces when resuming. If we later want to load model-only (for evaluation), we just don't pass `training_state_checkpoint`.
 
 ---
 
@@ -214,9 +214,9 @@ No dummy parameters, no `save_training_state=False` flag, no confusion.
 
 ### `tests/test_checkpoint.py`
 
-The disk round-trip tests (T12–T15) currently call `save_recipe_state` on a `FullModelHFCheckpointer` instance. These need to call `save_training_state` instead, with explicit arguments rather than a dict.
+The disk round-trip tests (T12–T15) currently call `save_training_state` on a `FullModelHFCheckpointer` instance. These need to call `save_training_state` instead, with explicit arguments rather than a dict.
 
-The T12 test (round-trip recipe state) becomes:
+The T12 test (round-trip training state) becomes:
 ```python
 checkpointer.save_training_state(
     optimizer_state_dict={"state": {}, "param_groups": []},
@@ -251,7 +251,7 @@ Added both new methods to `FullModelHFCheckpointer` (`ssi/checkpoint.py:277-336`
 
 `save_model_checkpoint` saves model weights in HF safetensors format to `step_N/`, copies config/tokenizer files alongside, and returns the output directory path.
 
-`save_training_state` constructs the full v1 schema dict internally from mandatory keyword arguments, saves to `recipe_state.pt`, and returns the output file path.
+`save_training_state` constructs the full v1 schema dict internally from mandatory keyword arguments, saves to `training_state.pt`, and returns the output file path.
 
 ### Step 2: Migrate callers — Done
 
@@ -260,11 +260,11 @@ Added both new methods to `FullModelHFCheckpointer` (`ssi/checkpoint.py:277-336`
 
 ### Step 3: Delete old methods — Done
 
-Removed `save_checkpoint`, `_save_checkpoint`, and `save_recipe_state` from `FullModelHFCheckpointer`.
+Removed `save_checkpoint`, `_save_checkpoint`, and `save_training_state` from `FullModelHFCheckpointer`.
 
 ### Step 4: Update tests — Done
 
-Updated disk round-trip tests (T12–T14) in `tests/test_checkpoint.py` to call `save_training_state` with explicit keyword arguments instead of passing a dict to the old `save_recipe_state`.
+Updated disk round-trip tests (T12–T14) in `tests/test_checkpoint.py` to call `save_training_state` with explicit keyword arguments instead of passing a dict to the old `save_training_state`.
 
 ---
 
@@ -290,5 +290,5 @@ The old code conditionally added `LR_SCHEDULER_KEY` to the checkpoint dict only 
 
 ## Out of Scope
 
-- **`load_checkpoint` refactor**: The load side merges model weights and recipe state into one dict. This works and the resume path handles it correctly. Splitting the load is a separate concern and not needed now.
+- **`load_checkpoint` refactor**: The load side merges model weights and training state into one dict. This works and the resume path handles it correctly. Splitting the load is a separate concern and not needed now.
 - **Checkpoint retention policy**: Deciding how many `step_N/` directories to keep on disk is orthogonal to this refactor (F4 in Checkpointing - Consolidated Plan).
