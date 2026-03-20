@@ -4,18 +4,16 @@ optimizer:
   betas: [0.9, 0.999]
   eps: 1e-8
   weight_decay: 0.01
-  amsgrad: False
-  fused: True
+  amsgrad: false
+  fused: true
 gradient_accumulation_steps: 4
 clip_grad_norm: null
-
 # Learning rate scheduler
 lr_scheduler:
   num_warmup_steps: 1000
   num_cycles: 0.5
-
 # Training duration in **steps** (not iterations; i.e. factoring in grad. accum.)
-max_steps: 100000 # -> Set very high; typically higher than Slurm time limit (3 days == 72 hours)
+max_steps: 100000  # -> Set very high; typically higher than Slurm time limit (3 days == 72 hours)
 
 # Logging interval
 log_interval: 1
@@ -27,13 +25,12 @@ eval_steps: 1000
 save_steps: 10000
 
 # Resume behaviour
-force_resume: False # downgrade hparam mismatch errors to warnings on resume (expert override)
-
+force_resume: false  # downgrade hparam mismatch errors to warnings on resume (expert override)
 # Checkpointer initialization
 checkpointer:
   checkpoint_dir: ???
   checkpoint_files: ???
-  config_json: null # if null -> resolved to ${checkpointer.checkpoint_dir}  / LLAMA_3_2_CONFIG_RELPATH
-  output_dir: null # if null -> resolved to ${output_dir}/${wandb_run_name}-id_{wandb_run_id}/checkpoints
+  config_json: null  # if null -> resolved to ${checkpointer.checkpoint_dir}  / LLAMA_3_2_CONFIG_RELPATH
+  output_dir: null  # if null -> resolved to ${output_dir}/${wandb_run_name}-id_{wandb_run_id}/checkpoints
   training_state_checkpoint: null
-  safe_serialization: True
+  safe_serialization: true

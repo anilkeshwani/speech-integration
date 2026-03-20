@@ -28,6 +28,7 @@ repos:
     rev: 1.19.1
     hooks:
       - id: yamlfix
+        exclude: ^conf/data/sft/  # SFT configs contain prompt templates that must not be reformatted
   - repo: https://github.com/adrienverge/yamllint
     rev: v1.38.0
     hooks:

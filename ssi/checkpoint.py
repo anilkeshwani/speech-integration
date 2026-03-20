@@ -116,7 +116,9 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         self.checkpoint_dir = Path(checkpoint_dir)
         self.safe_serialization = safe_serialization
         self.output_dir = Path(output_dir)  # idempotent
-        self.training_state_checkpoint = Path(training_state_checkpoint) if training_state_checkpoint is not None else None
+        self.training_state_checkpoint = (
+            Path(training_state_checkpoint) if training_state_checkpoint is not None else None
+        )
         if isinstance(checkpoint_files, ListConfig):
             checkpoint_files = OmegaConf.to_object(checkpoint_files)
 
