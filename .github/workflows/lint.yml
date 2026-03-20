@@ -71,7 +71,7 @@ jobs:
         run: taplo fmt --check
 
   yaml:
-    name: YAML (yamllint)
+    name: YAML (yamlfix + yamllint)
     runs-on: ubuntu-latest
 
     steps:
@@ -87,6 +87,9 @@ jobs:
 
       - name: Install dev dependencies
         run: uv sync --extra dev
+
+      - name: Format check (yamlfix --check)
+        run: uv run yamlfix --check .
 
       - name: Lint (yamllint)
         run: uv run yamllint .

@@ -30,7 +30,7 @@ repos:
     hooks:
       - id: yamlfix
 
-  - repo: https://github.com/adrienverge/yamllint.git
+  - repo: https://github.com/adrienverge/yamllint
     rev: v1.35.1
     hooks:
       - id: yamllint
