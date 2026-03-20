@@ -1,303 +1,197 @@
 # Speech Integration
 
-Research implementation to investigate methods of integrating the speech modality into pre-trained language models
+Research codebase investigating approaches to integrating the speech modality into the Llama 3.2 1B language model via discrete speech tokens. See `plans/MASTER PLAN.md` for the full experiment design.
 
-# Setup
+We compare four speech tokenizers (HuBERT, SpeechTokenizer, Mimi, FocalCodec) across four training approaches (CPT interleaved, CPT concatenated, SFT, CPT+SFT) on Multilingual LibriSpeech (MLS), with and without BPE compression of speech tokens.
 
-## Clone Repository
+## Setup
 
-```bash
-git clone git@github.com:anilkeshwani/speech-integration.git &&
-    cd speech-integration &&
-    git submodule update --init --recursive --progress
-```
+### Prerequisites
 
-## Set Up Environment
+- Python 3.10.6
+- [uv](https://docs.astral.sh/uv/) (package manager)
+- `sox` and `ffmpeg` binaries: `apt install sox ffmpeg`
 
-Ensure the sox and ffmpeg binaries are installed:
+### Install
 
 ```bash
-apt install sox ffmpeg
-```
-
-Install the package including development dependencies:
-
-```bash
-conda create -n ssi python=3.10.6 -y &&
-    conda activate ssi &&
-    pip install .["dev"] &&
-    pip install --no-dependencies git+https://github.com/anilkeshwani/speech-text-alignment.git
-```
-
-> [!NOTE] 
-> You may need to enter enter your SSH key passphrase for installation.
-
-Editable install:
-
-```bash
-conda create -n ssi-dev python=3.10.6 -y &&
-    conda activate ssi-dev &&
-    pip install -e .["dev"] &&
-    pip install --no-dependencies git+https://github.com/anilkeshwani/speech-text-alignment.git
-```
-
-> [!NOTE] 
-> A dedicated environment with a static install is recommended for use with Slurm jobs, which (AFAIK) use the environment and package as installed on execution start. This is recommended so intermediate - possibly breaking - changes in an editable project location do not cause run failures or code versioning issues. 
-
-## Setup Extras
-
-Get shell completions for the configurations from Hydra for the duration of the Bash session by running:
-
-```bash
-eval "$(python ssi/train.py -sc install=bash)"
-```
-
-If you want to use pre-commit remember to install hooks:
-
-```bash
-pre-commit install --install-hooks
-```
-
-## Testing
-
-Run the full test suite:
-
-```bash
-uv run pytest
-```
-
-Run with verbose output:
-
-```bash
-uv run pytest -v
-```
-
-Tests are located under `tests/`. The suite currently covers checkpoint save/load round-trips (`tests/test_checkpoint.py`).
-
-**Note:** Tests `T-CKP-6` and `T-CKP-7` require the Llama 3.2 1B base model to be present at `LLAMA_3_2_1B_BASE_DIR` (see `ssi/constants.py`). They are automatically skipped if the directory is not found.
-
-## Type Checking and LSP (Pyrefly)
-
-Pyrefly is the project's canonical type checker and Python language server.
-
-Install/update development dependencies:
-
-```bash
+git clone git@github.com:anilkeshwani/speech-integration.git
+cd speech-integration
 uv sync --extra dev
 ```
 
-Run type checking (configured for `ssi`):
+### Pre-commit hooks
 
 ```bash
-uv run pyrefly check
+pre-commit install
+pre-commit run --all-files  # verify everything passes
 ```
 
-For Google Antigravity IDE:
-- Install the `Pyrefly` extension (`meta.pyrefly`) from OpenVSX.
-- Use the workspace interpreter at `${workspaceFolder}/.venv/bin/python`.
-- Keep Pyright/Pylance disabled for this workspace to avoid duplicate diagnostics.
-
-## Download Llama 3.2 Base Model
-
-### Download with Hugging Face CLI
+### Download Llama 3.2 base model
 
 ```bash
-base_models_dir=/mnt/scratch-artemis/anilkeshwani/models/base/ &&
 huggingface-cli download "meta-llama/Llama-3.2-1B" \
-    --local-dir ${base_models_dir}/Llama-3.2-1B \
+    --local-dir /mnt/scratch-artemis/anilkeshwani/models/base/Llama-3.2-1B \
     --exclude "original/consolidated.00.pth" \
-    --revision "4e20de362430cd3b72f300e6b0f18e50e7166e08" # specific Git LFS commit
+    --revision "4e20de362430cd3b72f300e6b0f18e50e7166e08"
 ```
 
-## Extend Llama 3.2 Base Model
+### Extend base model with speech tokens
 
-Extend the base model with the specified number of DSUs (speech tokens). 
-
-It saves the extended model to the specified output directory.
+Extend the Llama 3.2 1B tokenizer and embedding layer with DSU (discrete speech unit) tokens:
 
 ```bash
-./scripts/extend_llama3_2.py --n_new_dsus 5000
+uv run scripts/extend_llama3_2.py --n_new_dsus 5000
 ```
 
-See `./scripts/extend_llama3_2.py --help` for details.
+This creates the extended model at `models/extended/Llama-3.2-1B-5000-dsus/`. See `--help` for options.
 
-# Train
+## Training
 
-> [!NOTE] 
-> To enable debugging, pass `hydra.verbose=true`. This sets the log level of all loggers to `DEBUG` as described in [Logging - Hydra docs](https://hydra.cc/docs/1.3/tutorials/basic/running_your_app/logging/). A string or list can be passed to set specific loggers' levels to `DEBUG`; see the documentation for details. This is useful for visualising debug output e.g. prompts constructed in the dataset to be echoed to the console. 
+All training scripts use [Hydra](https://hydra.cc/) for configuration. Data configs are modular — each tokenizer-specific config inherits shared defaults from a `_base_.yaml` file.
 
-## Continued Pre-training (CPT)
-
-Example call using SpeechTokenizer-encoded (RVQ 0) speech tokens:
+### Continued Pre-Training (CPT)
 
 ```bash
 uv run scripts/train_cpt.py \
-    checkpointer.checkpoint_dir="$(realpath "${HOME}/hafh/models/extended/Llama-3.2-1B-5000-dsus")" \
-    checkpointer.checkpoint_files='["ft-model-00001-of-00001.safetensors"]' \
-    optimizer.lr=0.0002 \
-    lr_scheduler.num_warmup_steps=0 \
-    speech.deduplicate=true \
-    data=cpt/mls-speechtokenizer-rvq_0
+    speech.n_dsus=5000 \
+    checkpointer.checkpoint_dir=/path/to/extended/Llama-3.2-1B-5000-dsus \
+    checkpointer.checkpoint_files='["model-00001-of-00001.safetensors"]' \
+    data=cpt/mls-hubert_large_ll60k-layer_22
 ```
 
-To enable debugging output with Hydra, append:
+Available CPT data configs: `cpt/mls-hubert_large_ll60k-layer_22`, `cpt/mls-speechtokenizer-rvq_0`, `cpt/mls-mimi-srvq_0`, `cpt/mls-focalcodec`.
 
-```bash
-hydra.verbose=true # results in e.g. prompts constructed in the dataset to be echoed to the console
-```
-
-## Supervised Fine-tuning (SFT)
-
-Specify the call as for CPT but using `scripts/train_sft.py` in place of `scripts/train_cpt.py` and specify an appropriate SFT/IT dataset config group e.g. `data=sft_hubert`.
-
-Example call:
+### Supervised Fine-Tuning (SFT)
 
 ```bash
 uv run scripts/train_sft.py \
-    checkpointer.checkpoint_dir="$(realpath "${HOME}/hafh/models/extended/Llama-3.2-1B-2048-dsus")" \
-    checkpointer.checkpoint_files='["ft-model-00001-of-00001.safetensors"]' \
-    optimizer.lr=0.0002 \
-    lr_scheduler.num_warmup_steps=1000 \
-    speech.deduplicate=true \
-    speech.n_dsus=2048 \
-    data=sft/mls-mimi-srvq_0 \
-    gradient_accumulation_steps=1 \
-    data.train.dataloader.batch_size=32 \
-    save_steps=10000
-```
-
-## Running with Slurm (e.g. on Sardine)
-
-To run interactively with Slurm via `srun` inside a tmux session prefix the run with `srun` and `conda run`, specifying appropriate parameters for each - typically the values shown in the example below. 
-
-In the below example call, the Conda environment used is `ssi-latest`. Specify the appropriate Conda environment to `conda run` under the `-n` option.
-
-```bash
-srun \
-    --partition a6000 \
-    --time=48:00:00 \
-    --gres=gpu:1 \
-    --qos=gpu-medium \
-    uv run scripts/train_sft.py \
-        checkpointer.checkpoint_dir="$(realpath "${HOME}/hafh/models/extended/Llama-3.2-1B-2048-dsus")" \
-        checkpointer.checkpoint_files='["ft-model-00001-of-00001.safetensors"]' \
-        optimizer.lr=0.0002 \
-        lr_scheduler.num_warmup_steps=1000 \
-        speech.deduplicate=true \
-        speech.n_dsus=2048 \
-        data=sft/mls-mimi-srvq_0
-```
-
-Notes:
-- Relies on the `hafh -> /mnt/scratch-artemis/anilkeshwani` symlink in the shared `${HOME}` across Artemis and Poseidon.
-- Remember to pass `--live-stream` (or equivalently `--no-capture-output`) to prevent buffering/capture of stdout/stderr (standard out/standard error)
-
----
-
-# Generation
-
-Generation is performed with vLLM using the Hugging Face-compatible model directories that are written during training time (every `save_steps` global steps). 
-
-Example call:
-
-```bash
-python scripts/generate.py \
-  model=/mnt/scratch-artemis/anilkeshwani/experiments/Llama-3.2-1B-5000-dsus-sft/lyric-butterfly-478-id_3qj03g5e/checkpoints/epoch_0/global_step_70000
-```
-
-## Specifying a Dataset Explicitly
-
-Where `data` is not explicitly specified, the model will generate ASR transcripts for the test split of the training dataset. 
-
-Example call with explicit test dataset:
-
-```bash
-python scripts/generate.py \
-  model=/mnt/scratch-artemis/anilkeshwani/experiments/Llama-3.2-1B-5000-dsus-sft/lyric-butterfly-478-id_3qj03g5e/checkpoints/epoch_0/global_step_70000 \
-  data=sft/voxpopuli-hubert_large_ll60k-layer_22
-```
-
-## Specifying Generation Parameters
-
-Parameters affecting generation, e.g. sampling parameters, are available to override via the CLI with Hydra syntax. 
-
-See the _generation.yaml_ config for the available options.
-
-Example call with an override:
-
-```
-python scripts/generate.py \
-  model=/mnt/scratch-artemis/anilkeshwani/experiments/Llama-3.2-1B-5000-dsus-sft/lyric-butterfly-478-id_3qj03g5e/checkpoints/epoch_0/global_step_70000 \
-  sampling_params.max_tokens=1024 # override default value
-```
-
-### Specifying Model-specific Parameters
-
-Parameters that are fixed for a given model checkpoint are automatically imputed from the training config, which is saved under the _checkpoints/_ subdirectory of a given run with the name _torchtune_config.yaml_. In the absence of a training configuration, these options can still be specified.
-
-```bash
-python scripts/generate.py \
-    model=/mnt/scratch-artemis/anilkeshwani/experiments/Llama-3.2-1B-5000-dsus-sft/lyric-butterfly-478-id_3qj03g5e/checkpoints/epoch_0/global_step_70000 \
-    speech.deduplicate=false \
     speech.n_dsus=5000 \
+    checkpointer.checkpoint_dir=/path/to/extended/Llama-3.2-1B-5000-dsus \
+    checkpointer.checkpoint_files='["model-00001-of-00001.safetensors"]' \
     data=sft/mls-hubert_large_ll60k-layer_22
 ```
 
-## Generation inside Slurm
+Available SFT data configs: `sft/mls-hubert_large_ll60k-layer_22`, `sft/mls-speechtokenizer-rvq_0`, `sft/mls-mimi-srvq_0`, `sft/mls-focalcodec`.
 
-```
-srun --partition a6000 --time=01:00:00 --gres=gpu:1 --qos=gpu-short \
-  conda run -n ssi-dev --live-stream \
-    ./scripts/generate.py \
-      gen.split=dev \
-      model=/mnt/scratch-artemis/anilkeshwani/experiments/Llama-3.2-1B-5000-dsus-sft/hopeful-sound-525-id_5plc1ikb/checkpoints/epoch_0/global_step_80000
-```
-
-## Generation: Extras
-
-There is a hacky script, [generation_launcher.sh](/snippets/generation_launcher.sh), to launch generation for all checkpoints in a given training run (for a given epoch) under [snippets](/snippets)
-
----
-
-# Evaluate Model Performance
-
-## Word Error Rate (WER)
-
-To compute word error rate, pass the _generations.jsonl_ file containing the output of _generate.py_ as in the following example:
+### Common overrides
 
 ```bash
-python scripts/wer.py \
-    /mnt/scratch-artemis/anilkeshwani/experiments/Llama-3.2-1B-5000-dsus-sft/hopeful-sound-525-id_5plc1ikb/generations/epoch_0/global_step_318000/mls-hubert_large_ll60k-layer_22/test/generations.jsonl
+# Override optimizer and scheduler
+optimizer.lr=1e-4 lr_scheduler.num_warmup_steps=500
+
+# Override batch size and gradient accumulation
+data.train.dataloader.batch_size=32 gradient_accumulation_steps=1
+
+# Override checkpointing and evaluation frequency
+save_steps=5000 eval_steps=500
+
+# Resume from a training state checkpoint
+checkpointer.training_state_checkpoint=/path/to/training_state.pt
 ```
 
-See `python scripts/wer.py --help` for details.
-
-
-
-> [!IMPORTANT] 
-> _wer.py_ relies on _generations.jsonl_ being located in nested directories indicating the dataset name and split: `<dataset>/<split>/generations.jsonl`. 
-> If this is not the case, pass them in explicitly - see `--help`
-
-_wer.py_ does not use Hydra
-
----
-
-Help for _wer.py_ at last update:
+### Running on Slurm
 
 ```bash
-usage: wer.py [-h] [--dataset DATASET] [--split SPLIT] [--gt_transcript_colname GT_TRANSCRIPT_COLNAME] [--normalizer {whisper}] generations_jsonl
-
-Calculate Word Error Rate (WER) from model generations.
-
-positional arguments:
-  generations_jsonl     Path to the JSON lines file with generations.
-
-options:
-  -h, --help            show this help message and exit
-  --dataset DATASET     Hugging Face dataset for reference transcripts.
-  --split SPLIT         Hugging Face dataset split for reference transcripts.
-  --gt_transcript_colname GT_TRANSCRIPT_COLNAME
-                        Column name for ground truth transcripts in the dataset.
-  --normalizer {whisper}
-                        Text normalizer.
+srun --partition a6000 --time=48:00:00 --gres=gpu:1 --qos=gpu-medium \
+    uv run scripts/train_sft.py \
+        speech.n_dsus=5000 \
+        checkpointer.checkpoint_dir=/path/to/extended/Llama-3.2-1B-5000-dsus \
+        checkpointer.checkpoint_files='["model-00001-of-00001.safetensors"]' \
+        data=sft/mls-hubert_large_ll60k-layer_22
 ```
+
+> [!NOTE]
+> Pass `--live-stream` to `srun` to prevent buffering of stdout/stderr.
+
+### Debug mode
+
+Append `hydra.verbose=true` to any training command to set all loggers to `DEBUG` level (shows constructed prompts, data pipeline details, etc.).
+
+## Generation
+
+Generation uses vLLM with the HF-compatible model checkpoints saved during training (every `save_steps` steps).
+
+```bash
+uv run scripts/generate.py \
+    model=/path/to/experiments/hubert/sft_a7b2cdef/step_10000
+```
+
+The script auto-detects `speech.n_dsus` and the data config from the training config snapshot (`torchtune_config.yaml`) saved alongside the checkpoints.
+
+### Specifying a dataset
+
+By default, generation runs on the test split of the training dataset. To use a different dataset:
+
+```bash
+uv run scripts/generate.py \
+    model=/path/to/step_10000 \
+    data=sft/mls-hubert_large_ll60k-layer_22
+```
+
+### Sampling parameters
+
+```bash
+uv run scripts/generate.py \
+    model=/path/to/step_10000 \
+    sampling_params.temperature=0.7 \
+    sampling_params.max_tokens=512
+```
+
+See `conf/generate.yaml` for all available options.
+
+## Evaluation
+
+### Word Error Rate (WER)
+
+```bash
+uv run scripts/wer.py /path/to/generations.jsonl
+```
+
+The script expects `generations.jsonl` to be located under `<dataset>/<split>/generations.jsonl` to auto-detect the reference dataset. Otherwise, pass `--dataset` and `--split` explicitly. See `--help` for details.
+
+## Testing
+
+```bash
+uv run pytest              # run all tests
+uv run pytest -v           # verbose output
+uv run pytest -k "not disk"  # skip tests that load model weights from disk
+```
+
+Tests are under `tests/`. Some tests require the Llama 3.2 1B base model at `LLAMA_3_2_1B_BASE_DIR` (see `ssi/constants.py`) and are automatically skipped if not found.
+
+## Project structure
+
+```
+conf/                   Hydra configs (common, training, cpt, sft, generate, data/)
+scripts/                Entry points (train_cpt, train_sft, generate, extend_llama3_2, wer)
+ssi/                    Core library (checkpoint, train, data, model, loss, eval, etc.)
+tests/                  Test suite
+plans/                  Design documents and research notes
+```
+
+## Configuration architecture
+
+```
+conf/
+  common.yaml           Base config (speech params, paths, W&B, device)
+  training.yaml         Training defaults (optimizer, scheduler, checkpointing)
+  cpt.yaml              CPT entry point (inherits common + training, selects data)
+  sft.yaml              SFT entry point (inherits common + training, selects data)
+  generate.yaml         Generation entry point (inherits common, selects data)
+  data/
+    cpt/
+      _base_.yaml       Shared CPT data config (interleave params, dataloader, splits)
+      mls-hubert_large_ll60k-layer_22.yaml   (4 lines: source + sampling_rate)
+      mls-speechtokenizer-rvq_0.yaml
+      mls-mimi-srvq_0.yaml
+      mls-focalcodec.yaml
+    sft/
+      _base_.yaml       Shared SFT data config (system prompt, column map, splits)
+      mls-hubert_large_ll60k-layer_22.yaml   (3 lines: source)
+      mls-speechtokenizer-rvq_0.yaml
+      mls-mimi-srvq_0.yaml
+      mls-focalcodec.yaml
+```
+
+Adding a new speech tokenizer requires only a 3-4 line data config per training type.
