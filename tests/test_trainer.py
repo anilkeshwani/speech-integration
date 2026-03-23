@@ -181,3 +181,26 @@ def test_geometry_insufficient_batches_raises():
     dl = _make_mock_dataloader(5)  # 5 < 10
     with pytest.raises(ValueError, match=r"batches_per_epoch.*gradient_accumulation_steps"):
         TrainingGeometry.from_config(cfg, dl, world_size=1)
+
+
+# ---------------------------------------------------------------------------
+# T-U5: Setup ordering — _extract_resume_state sets _resume_state before optimizer
+# ---------------------------------------------------------------------------
+
+
+def test_extract_resume_state_initializes_attribute():
+    """_extract_resume_state sets _resume_state to None when no training_state_checkpoint."""
+    from unittest.mock import MagicMock
+
+    cfg = OmegaConf.create({"dummy": True})
+    trainer = Trainer(cfg)
+    # Simulate post-_setup_model state
+    trainer.checkpointer = MagicMock()
+    trainer.checkpointer.training_state_checkpoint = None
+    trainer._ckpt_dict = {}
+
+    trainer._extract_resume_state()
+
+    assert trainer._resume_state is None
+    assert trainer.global_step == 0
+    assert trainer.consumed_samples == 0
