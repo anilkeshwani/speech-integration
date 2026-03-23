@@ -208,12 +208,15 @@ class Trainer:
         self._setup_logging()
         self._setup_model()
         self._setup_tokenizer()
+        # Extract resume state early (before optimizer, which needs it)
+        self._extract_resume_state()
+        self._setup_optimizer()
         self._setup_loss()
         self._setup_data()
         # geometry depends on data_train being set
         self.geometry = TrainingGeometry.from_config(self.cfg, self.data_train, self.world_size)
-        self._setup_optimizer()
-        self._resume()
+        # Validate and finalize resume (needs geometry for hparam validation)
+        self._finalize_resume()
 
     def _setup_logging(self) -> None:
         wandb_tags = [__version__, self.cfg.config_name]
@@ -260,10 +263,22 @@ class Trainer:
         else:
             raise NotImplementedError(f"Unsupported config_name: {self.cfg.config_name}")
 
+    def _extract_resume_state(self) -> None:
+        """Extract resume state from checkpoint dict (early phase).
+
+        Sets ``self._resume_state``, ``self.global_step``, and
+        ``self.consumed_samples``. Must be called before ``_setup_optimizer``
+        (which needs the optimizer state dict from the checkpoint).
+        """
+        self._resume_state: dict[str, Any] | None = None
+        if self.checkpointer.training_state_checkpoint is not None:
+            self._resume_state = resume_training_state(self._ckpt_dict)
+            self.global_step = self._resume_state["global_step"]
+            self.consumed_samples = self._resume_state["consumed_samples"]
+
     def _setup_optimizer(self) -> None:
-        resume_state = self._resume_state  # set by _resume() or None
         self.optimizer = setup_optimizer(
-            self.cfg, self.model, resume_state["optimizer_state"] if resume_state else None
+            self.cfg, self.model, self._resume_state["optimizer_state"] if self._resume_state else None
         )
         self.lr_scheduler = setup_lr_scheduler(
             cfg=self.cfg,
@@ -271,8 +286,8 @@ class Trainer:
             global_step=self.global_step - 1,
             num_training_steps=self.cfg.max_steps,
         )
-        if resume_state and self.lr_scheduler is not None:
-            self.lr_scheduler.load_state_dict(resume_state["lr_scheduler_state"])
+        if self._resume_state and self.lr_scheduler is not None:
+            self.lr_scheduler.load_state_dict(self._resume_state["lr_scheduler_state"])
 
     def _setup_loss(self) -> None:
         self.loss_fn = CEWithChunkedOutputLoss()
@@ -281,30 +296,31 @@ class Trainer:
         if isinstance(self.loss_fn, CEWithChunkedOutputLoss):
             self.model.set_num_output_chunks(self.loss_fn.num_output_chunks)
 
-    def _resume(self) -> None:
-        """Restore training state from checkpoint if available."""
-        self._resume_state: dict[str, Any] | None = None
-        if self.checkpointer.training_state_checkpoint is not None:
-            self._resume_state = resume_training_state(self._ckpt_dict)
-            self.global_step = self._resume_state["global_step"]
-            self.consumed_samples = self._resume_state["consumed_samples"]
-            # Cumulative metrics
-            cm = self._resume_state["cumulative_metrics"]
-            self.tokens_train_total = cm["tokens_train_total"]
-            for k, v in cm["token_type_counts"].items():
-                self.token_type_counts_total[k] = v
-            self.wall_clock_offset = cm["wall_clock_seconds"]
-            # Validate hparams
-            validate_resume_hparams(
-                ckpt_hparams=self._resume_state["training_hparams"],
-                current_hparams={
-                    "batch_size": self.cfg.data.train.dataloader.batch_size,
-                    "gradient_accumulation_steps": self.cfg.gradient_accumulation_steps,
-                    "world_size": self.world_size,
-                    "steps_per_epoch": self.geometry.steps_per_epoch if self.geometry else None,
-                },
-                force_resume=self.cfg.get("force_resume", False),
-            )
+    def _finalize_resume(self) -> None:
+        """Validate hparams and restore cumulative metrics + RNG (late phase).
+
+        Must be called after geometry is computed (needs ``steps_per_epoch``
+        for hparam validation).
+        """
+        if self._resume_state is None:
+            return
+        # Cumulative metrics
+        cm = self._resume_state["cumulative_metrics"]
+        self.tokens_train_total = cm["tokens_train_total"]
+        for k, v in cm["token_type_counts"].items():
+            self.token_type_counts_total[k] = v
+        self.wall_clock_offset = cm["wall_clock_seconds"]
+        # Validate hparams (needs geometry.steps_per_epoch)
+        validate_resume_hparams(
+            ckpt_hparams=self._resume_state["training_hparams"],
+            current_hparams={
+                "batch_size": self.geometry.batch_size,
+                "gradient_accumulation_steps": self.cfg.gradient_accumulation_steps,
+                "world_size": self.world_size,
+                "steps_per_epoch": self.geometry.steps_per_epoch,
+            },
+            force_resume=self.cfg.get("force_resume", False),
+        )
 
     # === Training ===
 
