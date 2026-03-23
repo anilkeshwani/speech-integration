@@ -292,17 +292,51 @@ See "Test Plan" section below.
 
 ## Test Plan
 
-### Test Data Strategy
+### Test Data Strategy — Partial Download (64GB Storage Constraint)
 
-Tests use Multilingual LibriSpeech data via HuggingFace, as referenced in the existing configs. For speed:
+**Critical constraint:** This environment has only 64GB total disk. The full MLS HuBERT train split is ~24.5GB across 109 parquet shards. HuggingFace's `load_dataset` with split slicing (e.g. `"train[:2000]"`) **still downloads ALL shards** before slicing — this is a known limitation of the `datasets` library.
 
-- **Subset size**: First **2,000 samples** from the MLS train split and first **200 samples** from the MLS validation split.
-- **Mechanism**: Use a `filter_fn` in the data config or a `datasets.Dataset.select(range(N))` call.
-- **Max steps**: 10–20 steps (enough to exercise gradient accumulation, eval, and checkpoint save).
-- **Batch size**: 2 (matching existing SFT config).
-- **Gradient accumulation**: 2 (so each optimizer step = 2 micro-batches = 4 samples).
-- **Eval steps**: 5 (so eval fires twice in a 10-step run).
-- **Save steps**: 10 (so checkpoint fires once).
+**Verified approaches that avoid full download:**
+
+**Approach A — Stream + Materialize (PREFERRED, near-zero disk):**
+```python
+from datasets import Dataset, load_dataset
+
+iterable = load_dataset("anilkeshwani/mls-hubert_large_ll60k-layer_22", split="train", streaming=True)
+ds = Dataset.from_list(list(iterable.take(2000)))
+# Returns a regular datasets.Dataset with full __getitem__, len(), filter(), select() support
+```
+Disk usage: near-zero (in-memory only, no cache files). Verified working — returns correct column types including `speech_tokens` lists.
+
+**Approach B — Single Parquet Shard (~1.2GB cached):**
+```python
+ds = load_dataset(
+    "parquet",
+    data_files="hf://datasets/anilkeshwani/mls-hubert_large_ll60k-layer_22/en/train/mls-transcripts_uroman_000_aligned_hubert.parquet",
+    split="train",
+)
+ds = ds.select(range(2000))
+```
+Downloads one shard (~224MB parquet) + Arrow cache = ~1.2GB total. More robust for repeated runs (cached).
+
+**Implementation:** Tests will create a helper function `load_subset(source, split, n)` that uses Approach A. Both `SFTDataset` and `TextCompletionDataset` call `load_dataset(source, split=split)` internally, so the test fixture will **monkey-patch** `datasets.load_dataset` or override the dataset's `_data` attribute after construction.
+
+Cleanest approach: the test overrides `cfg.data.train.dataset.source` to point to a single parquet shard URL and adds a post-load `.select()` via a `filter_fn` or by directly patching `dataset._data = dataset._data.select(range(N))`.
+
+**Parquet shard paths (verified via HF Hub API):**
+- Train (100K rows per shard): `hf://datasets/anilkeshwani/mls-hubert_large_ll60k-layer_22/en/train/mls-transcripts_uroman_000_aligned_hubert.parquet`
+- Dev (3,807 rows, 1 shard): `hf://datasets/anilkeshwani/mls-hubert_large_ll60k-layer_22/en/dev/dev-mls-transcripts_uroman_000_aligned_hubert.parquet`
+- Test (3,769 rows, 1 shard): `hf://datasets/anilkeshwani/mls-hubert_large_ll60k-layer_22/en/test/test-mls-transcripts_uroman_000_aligned_hubert.parquet`
+
+**Environment setup:** Must set `HF_HOME=/home/anilkeshwani/.cache/huggingface` (default `/workspace/.hf_home` is not writable in this container).
+
+**Test parameters:**
+- **Subset size**: 2,000 train samples, 200 dev samples
+- **Max steps**: 10–20 steps (enough to exercise gradient accumulation, eval, and checkpoint save)
+- **Batch size**: 2 (matching existing SFT config)
+- **Gradient accumulation**: 2 (so each optimizer step = 2 micro-batches = 4 samples)
+- **Eval steps**: 5 (so eval fires twice in a 10-step run)
+- **Save steps**: 10 (so checkpoint fires once)
 
 ### Existing Tests (Run First)
 
@@ -399,47 +433,46 @@ uv run pytest tests/ -v
 
 ## Data Subsetting Strategy
 
-For GPU tests, we need a fast-loading subset of MLS. Two approaches (use approach A):
+For GPU tests, we need a fast-loading subset of MLS without downloading the full dataset (~24.5GB train split). See "Test Data Strategy" section above for the verified approaches.
 
-### Approach A: Runtime filtering via `datasets.Dataset.select()`
+### Approach A: Point `source` at a single parquet shard + post-load `.select()`
 
-Add a `_subset_size` private config key to the test data configs:
+Override the HF `source` in the test config to load one parquet shard directly, then select a small subset. This avoids downloading the full dataset entirely.
 
 ```python
 # In test fixture
 with open_dict(cfg):
-    cfg.data.train.dataset._subset_size = 2000
-    cfg.data.dev.dataset._subset_size = 200
+    cfg.data.train.dataset.source = "parquet"
+    # source becomes the data loader type; actual file specified via load_dataset_kwargs
 ```
 
-Then in both `SFTDataset.__init__` and `TextCompletionDataset.__init__`, after loading:
+However, since the dataset classes call `load_dataset(source, split=split)` internally and we don't want to modify their `__init__` signatures, the simplest approach is:
 
+**Post-construction patching (no production code changes):**
 ```python
-if hasattr(cfg, '_subset_size') and cfg._subset_size is not None:
-    self._data = self._data.select(range(min(cfg._subset_size, len(self._data))))
+# In test fixture / helper
+dataset = SFTDataset(model_tokenizer=tokenizer, **cfg.data.train.dataset)
+dataset._data = dataset._data.select(range(2000))  # patch after construction
 ```
 
-**Alternatively** (simpler, no dataset class changes): use the existing `filter_fn` parameter with a closure:
+This works because `._data` is a `datasets.Dataset` that supports `.select()`.
 
+**Even simpler — stream + materialize, then inject:**
 ```python
-# In test fixture, override filter_fn to take first N samples
-cfg.data.train.dataset.filter_fn = None  # clear any existing
-# Then after dataset loads, manually: dataset._data = dataset._data.select(range(2000))
+from datasets import Dataset, load_dataset as hf_load_dataset
+
+def load_subset(source: str, split: str, n: int) -> Dataset:
+    """Load n samples via streaming — near-zero disk usage."""
+    iterable = hf_load_dataset(source, split=split, streaming=True)
+    return Dataset.from_list(list(iterable.take(n)))
+
+# In test fixture, monkey-patch the dataset's _data after construction
+dataset._data = load_subset("anilkeshwani/mls-hubert_large_ll60k-layer_22", "train", 2000)
 ```
 
-The cleanest approach: pass a HuggingFace `split` string with range syntax, which is natively supported:
+### Approach B: Split slicing (DOES NOT WORK)
 
-```python
-# In test fixture override
-cfg.data.train.dataset.split = "train[:2000]"
-cfg.data.dev.dataset.split = "validation[:200]"
-```
-
-This requires **no code changes** — HuggingFace `load_dataset` natively supports slice notation in split strings.
-
-### Approach B: Pre-cached subset on disk
-
-Not needed given Approach A's simplicity.
+`load_dataset(source, split="train[:2000]")` still downloads all 109 train parquet shards before slicing. **Do not use this approach** in storage-constrained environments.
 
 ---
 
