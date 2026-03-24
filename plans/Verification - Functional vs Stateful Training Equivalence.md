@@ -89,5 +89,5 @@ In the `sft-equivalence-verification` project, overlay both runs:
 
 - `n_samples=2000` streams only the first 2000 rows from HuggingFace (no full dataset download)
 - With bs=4 and 2000 samples: 500 batches/epoch → 62 optimizer steps/epoch → 100 steps ≈ 1.6 epochs
-- For fully deterministic (bit-identical) traces, add `optimizer.fused=False` and set env var `CUBLAS_WORKSPACE_CONFIG=:4096:8`. This slows training ~20% but eliminates CUDA non-determinism
+- For fully deterministic (bit-identical) traces, add `optimizer.fused=False debug_mode=2` and set env var `CUBLAS_WORKSPACE_CONFIG=:4096:8`. All three are required: the env var configures cuBLAS workspace, `debug_mode=2` enables `torch.use_deterministic_algorithms(True)`, and `fused=False` avoids non-deterministic fused AdamW kernels. This slows training ~20% but produces byte-identical checkpoint files
 - Both scripts accept identical Hydra overrides — the only difference is the implementation path
