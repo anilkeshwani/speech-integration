@@ -219,6 +219,8 @@ class Trainer:
         self.geometry = TrainingGeometry.from_config(self.cfg, self.data_train, self.world_size)
         # Validate and finalize resume (needs geometry for hparam validation)
         self._finalize_resume()
+        # Free checkpoint dict — no longer needed after setup
+        del self._ckpt_dict
 
     def _setup_logging(self) -> None:
         wandb_tags = [__version__, self.cfg.config_name]
@@ -410,8 +412,8 @@ class Trainer:
             self._loss_log.append(loss_to_log)
 
         self._log_metrics(epoch, iter_idx, loss_to_log)
-        self._maybe_save_checkpoint()
         self._reset_step_accumulators()
+        self._maybe_save_checkpoint()
 
     def _evaluate(self) -> float:
         """Compute dev set loss."""
