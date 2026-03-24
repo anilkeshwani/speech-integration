@@ -299,7 +299,7 @@ def train(cfg: DictConfig) -> None:
             loss_running += loss_batch
             loss_batch.backward()
             if (i + 1) % cfg.gradient_accumulation_steps == 0:
-                scale_grads(model, 1 / num_tokens_step)
+                scale_grads(model, torch.tensor(1 / num_tokens_step))
                 if cfg.clip_grad_norm is not None:
                     grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=float(cfg.clip_grad_norm))
                 optimizer.step()

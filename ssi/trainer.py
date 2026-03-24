@@ -389,7 +389,7 @@ class Trainer:
 
     def _optimizer_step(self, epoch: int, iter_idx: int) -> None:
         """Gradient accumulation boundary: scale, clip, step, log, checkpoint."""
-        scale_grads(self.model, 1 / self.num_tokens_step)
+        scale_grads(self.model, torch.tensor(1 / self.num_tokens_step))
         if self.cfg.clip_grad_norm is not None:
             self._grad_norm = torch.nn.utils.clip_grad_norm_(
                 self.model.parameters(), max_norm=float(self.cfg.clip_grad_norm)
