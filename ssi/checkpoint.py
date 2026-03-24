@@ -45,6 +45,132 @@ from ssi.constants import (
 LOGGER = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Checkpoint auto-discovery and validation
+# ---------------------------------------------------------------------------
+
+
+def discover_safetensor_files(checkpoint_dir: Path) -> list[str]:
+    """Auto-discover safetensors model shard files in a checkpoint directory.
+
+    Finds ``*.safetensors`` files, excluding index files
+    (``model.safetensors.index.json`` is not a shard). Raises if no files
+    are found or if the directory contains ambiguous shard naming (e.g.
+    both ``model-*`` and ``ft-model-*`` files).
+
+    Args:
+        checkpoint_dir: Directory to search.
+
+    Returns:
+        Sorted list of shard filenames (not full paths).
+
+    Raises:
+        FileNotFoundError: If the directory does not exist or is empty.
+        ValueError: If no safetensors files found, or ambiguous naming.
+    """
+    if not checkpoint_dir.exists():
+        raise FileNotFoundError(f"Checkpoint directory does not exist: {checkpoint_dir}")
+
+    st_files = sorted(f.name for f in checkpoint_dir.glob("*.safetensors"))
+    if not st_files:
+        contents = sorted(f.name for f in checkpoint_dir.iterdir())
+        raise ValueError(
+            f"No safetensors files found in {checkpoint_dir}. "
+            f"Directory contents: {contents}"
+        )
+
+    # Check for ambiguous naming: both model-* and ft-model-* present
+    model_files = [f for f in st_files if f.startswith("model-")]
+    ft_files = [f for f in st_files if f.startswith("ft-model-")]
+    if model_files and ft_files:
+        raise ValueError(
+            f"Ambiguous checkpoint files in {checkpoint_dir}: "
+            f"found both base shards {model_files} and fine-tuned shards {ft_files}. "
+            f"Specify checkpoint_files explicitly to disambiguate."
+        )
+
+    LOGGER.info(f"Auto-discovered checkpoint file(s): {st_files}")
+    return st_files
+
+
+def validate_checkpoint_dir(checkpoint_dir: Path, config: dict[str, Any], expectations: Any | None = None) -> None:
+    """Validate checkpoint directory contents against config.json and model expectations.
+
+    Runs non-destructive checks before any weights are loaded. Failures
+    are ``ValueError`` with actionable error messages.
+
+    Args:
+        checkpoint_dir: Directory containing the checkpoint.
+        config: Parsed ``config.json`` dict from the checkpoint directory.
+        expectations: A ``ModelCheckpointExpectations`` (or any object with
+            ``model_name``, ``n_shards``, ``num_layers``, ``hidden_size``,
+            ``vocab_size`` attributes). If ``None``, model-specific checks
+            are skipped.
+
+    Raises:
+        ValueError: If any check fails.
+    """
+    # Layer 1: config.json existence (already loaded by caller, but check it's non-empty)
+    if not config:
+        raise ValueError(f"config.json in {checkpoint_dir} is empty or could not be parsed.")
+
+    # Layer 2: index file vs shard consistency
+    index_path = checkpoint_dir / SAFETENSOR_INDEX_FNAME
+    if index_path.exists():
+        index_data = json.loads(index_path.read_text())
+        expected_shards = set(index_data.get("weight_map", {}).values())
+        actual_shards = {f.name for f in checkpoint_dir.glob("*.safetensors")}
+        missing = expected_shards - actual_shards
+        if missing:
+            raise ValueError(
+                f"Shard mismatch in {checkpoint_dir}: index file lists shards "
+                f"{sorted(expected_shards)} but directory is missing {sorted(missing)}."
+            )
+
+    # Layer 3: model-specific structural checks
+    if expectations is None:
+        return
+
+    # Shard count
+    st_files = sorted(checkpoint_dir.glob("*.safetensors"))
+    n_shards = len(st_files)
+    if n_shards != expectations.n_shards:
+        raise ValueError(
+            f"Expected {expectations.n_shards} model shard(s) for "
+            f"{expectations.model_name} but found {n_shards} in {checkpoint_dir}. "
+            f"Check that checkpoint_dir points to the correct model."
+        )
+
+    # Architecture fields from config.json
+    config_layers = config.get("num_hidden_layers")
+    if config_layers is not None and config_layers != expectations.num_layers:
+        raise ValueError(
+            f"config.json reports num_hidden_layers={config_layers} but "
+            f"{expectations.model_name} has {expectations.num_layers}. Wrong model?"
+        )
+
+    config_hidden = config.get("hidden_size")
+    if config_hidden is not None and config_hidden != expectations.hidden_size:
+        raise ValueError(
+            f"config.json reports hidden_size={config_hidden} but "
+            f"{expectations.model_name} has {expectations.hidden_size}. Wrong model?"
+        )
+
+    config_vocab = config.get("vocab_size")
+    if config_vocab is not None and config_vocab != expectations.vocab_size:
+        raise ValueError(
+            f"Vocab size mismatch: config.json has vocab_size={config_vocab}, "
+            f"expected {expectations.vocab_size} for {expectations.model_name} "
+            f"with current speech config. Was the model extended with different "
+            f"n_dsus or modality token settings?"
+        )
+
+    LOGGER.info(
+        f"Checkpoint validation passed for {expectations.model_name} "
+        f"({n_shards} shard(s), {config_layers} layers, vocab_size={config_vocab})"
+    )
+
+
 def validate_checkpoint_files(checkpoint_files: list[str], input_dir: Path, missing_ok=False) -> list[Path]:
     """Validate that checkpoint files exist in input_dir and return paths sorted by name."""
     checkpoint_paths: list[Path] = []
@@ -91,9 +217,9 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
 
     Args:
         checkpoint_dir: Directory containing the source checkpoint files.
-        checkpoint_files: Checkpoint file names (list) or a dict with keys
-            ``filename_format`` and ``max_filename``. Order does not matter — files
-            are sorted by shard ID.
+        checkpoint_files: Checkpoint file names (list), a dict with keys
+            ``filename_format`` and ``max_filename``, or ``None`` to
+            auto-discover safetensors files in ``checkpoint_dir``.
         config_json: Path to the model ``config.json``. Defaults to the Llama 3.2
             config relative path under checkpoint_dir.
         output_dir: Root directory for saved checkpoints and training state.
@@ -101,17 +227,22 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             None when starting from scratch.
         safe_serialization: If True (default), save weights as safetensors; otherwise
             save as ``.bin`` via ``torch.save``.
+        model_expectations: Optional ``ModelCheckpointExpectations`` (or duck-typed
+            equivalent) for model-specific validation. When provided, the
+            checkpoint directory is validated against expected shard count,
+            layer count, hidden size, and vocab size before loading.
     """
 
     def __init__(
         self,
         checkpoint_dir: Path | str,
-        checkpoint_files: list[str] | dict[str, str],
+        checkpoint_files: list[str] | dict[str, str] | None = None,
         *,
         config_json: Path | str | None = None,
         output_dir: Path | str,
         training_state_checkpoint: Path | str | None = None,
         safe_serialization: bool = True,
+        model_expectations: Any | None = None,
     ) -> None:
         self.checkpoint_dir = Path(checkpoint_dir)
         self.safe_serialization = safe_serialization
@@ -127,14 +258,26 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         if self.training_state_checkpoint is not None and not self.training_state_checkpoint.is_file():
             raise FileNotFoundError(f"Recipe checkpoint file {self.training_state_checkpoint} not found.")
 
-        self.output_dir.mkdir(parents=True, exist_ok=True)  # TODO
+        self.output_dir.mkdir(parents=True, exist_ok=True)
 
         # weight_map: state_dict key -> checkpoint mapping to partition state dict into output checkpoint files
         self._weight_map: dict[str, str] | None = None  # NOTE initialised to None; updated during checkpoint loading
 
         if config_json is None:
             config_json = self.checkpoint_dir / LLAMA_3_2_CONFIG_RELPATH
-        self._config = json.loads(Path(config_json).read_text())  # gives model params needed for state dict conversion
+        config_json = Path(config_json)
+        if not config_json.exists():
+            raise FileNotFoundError(
+                f"No config.json found at {config_json} — expected an HF-format model directory."
+            )
+        self._config = json.loads(config_json.read_text())
+
+        # Auto-discover checkpoint files if not provided
+        if checkpoint_files is None:
+            checkpoint_files = discover_safetensor_files(self.checkpoint_dir)
+
+        # Validate checkpoint directory against model expectations
+        validate_checkpoint_dir(self.checkpoint_dir, self._config, model_expectations)
 
         self._checkpoint_paths = get_model_checkpoint_paths(
             checkpoint_files=checkpoint_files,
