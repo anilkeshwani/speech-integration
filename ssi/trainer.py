@@ -56,6 +56,8 @@ from ssi.train_utils import (
 )
 
 
+__all__ = ["Trainer", "TrainingGeometry"]
+
 LOGGER = logging.getLogger(__name__)
 
 
