@@ -1,4 +1,12 @@
 defaults:
-  - _base_
+  - _sft_base
 
-_source: anilkeshwani/mls-speechtokenizer-rvq_0
+train:
+  dataset:
+    source: anilkeshwani/mls-speechtokenizer-rvq_0
+dev:
+  dataset:
+    source: anilkeshwani/mls-speechtokenizer-rvq_0
+test:
+  dataset:
+    source: anilkeshwani/mls-speechtokenizer-rvq_0

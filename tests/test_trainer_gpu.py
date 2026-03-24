@@ -38,13 +38,24 @@ os.environ.setdefault("HF_HOME", "/home/anilkeshwani/.cache/huggingface")
 # ---------------------------------------------------------------------------
 
 EXTENDED_MODEL_DIR = TORCHTUNE_EXTENDED_MODELS_DIR / "Llama-3.2-1B-5000-dsus"
-_LOCAL_EXTENDED = Path("/home/anilkeshwani/models/extended/Llama-3.2-1B-5000-dsus")
-if _LOCAL_EXTENDED.exists():
-    EXTENDED_MODEL_DIR = _LOCAL_EXTENDED
+_CANDIDATE_DIRS = [
+    Path("/home/anilkeshwani/models/extended/Llama-3.2-1B-5000-dsus"),
+    Path("/home/ubuntu/models/extended/Llama-3.2-1B-5000-dsus"),
+]
+for _d in _CANDIDATE_DIRS:
+    if _d.exists():
+        EXTENDED_MODEL_DIR = _d
+        break
 
 
 def _has_extended_model() -> bool:
     return EXTENDED_MODEL_DIR.exists() and (EXTENDED_MODEL_DIR / "model.safetensors.index.json").exists()
+
+
+def _get_checkpoint_files() -> list[str]:
+    """Discover the safetensors checkpoint file(s) in the extended model dir."""
+    st_files = sorted(EXTENDED_MODEL_DIR.glob("*.safetensors"))
+    return [f.name for f in st_files]
 
 
 # All tests in this module require GPU + extended model
@@ -84,7 +95,7 @@ def _compose_sft_cfg(tmp_path, max_steps=10, eval_steps=5, save_steps=10, grad_a
             overrides=[
                 "speech.n_dsus=5000",
                 f"checkpointer.checkpoint_dir={EXTENDED_MODEL_DIR}",
-                'checkpointer.checkpoint_files=["model-00001-of-00001.safetensors"]',
+                f"checkpointer.checkpoint_files={_get_checkpoint_files()}",
                 f"checkpointer.output_dir={tmp_path}/checkpoints",
                 "data=sft/mls-hubert_large_ll60k-layer_22",
                 f"max_steps={max_steps}",
@@ -94,9 +105,11 @@ def _compose_sft_cfg(tmp_path, max_steps=10, eval_steps=5, save_steps=10, grad_a
                 f"data.train.dataloader.batch_size={batch_size}",
                 f"data.dev.dataloader.batch_size={batch_size}",
                 "log_interval=1",
+                f"tokenizer.path={EXTENDED_MODEL_DIR / 'original' / 'tokenizer.model'}",
                 "wandb.project=test-speech-integration",
                 "wandb.entity=null",
                 "wandb.log_dir=/tmp/wandb_test",
+                "config_name=sft",  # hydra:job.config_name not available in compose()
             ],
         )
     return cfg

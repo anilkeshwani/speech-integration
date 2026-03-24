@@ -1,4 +1,13 @@
 defaults:
-  - _base_
-_source: anilkeshwani/mls-mimi-srvq_0
-_sampling_rate: 24000  # Mimi (Moshi) model sampling rate
+  - _cpt_base
+
+train:
+  dataset:
+    source: anilkeshwani/mls-mimi-srvq_0
+    interleave_kwargs:
+      sampling_rate: 24000  # Mimi (Moshi) model sampling rate
+dev:
+  dataset:
+    source: anilkeshwani/mls-mimi-srvq_0
+    interleave_kwargs:
+      sampling_rate: 24000

@@ -109,7 +109,7 @@ def _compose_cfg(output_dir: Path) -> DictConfig:
     common = OmegaConf.load(conf / "common.yaml")
     training_cfg = OmegaConf.load(conf / "training.yaml")
     sft = OmegaConf.load(conf / "sft.yaml")
-    data_base = OmegaConf.load(conf / "data" / "sft" / "_base_.yaml")
+    data_base = OmegaConf.load(conf / "data" / "_sft_base.yaml")
     data_override = OmegaConf.load(conf / "data" / "sft" / "mls-hubert_large_ll60k-layer_22.yaml")
     data_cfg = OmegaConf.merge(data_base, data_override)
     cfg = OmegaConf.merge(common, training_cfg, sft, {"data": data_cfg})

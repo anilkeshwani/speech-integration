@@ -114,7 +114,7 @@ _enable_deterministic_cuda()
 def _compose_cfg(tmp_path: Path) -> DictConfig:
     """Build the full SFT config by merging YAML files the way Hydra would.
 
-    Loads common.yaml + training.yaml + sft.yaml + data/sft/_base_.yaml +
+    Loads common.yaml + training.yaml + sft.yaml + data/_sft_base.yaml +
     data/sft/mls-hubert…yaml, merges them in order, resolves interpolations,
     and applies test-specific overrides.
     """
@@ -129,8 +129,8 @@ def _compose_cfg(tmp_path: Path) -> DictConfig:
     # Layer 3: sft.yaml (SFT-specific)
     sft = OmegaConf.load(conf / "sft.yaml")
 
-    # Layer 4: data/sft/_base_.yaml (base data config)
-    data_base = OmegaConf.load(conf / "data" / "sft" / "_base_.yaml")
+    # Layer 4: data/_sft_base.yaml (base data config)
+    data_base = OmegaConf.load(conf / "data" / "_sft_base.yaml")
 
     # Layer 5: data/sft/mls-hubert…yaml (tokenizer-specific override)
     data_override = OmegaConf.load(conf / "data" / "sft" / "mls-hubert_large_ll60k-layer_22.yaml")

@@ -1,4 +1,13 @@
 defaults:
-  - _base_
-_source: anilkeshwani/mls-speechtokenizer-rvq_0
-_sampling_rate: 24000  # SpeechTokenizer model sampling rate
+  - _cpt_base
+
+train:
+  dataset:
+    source: anilkeshwani/mls-speechtokenizer-rvq_0
+    interleave_kwargs:
+      sampling_rate: 24000  # SpeechTokenizer model sampling rate
+dev:
+  dataset:
+    source: anilkeshwani/mls-speechtokenizer-rvq_0
+    interleave_kwargs:
+      sampling_rate: 24000

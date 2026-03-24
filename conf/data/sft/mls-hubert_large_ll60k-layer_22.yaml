@@ -1,4 +1,12 @@
 defaults:
-  - _base_
+  - _sft_base
 
-_source: anilkeshwani/mls-hubert_large_ll60k-layer_22
+train:
+  dataset:
+    source: anilkeshwani/mls-hubert_large_ll60k-layer_22
+dev:
+  dataset:
+    source: anilkeshwani/mls-hubert_large_ll60k-layer_22
+test:
+  dataset:
+    source: anilkeshwani/mls-hubert_large_ll60k-layer_22
