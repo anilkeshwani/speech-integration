@@ -30,7 +30,7 @@ from ssi.checkpoint import FullModelHFCheckpointer
 from ssi.constants import MODEL_KEY, SEED
 from ssi.llama_configs import configllama3_2_1b
 from ssi.model import setup_llama3_2_1b
-from ssi.train import get_token_type_ranges, validate_train_cfg
+from ssi.train_utils import get_token_type_ranges, validate_train_cfg
 
 
 logging.basicConfig(
