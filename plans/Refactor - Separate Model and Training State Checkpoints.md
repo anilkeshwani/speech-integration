@@ -6,7 +6,7 @@
 
 1. **Model checkpoint** — HF-format safetensors saved per step in `step_N/`. Used for inference, generation, fine-tuning, and evaluation. Lives on disk indefinitely, one directory per checkpoint step. Consumers: `generate.py`, `plt_embed_tsne.py`, downstream evaluation scripts, HuggingFace ecosystem tools.
 
-2. **Training state** — optimizer, LR scheduler, RNG states, training hparams, cumulative metrics, consumed_samples, saved as `training_state.pt`. Used exclusively for resuming training (crash recovery, multi-job training). Only the latest one matters — always overwritten. Consumers: `train.py` resume path only.
+2. **Training state** — optimizer, LR scheduler, RNG states, training hparams, cumulative metrics, consumed_samples, saved as `training_state.pt`. Used exclusively for resuming training (crash recovery, multi-job training). Only the latest one matters — always overwritten. Consumers: `Trainer` resume path only.
 
 ### Problems with the current design
 
@@ -145,7 +145,7 @@ Unchanged. It remains a private helper called by `save_model_checkpoint`.
 
 ## Caller Changes
 
-### `ssi/train.py` — training loop checkpoint save
+### Training loop checkpoint save (was `ssi/train.py`, now `ssi/trainer.py`)
 
 **Before:**
 ```python
@@ -204,7 +204,7 @@ checkpointer.save_model_checkpoint(
 
 No dummy parameters, no `save_training_state=False` flag, no confusion.
 
-### `ssi/train.py` — resume path (`load_checkpoint`)
+### Resume path (`load_checkpoint`, now in `ssi/trainer.py`)
 
 **No change.** `load_checkpoint` already handles both model weights and training state in a single load (it merges `training_state.pt` into the returned dict when `training_state_checkpoint` is set). This is fine for now — the load side's concern separation is less urgent because it always needs both pieces when resuming. If we later want to load model-only (for evaluation), we just don't pass `training_state_checkpoint`.
 
@@ -255,7 +255,7 @@ Added both new methods to `FullModelHFCheckpointer` (`ssi/checkpoint.py:277-336`
 
 ### Step 2: Migrate callers — Done
 
-- `ssi/train.py:351-369`: replaced `save_checkpoint(...)` with `save_model_checkpoint(...)` + `save_training_state(...)`
+- `ssi/trainer.py` (`Trainer.save_checkpoint`): uses `save_model_checkpoint(...)` + `save_training_state(...)`
 - `scripts/extend_llama3_2.py:94-97`: replaced `save_checkpoint(...)` with `save_model_checkpoint(...)` — removed dummy `optimizer_state_dict=None`, `seed=SEED`, `save_training_state=False`
 
 ### Step 3: Delete old methods — Done
