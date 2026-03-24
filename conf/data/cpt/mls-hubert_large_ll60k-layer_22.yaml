@@ -5,9 +5,11 @@ train:
   dataset:
     source: anilkeshwani/mls-hubert_large_ll60k-layer_22
     interleave_kwargs:
-      sampling_rate: 16000  # HuBERT model sampling rate
+      sampling_rate: ???  # TODO verify — see plans/Bugfix - CPT Interleave Config Sampling Parameters.md
+      downsampling_ratio: ???  # TODO verify
 dev:
   dataset:
     source: anilkeshwani/mls-hubert_large_ll60k-layer_22
     interleave_kwargs:
-      sampling_rate: 16000
+      sampling_rate: ???
+      downsampling_ratio: ???
