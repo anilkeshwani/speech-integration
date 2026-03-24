@@ -5,9 +5,11 @@ train:
   dataset:
     source: anilkeshwani/mls-focalcodec  # TODO confirm HF repo ID
     interleave_kwargs:
-      sampling_rate: 16000  # TODO confirm FocalCodec model sampling rate
+      sampling_rate: ???  # TODO verify — see plans/Bugfix - CPT Interleave Config Sampling Parameters.md
+      downsampling_ratio: ???  # TODO verify
 dev:
   dataset:
     source: anilkeshwani/mls-focalcodec  # TODO confirm HF repo ID
     interleave_kwargs:
-      sampling_rate: 16000
+      sampling_rate: ???
+      downsampling_ratio: ???
