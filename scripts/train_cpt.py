@@ -2,12 +2,15 @@
 
 import hydra
 
-from ssi.train import train
+from ssi.trainer import Trainer
 
 
 @hydra.main(config_path="../conf", config_name="cpt", version_base=None)
 def main(cfg):
-    train(cfg)
+    trainer = Trainer(cfg)
+    trainer.setup()
+    trainer.train()
+    trainer.cleanup()
 
 
 if __name__ == "__main__":
