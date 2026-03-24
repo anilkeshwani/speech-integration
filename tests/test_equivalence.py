@@ -20,7 +20,7 @@ from torchtune.modules.loss import CEWithChunkedOutputLoss
 from torchtune.training import scale_grads
 
 from ssi.loss import compute_loss
-from ssi.train import count_token_types
+from ssi.train_utils import count_token_types
 
 
 # ---------------------------------------------------------------------------

@@ -47,7 +47,7 @@ from ssi.metric_logging import WandBLoggerPatched as WandBLogger
 from ssi.model import setup_llama3_2_1b
 from ssi.optimizer import setup_optimizer
 from ssi.tokenizer import setup_llama3_tokenizer
-from ssi.train import (
+from ssi.train_utils import (
     count_token_types,
     get_token_type_ranges,
     resume_training_state,

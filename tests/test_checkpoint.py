@@ -36,7 +36,7 @@ from ssi.constants import (
     SEED_KEY,
     TRAINING_HPARAMS_KEY,
 )
-from ssi.train import resume_training_state, validate_resume_hparams
+from ssi.train_utils import resume_training_state, validate_resume_hparams
 
 
 # ---------------------------------------------------------------------------
