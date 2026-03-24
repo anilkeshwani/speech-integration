@@ -48,15 +48,13 @@ This creates the extended model at `models/extended/Llama-3.2-1B-5000-dsus/`. Se
 
 ## Training
 
-All training scripts use [Hydra](https://hydra.cc/) for configuration. Data configs are modular — each tokenizer-specific config inherits shared defaults from a `_base_.yaml` file.
+All training scripts use [Hydra](https://hydra.cc/) for configuration. Data configs are modular — each tokenizer-specific config inherits shared defaults from a base config. Checkpoint files are auto-discovered from the checkpoint directory.
 
 ### Continued Pre-Training (CPT)
 
 ```bash
 uv run scripts/train_cpt.py \
     speech.n_dsus=5000 \
-    checkpointer.checkpoint_dir=/path/to/extended/Llama-3.2-1B-5000-dsus \
-    checkpointer.checkpoint_files='["model-00001-of-00001.safetensors"]' \
     data=cpt/mls-hubert_large_ll60k-layer_22
 ```
 
@@ -67,8 +65,6 @@ Available CPT data configs: `cpt/mls-hubert_large_ll60k-layer_22`, `cpt/mls-spee
 ```bash
 uv run scripts/train_sft.py \
     speech.n_dsus=5000 \
-    checkpointer.checkpoint_dir=/path/to/extended/Llama-3.2-1B-5000-dsus \
-    checkpointer.checkpoint_files='["model-00001-of-00001.safetensors"]' \
     data=sft/mls-hubert_large_ll60k-layer_22
 ```
 
@@ -88,6 +84,12 @@ save_steps=5000 eval_steps=500
 
 # Resume from a training state checkpoint
 checkpointer.training_state_checkpoint=/path/to/training_state.pt
+
+# Use only the first 2000 samples (streamed, no full dataset download)
+data.train.dataset.n_samples=2000 data.dev.dataset.n_samples=200
+
+# Override checkpoint directory (default: ${extended_models_dir}/${base_model_name})
+checkpointer.checkpoint_dir=/path/to/extended/Llama-3.2-1B-5000-dsus
 ```
 
 ### Running on Slurm
@@ -96,8 +98,6 @@ checkpointer.training_state_checkpoint=/path/to/training_state.pt
 srun --partition a6000 --time=48:00:00 --gres=gpu:1 --qos=gpu-medium \
     uv run scripts/train_sft.py \
         speech.n_dsus=5000 \
-        checkpointer.checkpoint_dir=/path/to/extended/Llama-3.2-1B-5000-dsus \
-        checkpointer.checkpoint_files='["model-00001-of-00001.safetensors"]' \
         data=sft/mls-hubert_large_ll60k-layer_22
 ```
 
