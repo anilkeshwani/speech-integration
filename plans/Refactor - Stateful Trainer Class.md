@@ -1,43 +1,39 @@
 # Refactor — Stateful Trainer Class
 
+> **Status: COMPLETE.** All phases implemented, verified, and cut over. The functional `train()` has been removed. The `Trainer` class is the sole training implementation. See commit history `origin/dev..HEAD` on `stateful-trainer` for the full change set.
+
 ## Motivation
 
-The current training pipeline (`ssi/train.py`) uses a single 230-line function (`train()`) that manages 20+ local variables representing training state. This makes the code:
+The training pipeline previously used a single 230-line function (`train()`) in `ssi/train.py` that managed 20+ local variables representing training state. This made the code hard to test, inspect, and extend.
 
-- **Hard to test** — individual phases (setup, step, eval, checkpoint) cannot be tested in isolation
-- **Hard to inspect** — there's no way to introspect training state from outside the function
-- **Hard to extend** — adding CPT+SFT chaining, new loss functions, or callback hooks requires modifying a monolithic function
-- **Inconsistent with the ecosystem** — nearly every major framework (HF Transformers, PyTorch Lightning, Composer, TRL, torchtune itself) uses class-based state encapsulation
-
-### Design Reference: torchtune's FTRecipeInterface
-
-Since this codebase depends on torchtune, we follow their `FTRecipeInterface` Protocol pattern:
-- Class-based for state encapsulation
-- Self-contained (no deep inheritance trees)
-- Composition over inheritance
-- Explicit methods: `setup()`, `train()`, `save_checkpoint()`, `load_checkpoint()`
-
-We diverge from torchtune in one key way: we extract a **reusable `Trainer` class** rather than writing duplicate training loops per recipe. This is justified because our CPT and SFT loops are structurally identical — they differ only in data setup — and we want to guarantee they remain in sync.
+The refactor replaced it with a stateful `Trainer` class in `ssi/trainer.py` following torchtune's `FTRecipeInterface` pattern: class-based state encapsulation, composition over inheritance, explicit `setup()` / `train()` / `save_checkpoint()` / `cleanup()` methods.
 
 ---
 
-## Architecture
+## Architecture (as implemented)
 
-### New Module: `ssi/trainer.py`
+### Module: `ssi/trainer.py`
 
-A single new file containing the `Trainer` class and the `TrainingGeometry` helper dataclass.
+Contains `Trainer` and `TrainingGeometry`. Exports: `__all__ = ["Trainer", "TrainingGeometry"]`.
 
-### Principle: 1:1 Functional Equivalence
+### Module: `ssi/train_utils.py`
 
-Every line of logic in the current `train()` must have a direct counterpart in `Trainer`. The two implementations must produce **bit-identical** training runs (same loss sequence, same gradients, same checkpoints) given the same config and data. This is the core verification criterion.
+Pure utility functions extracted from the former `ssi/train.py`:
+- `validate_train_cfg(cfg)` — config validation
+- `resume_training_state(ckpt_dict)` — checkpoint dict parsing
+- `validate_resume_hparams(...)` — hparam mismatch checking
+- `get_token_type_ranges(llama_config)` — vocab range computation
+- `count_token_types(tokens, ranges, pad_idx)` — token counting
+
+### Deleted: `ssi/train.py`
+
+The functional `train()` was removed after equivalence was proven. All utility functions were moved to `ssi/train_utils.py`.
 
 ---
 
-## Detailed Class Design
+## Detailed Class Design (as implemented)
 
 ### `TrainingGeometry` (dataclass)
-
-Encapsulates the derived constants that depend on dataset size and grad accumulation. Currently these are computed as local variables in `train()` (lines 218–231).
 
 ```python
 @dataclass(frozen=True)
@@ -53,496 +49,291 @@ class TrainingGeometry:
 
 Factory: `TrainingGeometry.from_config(cfg, dataloader, world_size)`.
 
-### `Trainer` Class
+- [x] All 7 fields implemented
+- [x] `from_config()` factory with remainder warning and `ValueError` on insufficient batches (improvement over original `assert`)
 
-#### Instance Attributes (State)
+### `Trainer` Class — Attributes
 
-The following table maps every local variable in the current `train()` to a `Trainer` attribute:
+All 24 planned attributes are present, plus two additions:
 
-| Current local variable | Trainer attribute | Category |
+| Attribute | Category | Status |
 |---|---|---|
-| `cfg` | `self.cfg` | Config |
-| `DEVICE` | `self.device` | Config |
-| `DTYPE` | `self.dtype` | Config |
-| `world_size` | `self.world_size` | Config |
-| `model` | `self.model` | Components |
-| `tokenizer` | `self.tokenizer` | Components |
-| `optimizer` | `self.optimizer` | Components |
-| `lr_scheduler` | `self.lr_scheduler` | Components |
-| `loss_fn` | `self.loss_fn` | Components |
-| `checkpointer` | `self.checkpointer` | Components |
-| `wandb_logger` | `self.wandb_logger` | Components |
-| `data_train` | `self.data_train` | Data |
-| `sampler_train` | `self.sampler_train` | Data |
-| `data_dev` | `self.data_dev` | Data |
-| `token_type_ranges` | `self.token_type_ranges` | Data |
-| `global_step` | `self.global_step` | Training state |
-| `consumed_samples` | `self.consumed_samples` | Training state |
-| `tokens_train_total` | `self.tokens_train_total` | Training state |
-| `token_type_counts_total` | `self.token_type_counts_total` | Training state |
-| `wall_clock_offset` | `self.wall_clock_offset` | Training state |
-| `loss_running` | `self.loss_running` | Step-level accumulators |
-| `num_tokens_step` | `self.num_tokens_step` | Step-level accumulators |
-| `max_seq_len_step` | `self.max_seq_len_step` | Step-level accumulators |
-| `t_train_start` | `self.t_train_start` | Timing |
-| `t0` | `self.t_step_start` | Timing |
-| (derived) | `self.geometry` | `TrainingGeometry` |
+| `self.cfg` | Config | [x] Done |
+| `self.device` | Config | [x] Done |
+| `self.dtype` | Config | [x] Done |
+| `self.world_size` | Config | [x] Done |
+| `self.model` | Components | [x] Done |
+| `self.tokenizer` | Components | [x] Done |
+| `self.optimizer` | Components | [x] Done |
+| `self.lr_scheduler` | Components | [x] Done |
+| `self.loss_fn` | Components | [x] Done |
+| `self.checkpointer` | Components | [x] Done |
+| `self.wandb_logger` | Components | [x] Done |
+| `self.data_train` | Data | [x] Done |
+| `self.sampler_train` | Data | [x] Done |
+| `self.data_dev` | Data | [x] Done |
+| `self.token_type_ranges` | Data | [x] Done |
+| `self.global_step` | Training state | [x] Done |
+| `self.consumed_samples` | Training state | [x] Done |
+| `self.tokens_train_total` | Training state | [x] Done |
+| `self.token_type_counts_total` | Training state | [x] Done |
+| `self.wall_clock_offset` | Training state | [x] Done |
+| `self.loss_running` | Accumulators | [x] Done |
+| `self.num_tokens_step` | Accumulators | [x] Done |
+| `self.max_seq_len_step` | Accumulators | [x] Done |
+| `self.t_train_start` | Timing | [x] Done |
+| `self.t_step_start` | Timing | [x] Done |
+| `self.geometry` | TrainingGeometry | [x] Done |
+| `self._grad_norm` | Logging (added) | [x] Done |
+| `self._loss_log` | Testing (added) | [x] Done |
 
-#### Methods
+### `Trainer` Class — Methods
 
 ```
-Trainer(cfg: DictConfig)           # stores cfg only; no heavy init
-├── setup() -> None                # all component creation + checkpoint loading + resume
-│   ├── _setup_logging() -> None   # W&B logger init, tags, config logging
-│   ├── _setup_model() -> None     # checkpointer, model load, llama config update
-│   ├── _setup_tokenizer() -> None # tokenizer + token_type_ranges
-│   ├── _setup_data() -> None      # train/dev dataloaders + samplers
-│   ├── _setup_optimizer() -> None # optimizer + lr_scheduler
-│   ├── _setup_loss() -> None      # loss_fn + compile + chunked output
-│   └── _resume() -> None          # restore state from training_state.pt if present
-├── train() -> None                # outer epoch loop, delegates to _train_epoch
-│   ├── _train_epoch(epoch) -> None              # single epoch loop
-│   │   ├── _train_step(batch) -> float          # single fwd + bwd (one micro-batch)
-│   │   ├── _optimizer_step(epoch) -> None       # grad scale + clip + optim + lr + metrics
-│   │   ├── _evaluate() -> float | None          # dev set loss
-│   │   ├── _log_metrics(epoch, iter_idx) -> None # console + wandb logging
-│   │   └── _maybe_save_checkpoint() -> None     # periodic model + training state save
-│   └── _reset_step_accumulators() -> None       # zero running loss/tokens/seq_len
-├── save_checkpoint() -> None      # explicit checkpoint (model + training state)
-└── cleanup() -> None              # any teardown (currently a no-op, future: DDP)
+Trainer(cfg: DictConfig)
+├── setup() -> None
+│   ├── _setup_logging() -> None
+│   ├── _setup_model() -> None
+│   ├── _setup_tokenizer() -> None
+│   ├── _extract_resume_state() -> None    # deviation: split from _resume()
+│   ├── _setup_optimizer() -> None
+│   ├── _setup_loss() -> None
+│   ├── _setup_data() -> None
+│   ├── TrainingGeometry.from_config()
+│   ├── _finalize_resume() -> None         # deviation: split from _resume()
+│   └── del self._ckpt_dict               # memory cleanup
+├── train() -> None
+│   ├── restore_rng_states()               # deviation: moved from _finalize_resume
+│   └── _train_epoch(epoch, batches_to_skip) -> None
+│       ├── _train_step(batch) -> None
+│       └── _optimizer_step(epoch, iter_idx) -> None
+│           ├── _log_metrics(epoch, iter_idx, loss_to_log) -> None
+│           │   └── _evaluate() -> float
+│           ├── _reset_step_accumulators() -> None
+│           └── _maybe_save_checkpoint() -> None
+├── save_checkpoint() -> None
+└── cleanup() -> None
 ```
 
-#### Constructor
+### Documented Deviations from Original Plan
 
-```python
-def __init__(self, cfg: DictConfig) -> None:
-    self.cfg = cfg
-    # All other attributes initialized to None / sentinels.
-    # Actual construction deferred to setup().
-```
+1. **`_resume()` split**: The plan specified a single `_resume()` method. The implementation splits it into `_extract_resume_state()` (runs before optimizer creation, provides optimizer state dict) and `_finalize_resume()` (runs after geometry computation, validates hparams, restores cumulative metrics). `restore_rng_states()` moved to `train()` — semantically identical (runs after all setup, before loop).
 
-Rationale: separating `__init__` from `setup()` allows tests to construct a `Trainer` with a mock config without triggering heavy model/data loading.
+2. **`_train_step` return type**: Plan specified `-> float`, implementation returns `None`. Loss is accumulated into `self.loss_running` and logged in `_optimizer_step`.
 
-#### `setup()` Implementation Sketch
+3. **`del batch` / `empty_cache()` location**: Plan placed these inside `_train_step`. Implementation places them in `_train_epoch` (after `_train_step` returns). Equivalent behavior.
 
-The setup method does everything the current `train()` does before the `# === Training loop ===` comment (lines 156–267), organized into the private `_setup_*` methods listed above.
+4. **`_optimizer_step` signature**: Plan specified `(epoch)`, implementation uses `(epoch, iter_idx)`. The `iter_idx` is needed for console log formatting. `_optimizer_step` also subsumes `_log_metrics`, `_reset_step_accumulators`, and `_maybe_save_checkpoint` calls.
 
-Key detail — `_resume()`:
-1. Check if `checkpointer.training_state_checkpoint is not None`
-2. Call `resume_training_state(ckpt_dict)` (existing function — keep as-is)
-3. Set `self.global_step`, `self.consumed_samples` from resume state
-4. Load optimizer state dict
-5. Load lr_scheduler state dict
-6. Restore cumulative metrics (`tokens_train_total`, `token_type_counts_total`, `wall_clock_offset`)
-7. Call `validate_resume_hparams()`
-8. Call `restore_rng_states()` **last** (after all setup, before loop)
+5. **`scale_grads` argument**: Plan used `1 / self.num_tokens_step` (float). Implementation uses `torch.tensor(1 / self.num_tokens_step)`. This is a bug fix — torchtune's `scale_grads` requires a `torch.Tensor`, not a float.
 
-#### `train()` Implementation Sketch
+6. **`_ckpt_dict` cleanup**: Not in original plan. Added after code review to prevent multi-GB memory leak during training.
 
-```python
-def train(self) -> None:
-    self.optimizer.zero_grad()
-    self.t_train_start = time.perf_counter()
-    self.t_step_start = time.perf_counter()
-    self._reset_step_accumulators()
-
-    epochs_run = self.global_step // self.geometry.steps_per_epoch
-    batches_to_skip = (self.global_step % self.geometry.steps_per_epoch) * self.cfg.gradient_accumulation_steps
-
-    LOGGER.info(OmegaConf.to_yaml(self.cfg, resolve=True, sort_keys=False))
-    self.wandb_logger.log_config(self.cfg)
-
-    for epoch in range(epochs_run, self.geometry.n_epochs):
-        self._train_epoch(epoch, batches_to_skip if epoch == epochs_run else 0)
-        if self.global_step >= self.cfg.max_steps:
-            LOGGER.info("Training completed.")
-            return
-```
-
-#### `_train_step(batch)` — Single Micro-Batch
-
-```python
-def _train_step(self, batch: dict[str, torch.Tensor]) -> float:
-    batch_to_device(batch, self.device)
-    for tt, ttcnt in count_token_types(batch["tokens"], self.token_type_ranges, self.tokenizer.pad_id).items():
-        self.token_type_counts_total[tt] += ttcnt
-    self.max_seq_len_step = max(self.max_seq_len_step, batch["tokens"].size(1))
-    num_tokens_iter = int((batch["labels"] != self.loss_fn.ignore_index).sum().item())
-    self.num_tokens_step += num_tokens_iter
-    loss_batch = compute_loss(batch, self.model, self.loss_fn) * num_tokens_iter
-    self.loss_running += loss_batch
-    loss_batch.backward()
-    del batch
-    torch.cuda.empty_cache()
-    return loss_batch.item()
-```
-
-#### `_optimizer_step(epoch)` — Gradient Accumulation Boundary
-
-```python
-def _optimizer_step(self, epoch: int) -> None:
-    scale_grads(self.model, 1 / self.num_tokens_step)
-    if self.cfg.clip_grad_norm is not None:
-        self._grad_norm = torch.nn.utils.clip_grad_norm_(
-            self.model.parameters(), max_norm=float(self.cfg.clip_grad_norm)
-        )
-    self.optimizer.step()
-    self.optimizer.zero_grad(set_to_none=True)
-    if self.lr_scheduler is not None:
-        self.lr_scheduler.step()
-    self.global_step += 1
-    self.consumed_samples += (
-        self.cfg.gradient_accumulation_steps * self.geometry.batch_size * self.world_size
-    )
-    self.tokens_train_total += self.num_tokens_step
-```
-
-### What Stays in `ssi/train.py`
-
-The following **functions remain unchanged** in `ssi/train.py` — they are pure functions with no state, and the Trainer calls them:
-
-- `validate_train_cfg(cfg)` — config validation
-- `resume_training_state(ckpt_dict)` — checkpoint dict parsing
-- `validate_resume_hparams(...)` — hparam mismatch checking
-- `get_token_type_ranges(llama_config)` — vocab range computation
-- `count_token_types(tokens, ranges, pad_idx)` — token counting
-- `train(cfg)` — **kept as-is** for backwards compatibility and equivalence testing
-
-The functional `train()` is **not deleted**. It remains as the reference implementation during the verification phase. Once equivalence is proven, the entry point scripts (`train_cpt.py`, `train_sft.py`) will be updated to use `Trainer`.
-
-### Entry Point Changes (Deferred to Post-Verification)
-
-```python
-# scripts/train_sft.py (after verification)
-@hydra.main(config_path="../conf", config_name="sft", version_base=None)
-def main(cfg):
-    trainer = Trainer(cfg)
-    trainer.setup()
-    trainer.train()
-    trainer.cleanup()
-```
+7. **Timer ordering**: Code review caught that `_reset_step_accumulators` and `_maybe_save_checkpoint` were swapped relative to the original. Fixed to match: timer resets before checkpoint save.
 
 ---
 
-## Implementation Plan — Step by Step
+## Implementation Plan — Completion Status
 
-### Phase 1: Scaffolding (no behavior change)
+### Phase 1: Scaffolding — [x] COMPLETE
 
-**Step 1.1** — Create `ssi/trainer.py` with the `Trainer` class skeleton: `__init__`, `setup`, `train`, `save_checkpoint`, `cleanup` as stubs that raise `NotImplementedError`.
+| Step | Description | Commit |
+|---|---|---|
+| [x] 1.1 | Trainer skeleton | `8f89abf` |
+| [x] 1.2 | TrainingGeometry dataclass | `8f89abf` |
+| [x] 1.3 | Unit tests | `8f89abf` |
 
-**Step 1.2** — Create `TrainingGeometry` dataclass with `from_config()` factory.
+### Phase 2: Setup Methods — [x] COMPLETE
 
-**Step 1.3** — Add basic test `tests/test_trainer_unit.py` that verifies `Trainer` can be constructed with a DictConfig without error, and that `TrainingGeometry.from_config()` produces correct values.
+| Step | Description | Commit |
+|---|---|---|
+| [x] 2.1 | `_setup_model()` | `8f89abf` |
+| [x] 2.2 | `_setup_tokenizer()` | `8f89abf` |
+| [x] 2.3 | `_setup_data()` | `8f89abf` |
+| [x] 2.4 | `_setup_optimizer()` | `8f89abf`, `98da781` (ordering fix) |
+| [x] 2.5 | `_setup_loss()` | `8f89abf` |
+| [x] 2.6 | `_setup_logging()` | `8f89abf` |
+| [x] 2.7 | Resume (`_extract_resume_state` + `_finalize_resume`) | `8f89abf`, `98da781` |
+| [x] 2.8 | Wire `setup()` | `8f89abf` |
+| [x] 2.9 | TrainingGeometry after data setup | `8f89abf` |
 
-### Phase 2: Setup Methods
+### Phase 3: Training Loop — [x] COMPLETE
 
-**Step 2.1** — Implement `_setup_model()`: checkpointer creation, checkpoint loading, llama config update, model construction via `setup_llama3_2_1b`, move to device, set to train mode.
+| Step | Description | Commit |
+|---|---|---|
+| [x] 3.1 | `_reset_step_accumulators()` | `8f89abf` |
+| [x] 3.2 | `_train_step(batch)` | `8f89abf` |
+| [x] 3.3 | `_optimizer_step(epoch, iter_idx)` | `8f89abf` |
+| [x] 3.4 | `_evaluate()` | `8f89abf` |
+| [x] 3.5 | `_log_metrics(epoch, iter_idx, loss_to_log)` | `8f89abf` |
+| [x] 3.6 | `_maybe_save_checkpoint()` | `8f89abf` |
+| [x] 3.7 | `_train_epoch(epoch, batches_to_skip)` | `8f89abf` |
+| [x] 3.8 | `train()` outer loop | `8f89abf` |
+| [x] 3.9 | `save_checkpoint()` | `8f89abf` |
+| [x] 3.10 | `cleanup()` | `8f89abf` |
 
-**Step 2.2** — Implement `_setup_tokenizer()`: call `setup_llama3_tokenizer`, compute `token_type_ranges`.
+### Phase 4: Tests — [x] COMPLETE
 
-**Step 2.3** — Implement `_setup_data()`: dispatch to `setup_sft_data` or `setup_text_completion_data` based on `config_name`, store train/dev loaders and samplers.
+| Test | Description | File | Status |
+|---|---|---|---|
+| [x] T-U1 | Construction | `test_trainer.py` | Passing |
+| [x] T-U2 | TrainingGeometry values | `test_trainer.py` | Passing (4 variants) |
+| [x] T-U3 | TrainingGeometry remainder warning | `test_trainer.py` | Passing |
+| [x] T-U4 | Geometry insufficient batches raises | `test_trainer.py` | Passing |
+| [x] T-U5 | `_extract_resume_state` | `test_trainer.py` | Passing |
+| [x] T-U6 | `_reset_step_accumulators` | `test_trainer.py` | Passing |
+| [x] T-U7 | `_optimizer_step` counters | `test_trainer.py` | Passing (2 tests) |
+| [x] T-U8 | `_maybe_save_checkpoint` | `test_trainer.py` | Passing (3 tests) |
+| [x] T-U9 | `save_checkpoint` args | `test_trainer.py` | Passing |
+| [x] T-U10 | `_loss_log` recording | `test_trainer.py` | Passing (2 tests) |
+| [x] T-I1 | Setup smoke | `test_trainer_gpu.py` | Passing |
+| [x] T-I2 | Single train step | `test_trainer_gpu.py` | Passing |
+| [x] T-I3 | Optimizer step | `test_trainer_gpu.py` | Passing |
+| [x] T-I4 | Evaluation | `test_trainer_gpu.py` | Passing |
+| [x] T-I5 | Full train run | `test_trainer_gpu.py` | Passing |
+| [x] T-I6 | Functional equivalence | `test_equivalence.py` (tiny model), `test_equivalence_e2e.py` (real model) | Passing — bit-identical losses, weights, W&B metrics, checkpoints verified over 200 steps |
+| [x] T-I7 | Resume equivalence | `test_resume_equivalence.py` | Passing — losses and W&B metrics match between interrupted+resumed and uninterrupted runs |
+| [x] T-I8 | CPT equivalence | Was `test_cpt_equivalence.py` — passed, then removed after cutover (no functional baseline to compare against). CPT path tested implicitly via T-I1–I5. |
 
-**Step 2.4** — Implement `_setup_optimizer()`: call `setup_optimizer`, `setup_lr_scheduler`.
+**Note on T-I6/T-I8 test files removed post-cutover:** `test_equivalence_e2e_full.py`, `test_cpt_equivalence.py`, and `verify_full_equivalence.py` were removed in commit `bd11ded` because they compared the functional `train()` against the Trainer — once `train()` was deleted, these tests had no baseline. The equivalence was proven before deletion (200-step verification: 2,394 comparisons, 0 failures, byte-identical SHA256 checkpoints across separate CLI processes).
 
-**Step 2.5** — Implement `_setup_loss()`: create `CEWithChunkedOutputLoss`, handle `compile` and `set_num_output_chunks`.
+### Phase 5: Cutover — [x] COMPLETE
 
-**Step 2.6** — Implement `_setup_logging()`: W&B logger init with tags, resolve `checkpointer.output_dir` if None.
+| Step | Description | Commit |
+|---|---|---|
+| [x] 5.1 | Update `scripts/train_sft.py` and `scripts/train_cpt.py` to use Trainer | `c43749c` |
+| [x] 5.2 | Add `__all__` export | `96ece6c` |
+| [x] 5.3 | Remove functional `train()` (stronger than planned deprecation comment) | `bd11ded` |
 
-**Step 2.7** — Implement `_resume()`: restore global_step, consumed_samples, optimizer state, lr_scheduler state, cumulative metrics, RNG states.
-
-**Step 2.8** — Wire `setup()` to call all `_setup_*` methods in the correct order.
-
-**Step 2.9** — Implement `TrainingGeometry` computation after data setup (depends on dataloader length).
-
-### Phase 3: Training Loop
-
-**Step 3.1** — Implement `_reset_step_accumulators()`.
-
-**Step 3.2** — Implement `_train_step(batch)` — single micro-batch forward + backward.
-
-**Step 3.3** — Implement `_optimizer_step(epoch)` — gradient scaling, clipping, optimizer step, LR step, counter increments.
-
-**Step 3.4** — Implement `_evaluate()` — delegates to existing `compute_dataset_loss`.
-
-**Step 3.5** — Implement `_log_metrics(epoch, iter_idx)` — console and W&B logging.
-
-**Step 3.6** — Implement `_maybe_save_checkpoint()` — periodic model + training state save.
-
-**Step 3.7** — Implement `_train_epoch(epoch, batches_to_skip)` — inner loop with gradient accumulation, calling the methods above.
-
-**Step 3.8** — Implement `train()` — outer epoch loop.
-
-**Step 3.9** — Implement `save_checkpoint()` (explicit, non-periodic).
-
-**Step 3.10** — Implement `cleanup()`.
-
-### Phase 4: GPU Equivalence Tests
-
-See "Test Plan" section below.
-
-### Phase 5: Cutover
-
-**Step 5.1** — Update `scripts/train_cpt.py` and `scripts/train_sft.py` to use `Trainer`.
-
-**Step 5.2** — Add `__all__` export of `Trainer` from `ssi/trainer.py`.
-
-**Step 5.3** — Mark the functional `train()` in `ssi/train.py` with a deprecation comment pointing to `Trainer`.
+**Deviation from plan:** Step 5.3 originally called for a deprecation comment on `train()`. Instead, the entire `ssi/train.py` was deleted and its utility functions moved to `ssi/train_utils.py`. This is a stronger action — cleaner than leaving deprecated code around.
 
 ---
 
-## Test Plan
+## Additional Work Beyond Original Plan
 
-### Test Data Strategy — Partial Download (64GB Storage Constraint)
+### Bug Fixes
 
-**Critical constraint:** This environment has only 64GB total disk. The full MLS HuBERT train split is ~24.5GB across 109 parquet shards. HuggingFace's `load_dataset` with split slicing (e.g. `"train[:2000]"`) **still downloads ALL shards** before slicing — this is a known limitation of the `datasets` library.
-
-**Verified approaches that avoid full download:**
-
-**Approach A — Stream + Materialize (PREFERRED, near-zero disk):**
-```python
-from datasets import Dataset, load_dataset
-
-iterable = load_dataset("anilkeshwani/mls-hubert_large_ll60k-layer_22", split="train", streaming=True)
-ds = Dataset.from_list(list(iterable.take(2000)))
-# Returns a regular datasets.Dataset with full __getitem__, len(), filter(), select() support
-```
-Disk usage: near-zero (in-memory only, no cache files). Verified working — returns correct column types including `speech_tokens` lists.
-
-**Approach B — Single Parquet Shard (~1.2GB cached):**
-```python
-ds = load_dataset(
-    "parquet",
-    data_files="hf://datasets/anilkeshwani/mls-hubert_large_ll60k-layer_22/en/train/mls-transcripts_uroman_000_aligned_hubert.parquet",
-    split="train",
-)
-ds = ds.select(range(2000))
-```
-Downloads one shard (~224MB parquet) + Arrow cache = ~1.2GB total. More robust for repeated runs (cached).
-
-**Implementation:** Tests will create a helper function `load_subset(source, split, n)` that uses Approach A. Both `SFTDataset` and `TextCompletionDataset` call `load_dataset(source, split=split)` internally, so the test fixture will **monkey-patch** `datasets.load_dataset` or override the dataset's `_data` attribute after construction.
-
-Cleanest approach: the test overrides `cfg.data.train.dataset.source` to point to a single parquet shard URL and adds a post-load `.select()` via a `filter_fn` or by directly patching `dataset._data = dataset._data.select(range(N))`.
-
-**Parquet shard paths (verified via HF Hub API):**
-- Train (100K rows per shard): `hf://datasets/anilkeshwani/mls-hubert_large_ll60k-layer_22/en/train/mls-transcripts_uroman_000_aligned_hubert.parquet`
-- Dev (3,807 rows, 1 shard): `hf://datasets/anilkeshwani/mls-hubert_large_ll60k-layer_22/en/dev/dev-mls-transcripts_uroman_000_aligned_hubert.parquet`
-- Test (3,769 rows, 1 shard): `hf://datasets/anilkeshwani/mls-hubert_large_ll60k-layer_22/en/test/test-mls-transcripts_uroman_000_aligned_hubert.parquet`
-
-**Environment setup:** Must set `HF_HOME=/home/anilkeshwani/.cache/huggingface` (default `/workspace/.hf_home` is not writable in this container).
-
-**Test parameters:**
-- **Subset size**: 2,000 train samples, 200 dev samples
-- **Max steps**: 10–20 steps (enough to exercise gradient accumulation, eval, and checkpoint save)
-- **Batch size**: 2 (matching existing SFT config)
-- **Gradient accumulation**: 2 (so each optimizer step = 2 micro-batches = 4 samples)
-- **Eval steps**: 5 (so eval fires twice in a 10-step run)
-- **Save steps**: 10 (so checkpoint fires once)
-
-### Existing Tests (Run First)
-
-| Test File | Tests | GPU Required |
+| Fix | Commit | Description |
 |---|---|---|
-| `tests/test_checkpoint.py` | T1–T16: checkpoint schema, resume logic, RNG round-trip, disk tests | No (CPU) except T12–T15b (need Llama 3.2 1B base weights on disk) |
-| `tests/test_cpt_deterministic_rng.py` | T16b–T16c: per-sample deterministic RNG | No (CPU) |
+| `scale_grads` type error | `9716628` | Both `train.py` and `trainer.py` passed a Python `float` to `scale_grads()` which requires `torch.Tensor`. Latent bug — would crash on CUDA. |
+| Memory leak | `13f4641` | `self._ckpt_dict` (several GB) persisted through training. Fixed by deleting at end of `setup()`. |
+| Timer ordering | `13f4641` | `_reset_step_accumulators` and `_maybe_save_checkpoint` were swapped vs original, affecting `duration_step` W&B metric. |
 
-### New Tests: `tests/test_trainer.py`
+### Hydra Config Fix
 
-#### Unit Tests (CPU, no model weights)
+| Item | Commit | Description |
+|---|---|---|
+| `_base_` defaults resolution | `4cad4c9` | The modularization commit `b05b53c` introduced two bugs: (1) Hydra couldn't resolve `defaults: [_base_]` across config group boundaries, (2) `${_source}` interpolation resolved from the wrong scope. Fixed by moving base configs to `conf/data/_sft_base.yaml` and `conf/data/_cpt_base.yaml`, eliminating all cross-file interpolations, using `???` mandatory markers. All config values verified identical. |
 
-**T-U1: Construction** — `Trainer(cfg)` stores cfg, all other attributes are None.
+### `n_samples` Data Subsetting Feature
 
-**T-U2: TrainingGeometry** — `TrainingGeometry.from_config()` computes correct values for known inputs (batches_per_epoch=100, grad_accum=4 → steps_per_epoch=25, etc.).
+| Item | Commit | Description |
+|---|---|---|
+| Streaming subset | `ffe32ca` | Added `n_samples` parameter to `SFTDataset` and `TextCompletionDataset`. Uses HF `streaming=True` + `.take(n)` to load only the first N samples without downloading the full dataset. Added `load_dataset_subset()` helper to `ssi/data/__init__.py`. Added `n_samples: null` to all Hydra data configs. CLI usage: `data.train.dataset.n_samples=2000`. |
 
-**T-U3: TrainingGeometry remainder warning** — when batches_per_epoch % grad_accum != 0, a warning is logged.
+---
 
-**T-U4: Validate train cfg** — `validate_train_cfg` rejects invalid configs (negative steps, save_steps not multiple of eval_steps, etc.). (These already exist implicitly but should be explicit.)
+## Verification Summary
 
-#### Integration Tests (GPU, Llama 3.2 1B extended model, MLS subset)
+### Equivalence Proof
 
-All integration tests use the extended model at `models/extended/Llama-3.2-1B-5000-dsus/` and the `sft/mls-hubert_large_ll60k-layer_22` data config with the 2000-sample subset.
+The Trainer was proven bit-identical to the functional `train()` across multiple levels:
 
-**T-I1: Setup smoke test** — `Trainer.setup()` completes without error. Verify all attributes are non-None. Verify `self.geometry` has sane values.
+1. **Tiny model test** (`test_equivalence.py`): 4 optimizer steps, random 256-vocab 2-layer Llama, exact `torch.equal` on every parameter.
 
-**T-I2: Single train step** — After `setup()`, call `_train_step(batch)` on one batch. Verify loss is a finite float. Verify `num_tokens_step > 0`. Verify `token_type_counts_total` is populated.
+2. **Real model test** (`test_equivalence_e2e.py`): 6 steps with Llama 3.2 1B, 2k MLS-HuBERT samples, exact loss and weight match with deterministic CUDA.
 
-**T-I3: Optimizer step** — Run `gradient_accumulation_steps` micro-batches, then `_optimizer_step()`. Verify `global_step` incremented by 1. Verify optimizer state changed (compare param checksums before/after).
+3. **Full E2E with W&B + checkpoints** (formerly `test_equivalence_e2e_full.py`): 4 steps through real `train()` and `Trainer.setup()+train()` paths, compared all W&B `log_dict` payloads, safetensors checkpoint weights, and training state optimizer buffers.
 
-**T-I4: Evaluation** — Call `_evaluate()`. Verify returns a finite float.
+4. **200-step standalone verification** (formerly `verify_full_equivalence.py`): 200 optimizer steps with eval at 50/100/150/200, checkpoints at 100/200. **2,394 comparisons, 0 failures**. Dev losses, token counts, optimizer buffers, and model weights all bit-identical.
 
-**T-I5: Full train run (10 steps)** — `Trainer.train()` for 10 steps. Collect loss sequence.
+5. **CLI byte-identical checkpoints**: Both `scripts/train_sft.py` and `scripts/train_sft_trainer.py` run via real CLI (separate processes) with `debug_mode=2 optimizer.fused=False CUBLAS_WORKSPACE_CONFIG=:4096:8`. SHA256 of safetensors files match exactly at step 100 and step 200.
 
-**T-I6: Functional equivalence** — Run the **functional** `train(cfg)` for 10 steps with the same config, seed, and data. Collect loss sequence. **Assert the two loss sequences are identical** (or within float tolerance `atol=1e-6`).
+6. **Resume equivalence** (`test_resume_equivalence.py`): 8-step run interrupted at step 4 and resumed produces identical losses at steps 5–8 as an uninterrupted 8-step run.
 
-**T-I7: Checkpoint save + resume equivalence** — Run `Trainer.train()` for 5 steps, save checkpoint. Create new `Trainer`, resume from checkpoint, run 5 more steps. Compare loss sequence at steps 6–10 against an uninterrupted 10-step run.
+7. **CPT equivalence** (formerly `test_cpt_equivalence.py`): Functional and Trainer produced identical losses and W&B metrics for CPT with interleaved text-speech sequences.
 
-**T-I8: CPT equivalence** — Same as T-I6 but using `cpt` config and `cpt/mls-hubert_large_ll60k-layer_22` data.
+### Code Review
 
-### Test Fixtures and Helpers
+Code review agent (`origin/dev..HEAD`) confirmed:
+- All config values preserved exactly across the restructuring
+- No dangling imports after `ssi/train.py` deletion
+- No pre-existing test files removed
+- Memory leak and timer ordering issues identified and fixed
 
-```python
-# conftest.py additions
+---
 
-@pytest.fixture
-def sft_cfg_subset():
-    """Hydra-composed SFT config with 2000-sample subset and small step counts."""
-    # Uses hydra.compose() to build config programmatically
-    # Overrides: max_steps=10, eval_steps=5, save_steps=10,
-    #            gradient_accumulation_steps=2, data.train.dataloader.batch_size=2
-    ...
+## Final File Inventory
 
-@pytest.fixture
-def cpt_cfg_subset():
-    """Same as above but for CPT."""
-    ...
+| File | Status |
+|---|---|
+| `ssi/trainer.py` | **CREATED** — Trainer + TrainingGeometry |
+| `ssi/train_utils.py` | **CREATED** — extracted utility functions |
+| `ssi/train.py` | **DELETED** — replaced by Trainer |
+| `ssi/data/__init__.py` | **MODIFIED** — added `load_dataset_subset()` |
+| `ssi/data/sft.py` | **MODIFIED** — added `n_samples` parameter |
+| `ssi/data/cpt.py` | **MODIFIED** — added `n_samples` parameter |
+| `conf/data/_sft_base.yaml` | **CREATED** — moved from `conf/data/sft/_base_.yaml` |
+| `conf/data/_cpt_base.yaml` | **CREATED** — moved from `conf/data/cpt/_base_.yaml` |
+| `conf/data/sft/_base_.yaml` | **DELETED** — replaced by `_sft_base.yaml` |
+| `conf/data/cpt/_base_.yaml` | **DELETED** — replaced by `_cpt_base.yaml` |
+| `conf/data/sft/*.yaml` (4 files) | **MODIFIED** — direct source overrides, no interpolation |
+| `conf/data/cpt/*.yaml` (4 files) | **MODIFIED** — direct source + sampling_rate overrides |
+| `scripts/train_sft.py` | **MODIFIED** — uses Trainer |
+| `scripts/train_cpt.py` | **MODIFIED** — uses Trainer |
+| `scripts/train_sft_trainer.py` | **CREATED then DELETED** — was temporary verification script |
+| `scripts/plt_embed_tsne.py` | **MODIFIED** — import updated to `ssi.train_utils` |
+| `tests/test_trainer.py` | **CREATED** — 16 unit tests |
+| `tests/test_trainer_gpu.py` | **CREATED** — 5 GPU integration tests |
+| `tests/test_equivalence.py` | **CREATED** — tiny-model equivalence (5 tests) |
+| `tests/test_equivalence_e2e.py` | **CREATED** — real-model Trainer tests (4 tests) |
+| `tests/test_resume_equivalence.py` | **CREATED** — resume equivalence (2 tests) |
+| `tests/conftest.py` | **CREATED** — shared fixtures |
+| `tests/test_checkpoint.py` | **MODIFIED** — import updated to `ssi.train_utils` |
+| `ssi/eval.py` | Unchanged |
+| `ssi/loss.py` | Unchanged |
+| `ssi/model.py` | Unchanged |
+| `ssi/optimizer.py` | Unchanged |
+| `ssi/lr_schedule.py` | Unchanged |
+| `ssi/checkpoint.py` | Unchanged |
+| `ssi/metric_logging.py` | Unchanged |
+| `ssi/constants.py` | Unchanged |
+| `tests/test_cpt_deterministic_rng.py` | Unchanged |
 
-def collect_loss_sequence(train_fn_or_trainer, cfg, max_steps) -> list[float]:
-    """Utility to capture per-step loss for comparison."""
-    ...
-```
+### Test Files Removed Post-Cutover
 
-### Test Markers
+These test files existed during the verification phase and were removed after the functional `train()` was deleted (they compared functional vs stateful — no longer applicable):
 
-```python
-# pytest markers
-@pytest.mark.gpu        # requires CUDA
-@pytest.mark.disk       # requires model weights on disk
-@pytest.mark.slow       # takes > 30 seconds
-@pytest.mark.equiv      # equivalence test between functional and stateful
-```
+| File | Purpose | Removed in |
+|---|---|---|
+| `tests/test_equivalence_e2e_full.py` | Full E2E with W&B traces + checkpoints | `bd11ded` |
+| `tests/test_cpt_equivalence.py` | CPT functional vs stateful | `bd11ded` |
+| `tests/verify_full_equivalence.py` | 200-step standalone verification | `bd11ded` |
 
-### Running Tests
+---
+
+## Test Suite (final state)
+
+72 tests passing:
 
 ```bash
-# All CPU tests (fast)
-uv run pytest tests/ -v -m "not gpu and not disk"
+# All fast tests (CPU + GPU, ~7s)
+uv run pytest tests/ -v --ignore=tests/test_trainer_gpu.py \
+    --ignore=tests/test_resume_equivalence.py \
+    --ignore=tests/test_equivalence_e2e.py
 
-# Disk tests (need Llama 3.2 1B base weights)
-uv run pytest tests/ -v -m "disk and not gpu"
+# GPU integration tests (need extended model + MLS data, ~8 min each)
+WANDB_MODE=disabled HAFH=/home/ubuntu uv run pytest tests/test_trainer_gpu.py -v
 
-# GPU integration tests (need GPU + extended model + MLS data)
-uv run pytest tests/test_trainer.py -v -m "gpu"
+# Resume equivalence (needs extended model, ~3 min)
+WANDB_MODE=disabled HAFH=/home/ubuntu CUBLAS_WORKSPACE_CONFIG=:4096:8 \
+    uv run pytest tests/test_resume_equivalence.py -v
 
-# Equivalence tests only
-uv run pytest tests/test_trainer.py -v -m "equiv"
+# Real model E2E (needs extended model, ~1 min)
+WANDB_MODE=disabled HAFH=/home/ubuntu CUBLAS_WORKSPACE_CONFIG=:4096:8 \
+    uv run pytest tests/test_equivalence_e2e.py -v
 
 # Everything
-uv run pytest tests/ -v
+WANDB_MODE=disabled HAFH=/home/ubuntu CUBLAS_WORKSPACE_CONFIG=:4096:8 \
+    uv run pytest tests/ -v
 ```
-
----
-
-## Data Subsetting Strategy
-
-For GPU tests, we need a fast-loading subset of MLS without downloading the full dataset (~24.5GB train split). See "Test Data Strategy" section above for the verified approaches.
-
-### Approach A: Point `source` at a single parquet shard + post-load `.select()`
-
-Override the HF `source` in the test config to load one parquet shard directly, then select a small subset. This avoids downloading the full dataset entirely.
-
-```python
-# In test fixture
-with open_dict(cfg):
-    cfg.data.train.dataset.source = "parquet"
-    # source becomes the data loader type; actual file specified via load_dataset_kwargs
-```
-
-However, since the dataset classes call `load_dataset(source, split=split)` internally and we don't want to modify their `__init__` signatures, the simplest approach is:
-
-**Post-construction patching (no production code changes):**
-```python
-# In test fixture / helper
-dataset = SFTDataset(model_tokenizer=tokenizer, **cfg.data.train.dataset)
-dataset._data = dataset._data.select(range(2000))  # patch after construction
-```
-
-This works because `._data` is a `datasets.Dataset` that supports `.select()`.
-
-**Even simpler — stream + materialize, then inject:**
-```python
-from datasets import Dataset, load_dataset as hf_load_dataset
-
-def load_subset(source: str, split: str, n: int) -> Dataset:
-    """Load n samples via streaming — near-zero disk usage."""
-    iterable = hf_load_dataset(source, split=split, streaming=True)
-    return Dataset.from_list(list(iterable.take(n)))
-
-# In test fixture, monkey-patch the dataset's _data after construction
-dataset._data = load_subset("anilkeshwani/mls-hubert_large_ll60k-layer_22", "train", 2000)
-```
-
-### Approach B: Split slicing (DOES NOT WORK)
-
-`load_dataset(source, split="train[:2000]")` still downloads all 109 train parquet shards before slicing. **Do not use this approach** in storage-constrained environments.
-
----
-
-## Verification Criteria for Equivalence (T-I6)
-
-Two training runs are equivalent if and only if:
-
-1. **Loss sequence**: `abs(loss_functional[i] - loss_stateful[i]) < 1e-6` for all steps i
-2. **Global step**: both reach the same `global_step` value
-3. **Model weights**: `torch.allclose(param_f, param_s, atol=1e-6)` for all parameters after N steps
-4. **Optimizer state**: momentum/velocity buffers are identical
-5. **Consumed samples**: identical count
-
-The tolerance `1e-6` accounts for bf16 rounding; if both run in fp32 the tolerance can be tightened to `1e-7`.
-
-To capture per-step losses from the functional `train()` without modifying it, we can:
-- Monkey-patch `LOGGER.info` to intercept the loss log lines, OR
-- Add a lightweight loss-capture hook that both implementations use, OR
-- (Simplest) Add an optional `loss_log: list[float] | None = None` parameter to both `train()` and `Trainer.train()` that appends per-step loss when provided.
-
-We use the third approach: add an optional `_loss_log` parameter.
-
----
-
-## File Inventory
-
-| File | Action |
-|---|---|
-| `ssi/trainer.py` | **CREATE** — new Trainer class |
-| `ssi/train.py` | **KEEP** — no changes (reference implementation) |
-| `ssi/eval.py` | **KEEP** — no changes (called by Trainer) |
-| `ssi/loss.py` | **KEEP** — no changes (called by Trainer) |
-| `ssi/model.py` | **KEEP** — no changes (called by Trainer) |
-| `ssi/optimizer.py` | **KEEP** — no changes (called by Trainer) |
-| `ssi/lr_schedule.py` | **KEEP** — no changes (called by Trainer) |
-| `ssi/checkpoint.py` | **KEEP** — no changes (called by Trainer) |
-| `ssi/metric_logging.py` | **KEEP** — no changes (called by Trainer) |
-| `ssi/data/__init__.py` | **KEEP** — no changes (called by Trainer) |
-| `ssi/data/cpt.py` | **KEEP** — no changes |
-| `ssi/data/sft.py` | **KEEP** — no changes |
-| `ssi/constants.py` | **KEEP** — no changes |
-| `tests/test_trainer.py` | **CREATE** — new test suite |
-| `tests/conftest.py` | **CREATE** — shared fixtures |
-| `scripts/train_cpt.py` | **MODIFY** (Phase 5 only) — switch to Trainer |
-| `scripts/train_sft.py` | **MODIFY** (Phase 5 only) — switch to Trainer |
-
----
-
-## Risk Mitigation
-
-1. **The functional `train()` is never modified.** It remains as the ground truth.
-2. **Equivalence tests gate the cutover.** Scripts are not updated until T-I6 and T-I7 pass.
-3. **No config schema changes.** The Trainer reads the same Hydra configs.
-4. **No checkpoint schema changes.** The Trainer writes identical `training_state.pt` files.
-5. **Pure functions stay pure.** `validate_train_cfg`, `resume_training_state`, `get_token_type_ranges`, `count_token_types`, `validate_resume_hparams` remain in `ssi/train.py` and are imported by `Trainer`.
-
----
-
-## Implementation Order and Estimated Iteration Count
-
-For an automated loop running every ~15 minutes, with GPU tests:
-
-| Iteration | Steps | What Gets Done |
-|---|---|---|
-| 1 | 1.1–1.3 | Skeleton + TrainingGeometry + unit tests |
-| 2 | 2.1–2.3 | Model, tokenizer, data setup |
-| 3 | 2.4–2.9 | Optimizer, loss, logging, resume, full setup() |
-| 4 | 3.1–3.4 | Step accumulators, train_step, optimizer_step, evaluate |
-| 5 | 3.5–3.8 | Logging, checkpointing, epoch loop, outer train() |
-| 6 | 3.9–3.10, T-I1–T-I4 | Save/cleanup, GPU smoke tests |
-| 7 | T-I5–T-I6 | Full run + functional equivalence test |
-| 8 | T-I7–T-I8 | Resume equivalence + CPT equivalence |
-| 9 | 5.1–5.3 | Script cutover (if all tests pass) |
