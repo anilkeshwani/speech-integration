@@ -120,6 +120,7 @@ class SFTDataset(Dataset):
         inference: bool = False,
         deduplicate: bool,
         use_modality_tokens: bool,
+        n_samples: int | None = None,
         filter_fn: Callable | None = None,
         train_on_input: bool,
         column_map: dict[str, str] | None = None,
@@ -137,7 +138,12 @@ class SFTDataset(Dataset):
             image_dir=image_dir,
         )
         self._model_tokenizer = model_tokenizer
-        self._data = load_dataset(source, **load_dataset_kwargs)
+        if n_samples is not None:
+            from ssi.data import load_dataset_subset
+
+            self._data = load_dataset_subset(source, n_samples, **load_dataset_kwargs)
+        else:
+            self._data = load_dataset(source, **load_dataset_kwargs)
         if not isinstance(self._data, datasets.Dataset):
             raise TypeError(f"Expected a datasets.Dataset object but found {type(self._data)}")
         if any((k in self._data.features) for k in RESERVED_BATCH_KEYS):

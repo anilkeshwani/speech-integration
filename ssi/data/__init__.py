@@ -4,6 +4,7 @@ import logging
 import sys
 from typing import Any
 
+import datasets as hf_datasets
 from omegaconf import DictConfig, ListConfig
 import torch
 from torch import Tensor
@@ -24,6 +25,31 @@ from ssi.data.sft import SFTDataset
 
 
 LOGGER = logging.getLogger(__name__)
+
+
+def load_dataset_subset(
+    source: str,
+    n_samples: int,
+    **load_dataset_kwargs,
+) -> hf_datasets.Dataset:
+    """Load the first ``n_samples`` from a HuggingFace dataset via streaming.
+
+    Uses ``streaming=True`` so that only the requested rows are fetched over
+    the network — the full dataset is never downloaded to disk.
+
+    Args:
+        source: HuggingFace dataset identifier (e.g. ``"anilkeshwani/mls-hubert_large_ll60k-layer_22"``).
+        n_samples: Number of samples to materialize.
+        **load_dataset_kwargs: Forwarded to ``datasets.load_dataset``
+            (e.g. ``split="train"``).
+
+    Returns:
+        A standard ``datasets.Dataset`` containing the first *n_samples* rows.
+    """
+    iterable = hf_datasets.load_dataset(source, streaming=True, **load_dataset_kwargs)
+    rows = list(iterable.take(n_samples))
+    LOGGER.info(f"Streamed {len(rows)}/{n_samples} samples from {source} (split={load_dataset_kwargs.get('split', '?')})")
+    return hf_datasets.Dataset.from_list(rows)
 
 
 def setup_text_completion_data(
