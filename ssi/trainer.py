@@ -232,9 +232,14 @@ class Trainer:
             LOGGER.info(f"No checkpointer output dir provided. Resolved to: {self.cfg.checkpointer.output_dir!s}")
 
     def _setup_model(self) -> None:
-        self.checkpointer = FullModelHFCheckpointer(**self.cfg.checkpointer)
-        self._ckpt_dict = self.checkpointer.load_checkpoint()
+        # Update speech config before checkpointer creation so vocab_size
+        # is correct for checkpoint validation
         configllama3_2_1b.update_from_speech_cfg(self.cfg.speech)
+        self.checkpointer = FullModelHFCheckpointer(
+            **self.cfg.checkpointer,
+            model_expectations=configllama3_2_1b.checkpoint_expectations,
+        )
+        self._ckpt_dict = self.checkpointer.load_checkpoint()
         self.model = setup_llama3_2_1b(
             cfg=self.cfg,
             llama_config=configllama3_2_1b,
