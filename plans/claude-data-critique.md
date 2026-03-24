@@ -7,7 +7,7 @@ Now I have a thorough picture. Let me explain each parameter and the implementat
 Both CPT configs share the same structure — one for HuBERT tokens, one for SpeechTokenizer tokens. They configure `TextCompletionDataset`.
 
 ### Top-level split keys: `train` / `dev`
-Consumed in `ssi/train.py:151-152`:
+Consumed in `ssi/trainer.py` (`Trainer._setup_data`):
 ```python
 data_train, sampler_train = setup_text_completion_data(cfg.data.train, tokenizer)
 data_dev, sampler_dev   = setup_text_completion_data(cfg.data.dev, tokenizer)

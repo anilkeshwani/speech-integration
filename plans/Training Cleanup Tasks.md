@@ -2,7 +2,9 @@
 
 Produced by exploratory review of all training-related code. Tasks are grouped by category and labelled for easy reference. Items marked ~~like this~~ are done.
 
-Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes and Refactor.md`, `plans/claude-data-critique.md`, `plans/Plan to Simplify Checkpoint Directory Structure.md`.
+Cross-referenced with: `plans/claude-data-critique.md`.
+
+> **Note:** References to `ssi/train.py` below are historical — this file was replaced by `ssi/trainer.py` (stateful Trainer class) and `ssi/train_utils.py` (pure utility functions). Line numbers refer to the original pre-refactor code.
 
 **Checkpoint-related items (B1, B2, B6, Recommendation 1) are now consolidated in `plans/Checkpointing - Consolidated Plan.md`.** That document supersedes the checkpoint-specific content below and in `Fix B2 - Intra-Epoch Step-Level Resume with Configuration Validation.md`. The research backing the design is in `plans/Research - Checkpoint and Resume Best Practices.md`.
 
@@ -64,11 +66,8 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 - Overcounts by up to `batch_size` valid tokens (one per sequence); bias is small per batch but systematic across training.
 - Fix: count valid tokens from the same shifted label mask used by loss, or return `(loss, n_valid_tokens)` from `compute_loss`.
 
-**B4. `steps_per_epoch = 0` crashes**
-- `steps_per_epoch = batches_per_epoch // gradient_accumulation_steps` — `ssi/train.py:169`
-- If `batches_per_epoch < grad_accum_steps`, `steps_per_epoch == 0` and `ceil(max_steps / 0)` crashes.
-- V1 validation guards `gradient_accumulation_steps > 0` but cannot check `batches_per_epoch` at config-validation time.
-- Fix: guard after `steps_per_epoch` is computed (raise early if zero) or enforce via dataset size check.
+~~**B4. `steps_per_epoch = 0` crashes**~~
+- ~~Fixed. `TrainingGeometry.from_config()` in `ssi/trainer.py` raises `ValueError` if `steps_per_epoch <= 0`.~~
 
 **B5. Divide-by-zero in gradient scaling**
 - `scale_grads(model, 1 / num_tokens_step)` — `ssi/train.py:187`
@@ -222,10 +221,8 @@ Cross-referenced with: `plans/claude-train-critique.md`, `plans/Training Fixes a
 
 ## Structural Refactoring
 
-**R0. Split `ssi/train.py` into logical units**
-- Current `train()` function mixes config validation/setup, epoch/step execution, evaluation, logging, and checkpoint policy in one large function.
-- Proposed decomposition: separate modules or functions for each concern; introduce an explicit `TrainState` dataclass (epoch, global_step, token counters, timers) to replace scattered local variables; add callback-like hooks so logging/checkpointing/eval triggers are testable in isolation.
-- This is a significant structural refactor — do after correctness bugs (B-series) are fixed.
+~~**R0. Split `ssi/train.py` into logical units**~~
+- ~~Done. The monolithic `train()` function was replaced by the stateful `Trainer` class (`ssi/trainer.py`) with decomposed methods for setup, training step, optimizer step, evaluation, logging, and checkpointing. Pure utility functions extracted to `ssi/train_utils.py`. `ssi/train.py` deleted.~~
 
 **R1. Checkpoint directory structure simplification**
 - Full plan in `plans/Plan to Simplify Checkpoint Directory Structure.md`.

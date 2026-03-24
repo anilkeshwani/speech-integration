@@ -2,7 +2,7 @@
 
 This document consolidates all checkpoint-related design, implementation status, and future work. It supersedes checkpoint-specific content in `Training Cleanup Tasks.md` and absorbs the key content from `Refactor - Separate Model and Training State Checkpoints.md` and `Plan to Simplify Checkpoint Directory Structure.md`. The companion `Research - Checkpoint and Resume Best Practices.md` contains the web research that informed the design.
 
-Implementation lives in `ssi/checkpoint.py`, `ssi/train.py`, and `ssi/constants.py`.
+Implementation lives in `ssi/checkpoint.py`, `ssi/trainer.py`, `ssi/train_utils.py`, and `ssi/constants.py`.
 
 ---
 

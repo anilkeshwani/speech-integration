@@ -164,7 +164,7 @@ special_tokens_dynamic = dict(
 
 ## 6. Training: How Files Are Loaded
 
-In `ssi/train.py`, the flow is:
+In `ssi/trainer.py` (`Trainer.setup()`), the flow is:
 
 1. **Config**: `configllama3_2_1b.update_from_speech_cfg(cfg.speech)` sets `n_dsus=5000`, `modality_tokens=True` on the singleton config, so `vocab_size` property returns 133,258
 
@@ -235,6 +235,6 @@ The system is architecturally sound. The tokenizer and model weights are extende
 | PUA monkeypatch | `ssi/tokenizer/monkeypatch.py` |
 | Config schema | `ssi/llama_configs.py` |
 | Checkpoint I/O | `ssi/checkpoint.py` |
-| Training loop | `ssi/train.py` |
+| Training loop | `ssi/trainer.py` |
 | Generation | `scripts/generate.py` |
 | Constants | `ssi/constants.py` |

@@ -1,17 +1,17 @@
 # Bugfix — CPT Interleave Config Sampling Parameters
 
-> **Status: IDENTIFIED, NOT YET FIXED.** Two configuration bugs in CPT data configs produce incorrect text-speech interleaving alignment. This document presents the evidence and proposed fixes.
+> **Status: PARTIALLY MITIGATED.** The incorrect hardcoded values have been replaced with mandatory `???` placeholders so that Hydra will reject any CPT training run until verified values are explicitly provided. The correct values are documented below but have not yet been committed as defaults — they require manual verification before being set.
 
 ## Summary
 
 The CPT interleaved sequence type uses `sampling_rate` and `downsampling_ratio` config values to convert word-level alignment timestamps (in seconds) into speech token indices. Two of the four tokenizer configs have incorrect values, causing the `times_to_dsu_idxs()` function to compute wrong span boundaries during interleaved sequence construction.
 
-| Tokenizer | Current `sampling_rate` | Current `downsampling_ratio` | Effective token rate | Correct token rate | Impact |
-|---|---|---|---|---|---|
-| HuBERT | 16000 | 320 | 50 Hz | 50 Hz | Correct |
-| SpeechTokenizer | **24000** | 320 | **75 Hz** | 50 Hz | **1.5x overshoot** |
-| Mimi | 24000 | **320** | **75 Hz** | 12.5 Hz | **6x overshoot** |
-| FocalCodec | 16000 | 320 | 50 Hz | 50 Hz | Likely correct (unverified) |
+| Tokenizer | Config state | Correct `sampling_rate` | Correct `downsampling_ratio` | Correct token rate |
+|---|---|---|---|---|
+| HuBERT | `???` (was 16000/320 — correct) | 16000 | 320 | 50 Hz |
+| SpeechTokenizer | `???` (was 24000/320 — **wrong**) | 16000 | 320 | 50 Hz |
+| Mimi | `???` (was 24000/320 — **wrong**) | 24000 | 1920 | 12.5 Hz |
+| FocalCodec | `???` (was 16000/320 — unverified) | 16000 | 320 | 50 Hz (unverified) |
 
 ---
 
@@ -21,27 +21,19 @@ The CPT interleaved sequence type uses `sampling_rate` and `downsampling_ratio` 
 
 `conf/data/cpt/mls-speechtokenizer-rvq_0.yaml`
 
-### Current config
+### Config state
 
-```yaml
-train:
-  dataset:
-    source: anilkeshwani/mls-speechtokenizer-rvq_0
-    interleave_kwargs:
-      sampling_rate: 24000  # SpeechTokenizer model sampling rate
-```
+Both `sampling_rate` and `downsampling_ratio` are currently `???` (mandatory placeholders). The previous incorrect values were `sampling_rate: 24000, downsampling_ratio: 320`.
 
-### What goes wrong
+### What was wrong
 
-The alignment conversion `times_to_dsu_idxs()` computes:
+The alignment conversion `times_to_dsu_idxs()` would have computed:
 
 ```
-token_index = time_in_seconds × sampling_rate / downsampling_ratio
-            = time_in_seconds × 24000 / 320
-            = time_in_seconds × 75
+token_index = time_in_seconds × 24000 / 320 = time_in_seconds × 75
 ```
 
-But SpeechTokenizer produces tokens at 50 Hz (not 75 Hz), so computed indices overshoot by 1.5x. For a word at t=10s, the code computes token index 750 when the correct index is 500. This causes the interleaving to read past the actual speech token boundaries, producing misaligned text-speech sequences.
+But SpeechTokenizer produces tokens at 50 Hz (not 75 Hz), so computed indices would overshoot by 1.5x. For a word at t=10s, the code would compute token index 750 when the correct index is 500.
 
 ### Evidence
 
@@ -116,35 +108,25 @@ dev:
 
 `conf/data/cpt/mls-mimi-srvq_0.yaml` (inherits `downsampling_ratio: 320` from `conf/data/_cpt_base.yaml`)
 
-### Current config
+### Config state
 
-```yaml
-# conf/data/cpt/mls-mimi-srvq_0.yaml
-train:
-  dataset:
-    source: anilkeshwani/mls-mimi-srvq_0
-    interleave_kwargs:
-      sampling_rate: 24000  # Mimi (Moshi) model sampling rate
-      # downsampling_ratio: not overridden → inherits 320 from _cpt_base.yaml
-```
+Both `sampling_rate` and `downsampling_ratio` are currently `???` (mandatory placeholders). The previous incorrect values were `sampling_rate: 24000, downsampling_ratio: 320` (320 inherited from `_cpt_base.yaml`).
 
-### What goes wrong
+### What was wrong
 
-The alignment conversion computes:
+The alignment conversion would have computed:
 
 ```
-token_index = time_in_seconds × 24000 / 320
-            = time_in_seconds × 75
+token_index = time_in_seconds × 24000 / 320 = time_in_seconds × 75
 ```
 
-But Mimi produces tokens at 12.5 Hz, so the correct computation is:
+But Mimi produces tokens at 12.5 Hz. The correct computation is:
 
 ```
-token_index = time_in_seconds × 24000 / 1920
-            = time_in_seconds × 12.5
+token_index = time_in_seconds × 24000 / 1920 = time_in_seconds × 12.5
 ```
 
-Computed indices overshoot by 6x. For a word at t=10s, the code computes token index 750 when the correct index is 125.
+Computed indices would overshoot by 6x. For a word at t=10s, the code would compute token index 750 when the correct index is 125.
 
 ### Evidence
 
