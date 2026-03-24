@@ -1,6 +1,29 @@
 from dataclasses import asdict, dataclass
+from typing import NamedTuple
 
 from omegaconf import DictConfig
+
+
+class ModelCheckpointExpectations(NamedTuple):
+    """Expected checkpoint structure for a model architecture.
+
+    Used by checkpoint validation to verify that a checkpoint directory
+    matches the model specified in the config. Designed to be produced by
+    any model config class — not specific to Llama.
+
+    Attributes:
+        model_name: Human-readable model name (for error messages).
+        n_shards: Expected number of safetensors shard files.
+        num_layers: Expected ``num_hidden_layers`` in config.json.
+        hidden_size: Expected ``hidden_size`` in config.json.
+        vocab_size: Expected ``vocab_size`` in config.json (after extension).
+    """
+
+    model_name: str
+    n_shards: int
+    num_layers: int
+    hidden_size: int
+    vocab_size: int
 
 
 @dataclass
@@ -74,6 +97,23 @@ class ConfigLlama3_2:
     @property
     def vocab_size(self) -> int:
         return self._base_vocab_size_txt + self._n_special_txt + self.n_dsus + (2 * self._modality_tokens)
+
+    @property
+    def checkpoint_expectations(self) -> ModelCheckpointExpectations:
+        """Expected checkpoint structure for validation.
+
+        Llama 3.2 1B and 3B both fit in a single safetensors shard.
+        ``vocab_size`` reflects the current extension state (base + DSUs +
+        modality tokens).
+        """
+        size_label = {2048: "1B", 3072: "3B"}.get(self.embed_dim, f"{self.embed_dim}d")
+        return ModelCheckpointExpectations(
+            model_name=f"Llama 3.2 {size_label}",
+            n_shards=1,
+            num_layers=self.num_layers,
+            hidden_size=self.embed_dim,
+            vocab_size=self.vocab_size,
+        )
 
     @property
     def parameters(self) -> dict:
