@@ -1,4 +1,13 @@
 defaults:
-  - _base_
-_source: anilkeshwani/mls-focalcodec  # TODO confirm HF repo ID
-_sampling_rate: 16000  # TODO confirm FocalCodec model sampling rate
+  - _cpt_base
+
+train:
+  dataset:
+    source: anilkeshwani/mls-focalcodec  # TODO confirm HF repo ID
+    interleave_kwargs:
+      sampling_rate: 16000  # TODO confirm FocalCodec model sampling rate
+dev:
+  dataset:
+    source: anilkeshwani/mls-focalcodec  # TODO confirm HF repo ID
+    interleave_kwargs:
+      sampling_rate: 16000

@@ -1,4 +1,13 @@
 defaults:
-  - _base_
-_source: anilkeshwani/mls-hubert_large_ll60k-layer_22
-_sampling_rate: 16000  # HuBERT model sampling rate
+  - _cpt_base
+
+train:
+  dataset:
+    source: anilkeshwani/mls-hubert_large_ll60k-layer_22
+    interleave_kwargs:
+      sampling_rate: 16000  # HuBERT model sampling rate
+dev:
+  dataset:
+    source: anilkeshwani/mls-hubert_large_ll60k-layer_22
+    interleave_kwargs:
+      sampling_rate: 16000

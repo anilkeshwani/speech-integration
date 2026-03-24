@@ -1,4 +1,12 @@
 defaults:
-  - _base_
+  - _sft_base
 
-_source: anilkeshwani/mls-focalcodec  # TODO confirm HF repo ID
+train:
+  dataset:
+    source: anilkeshwani/mls-focalcodec  # TODO confirm HF repo ID
+dev:
+  dataset:
+    source: anilkeshwani/mls-focalcodec  # TODO confirm HF repo ID
+test:
+  dataset:
+    source: anilkeshwani/mls-focalcodec  # TODO confirm HF repo ID
