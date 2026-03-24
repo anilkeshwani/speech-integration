@@ -21,6 +21,7 @@ train:
     tokenized_key: null  # null -> fall back to default key in sardalign.constants
     alignment_start_time_key: null
     alignment_end_time_key: null
+    n_samples: null  # if set, stream only the first N samples (avoids full dataset download)
     speech_tokens_key: null
   dataloader:
     batch_size: 16
@@ -45,6 +46,7 @@ dev:
     tokenized_key: null
     alignment_start_time_key: null
     alignment_end_time_key: null
+    n_samples: null
     speech_tokens_key: null
   dataloader:
     batch_size: 16
