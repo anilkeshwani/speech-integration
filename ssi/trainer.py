@@ -358,7 +358,8 @@ class Trainer:
                 return
 
     def _train_epoch(self, epoch: int, batches_to_skip: int = 0) -> None:
-        self.sampler_train.set_epoch(epoch)
+        if self.sampler_train is not None:
+            self.sampler_train.set_epoch(epoch)
         if hasattr(self.data_train.dataset, "set_epoch"):
             self.data_train.dataset.set_epoch(epoch)
 
