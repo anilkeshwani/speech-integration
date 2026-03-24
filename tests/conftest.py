@@ -18,8 +18,8 @@ from ssi.constants import TORCHTUNE_EXTENDED_MODELS_DIR
 
 EXTENDED_MODEL_DIR = TORCHTUNE_EXTENDED_MODELS_DIR / "Llama-3.2-1B-5000-dsus"
 
-# Also check local path (for container environments without /mnt/scratch-artemis)
-_LOCAL_EXTENDED = Path("/home/anilkeshwani/models/extended/Llama-3.2-1B-5000-dsus")
+# Also check ~/models/extended/ (for environments without /mnt/scratch-artemis)
+_LOCAL_EXTENDED = Path.home() / "models" / "extended" / "Llama-3.2-1B-5000-dsus"
 if _LOCAL_EXTENDED.exists():
     EXTENDED_MODEL_DIR = _LOCAL_EXTENDED
 

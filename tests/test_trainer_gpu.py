@@ -31,21 +31,14 @@ from ssi.trainer import Trainer, TrainingGeometry
 # ---------------------------------------------------------------------------
 # Ensure HF_HOME is set for streaming downloads
 # ---------------------------------------------------------------------------
-os.environ.setdefault("HF_HOME", "/home/anilkeshwani/.cache/huggingface")
-
 # ---------------------------------------------------------------------------
 # Extended model path discovery (mirrors conftest.py logic)
 # ---------------------------------------------------------------------------
 
 EXTENDED_MODEL_DIR = TORCHTUNE_EXTENDED_MODELS_DIR / "Llama-3.2-1B-5000-dsus"
-_CANDIDATE_DIRS = [
-    Path("/home/anilkeshwani/models/extended/Llama-3.2-1B-5000-dsus"),
-    Path("/home/ubuntu/models/extended/Llama-3.2-1B-5000-dsus"),
-]
-for _d in _CANDIDATE_DIRS:
-    if _d.exists():
-        EXTENDED_MODEL_DIR = _d
-        break
+_LOCAL_EXTENDED = Path.home() / "models" / "extended" / "Llama-3.2-1B-5000-dsus"
+if _LOCAL_EXTENDED.exists():
+    EXTENDED_MODEL_DIR = _LOCAL_EXTENDED
 
 
 def _has_extended_model() -> bool:

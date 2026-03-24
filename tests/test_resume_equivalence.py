@@ -9,7 +9,7 @@ Uses the real Llama 3.2 1B extended model and 2k MLS-HuBERT samples
 streamed via n_samples.
 
 Prerequisites:
-    /home/ubuntu/models/extended/Llama-3.2-1B-5000-dsus/
+    ~/models/extended/Llama-3.2-1B-5000-dsus/ (or HAFH env var)
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ LOGGER = logging.getLogger(__name__)
 # Paths
 # ---------------------------------------------------------------------------
 
-EXTENDED_MODEL_DIR = Path("/home/ubuntu/models/extended/Llama-3.2-1B-5000-dsus")
+EXTENDED_MODEL_DIR = Path.home() / "models" / "extended" / "Llama-3.2-1B-5000-dsus"
 CONF_DIR = Path(__file__).resolve().parent.parent / "conf"
 _HF_SOURCE = "anilkeshwani/mls-hubert_large_ll60k-layer_22"
 
