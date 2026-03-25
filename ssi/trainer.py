@@ -220,6 +220,10 @@ class Trainer:
         self._finalize_resume()
         # Free checkpoint dict — no longer needed after setup
         del self._ckpt_dict
+        # Stash RNG state for train() to restore (must happen after all setup),
+        # then free the rest of _resume_state (optimizer state, etc.)
+        self._resume_rng_state = self._resume_state.pop("rng_state", None) if self._resume_state else None
+        self._resume_state = None
 
     def _setup_logging(self) -> None:
         wandb_tags = [__version__, self.cfg.config_name]
@@ -342,10 +346,10 @@ class Trainer:
         batches_to_skip = (self.global_step % self.geometry.steps_per_epoch) * self.cfg.gradient_accumulation_steps
 
         # Restore RNG states after all setup, before training loop
-        if self._resume_state:
-            restore_rng_states(self._resume_state["rng_state"])
+        if self._resume_rng_state is not None:
+            restore_rng_states(self._resume_rng_state)
             LOGGER.info("Restored framework RNG states from checkpoint.")
-            self._resume_state = None  # free optimizer/RNG state references
+            self._resume_rng_state = None
 
         LOGGER.info(OmegaConf.to_yaml(self.cfg, resolve=True, sort_keys=False))
         self.wandb_logger.log_config(self.cfg)
