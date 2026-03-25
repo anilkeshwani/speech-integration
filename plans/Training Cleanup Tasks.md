@@ -93,6 +93,12 @@ Cross-referenced with: `plans/claude-data-critique.md`.
 ~~**B10. `update_from_speech_cfg` mutates global singleton instead of `self`**~~
 - ~~Fixed: replaced `configllama3_2_1b.n_dsus = ...` and `configllama3_2_1b.modality_tokens = ...` with `self.n_dsus = ...` and `self.modality_tokens = ...`.~~
 
+**B12. Zero-division risk in `_log_metrics` timing**
+- `ssi/trainer.py:467` — `"tokens_per_second_per_gpu": self.num_tokens_step / dur_step`
+- `dur_step = time.perf_counter() - self.t_step_start` could be near-zero on fast hardware or in unit tests, producing `inf`.
+- `num_tokens_step` is already guarded non-zero by `_optimizer_step`, but `dur_step` has no guard.
+- Fix: add a floor on `dur_step` (e.g. `max(dur_step, 1e-9)`) or skip the metric when `dur_step` is below a threshold.
+
 **B11. `train_cfg` NameError in `generate.py` when `cfg.train_yaml` is not None**
 - `scripts/generate.py` only assigns `train_cfg` inside the `if cfg.train_yaml is None:` block (lines 152–160).
 - `train_cfg` is referenced unconditionally at lines 164, 170, 180 to resolve `cfg.speech.n_dsus`, `cfg.speech.deduplicate`, and `cfg.data`.
@@ -145,6 +151,19 @@ Cross-referenced with: `plans/claude-data-critique.md`.
 ---
 
 ## Code Clarity / Style
+
+**C13. Undeclared instance attributes in `Trainer.__init__`**
+- `self._resume_state` is created in `_extract_resume_state()` (`ssi/trainer.py:280`), not in `__init__`.
+- `self._ckpt_dict` is created in `_setup_model()` (`ssi/trainer.py:246`), deleted in `setup()` (`ssi/trainer.py:222`).
+- `self._llama_config` is created in `_setup_model()` (`ssi/trainer.py:240`).
+- `self._resume_rng_state` is created in `setup()` (`ssi/trainer.py:225`).
+- If any method is called out of order (or introspected before `setup()`), this produces an `AttributeError` rather than a clear error message. It also hinders IDE autocomplete and static analysis.
+- Fix: declare all attributes in `__init__` (initialize to `None`), so the full state surface is visible in one place.
+
+**C14. `_log_metrics` triggers model evaluation (naming/responsibility mismatch)**
+- `ssi/trainer.py:455` — `_log_metrics` conditionally calls `self._evaluate()` on the dev set.
+- A method named `_log_metrics` should only log; triggering a potentially expensive full-dev-set forward pass is a surprising side effect.
+- Fix: extract the eval-then-log sequence into a method like `_evaluate_and_log()`, or move the `_evaluate()` call to `_optimizer_step` where the control flow decision belongs, passing `dev_loss` into `_log_metrics` as an argument.
 
 **C1. Hard-coded SLURM QoS check**
 - `ssi/train.py:111` — `os.getenv("SLURM_JOB_QOS") == "gpu-debug"` ties behavior to cluster-specific env var.
