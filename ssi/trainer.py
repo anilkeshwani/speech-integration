@@ -514,5 +514,6 @@ class Trainer:
     # === Cleanup ===
 
     def cleanup(self) -> None:
-        """Teardown (currently a no-op; future: DDP process group destruction)."""
-        pass
+        """Flush and close W&B logger. Future: DDP process group destruction."""
+        if hasattr(self, "wandb_logger") and self.wandb_logger is not None:
+            self.wandb_logger.close()
