@@ -12,7 +12,7 @@ def compute_loss(batch: dict[str, torch.Tensor], model: TransformerDecoder, loss
         encoder_mask=batch.get("encoder_mask"),
         input_pos=batch.get("input_pos"),
     )
-    labels = batch.pop("labels")  # shape [b, s] needed for the loss not the model
+    labels = batch["labels"]  # shape [b, s] needed for the loss not the model
     labels = torch.hstack((labels[..., 1:], torch.full_like(labels[..., -1:], loss_fn.ignore_index)))
     if not isinstance(logits, list):
         labels = labels.reshape(-1)
