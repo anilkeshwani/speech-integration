@@ -46,6 +46,12 @@ def load_dataset_subset(
     Returns:
         A standard ``datasets.Dataset`` containing the first *n_samples* rows.
     """
+    if "split" not in load_dataset_kwargs:
+        raise ValueError(
+            "A 'split' must be specified via load_dataset_kwargs (e.g. split='train') when calling "
+            "load_dataset_subset. Without a split, datasets.load_dataset returns an IterableDatasetDict "
+            "which does not support .take()."
+        )
     iterable = hf_datasets.load_dataset(source, streaming=True, **load_dataset_kwargs)
     rows = list(iterable.take(n_samples))
     LOGGER.info(f"Streamed {len(rows)}/{n_samples} samples from {source} (split={load_dataset_kwargs.get('split', '?')})")
