@@ -33,7 +33,7 @@ dev:
     sequence_type: interleaved
     interleave_kwargs:
       sampling_rate: ???
-      downsampling_ratio: 320
+      downsampling_ratio: ???
       mean_seq_len_tokens: 39.43
       binom_prob: 0.1
     deduplicate: ${speech.deduplicate}
