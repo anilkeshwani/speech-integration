@@ -48,14 +48,21 @@ pytestmark = [
 # ---------------------------------------------------------------------------
 
 
-def _enable_deterministic_cuda():
+@pytest.fixture(autouse=True)
+def _deterministic_cuda():
+    """Enable deterministic CUDA for this module's tests, restore after."""
+    prev_det = torch.are_deterministic_algorithms_enabled()
+    prev_cudnn_det = torch.backends.cudnn.deterministic
+    prev_cudnn_bench = torch.backends.cudnn.benchmark
     os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
     torch.use_deterministic_algorithms(True)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+    yield
+    torch.use_deterministic_algorithms(prev_det)
+    torch.backends.cudnn.deterministic = prev_cudnn_det
+    torch.backends.cudnn.benchmark = prev_cudnn_bench
 
-
-_enable_deterministic_cuda()
 
 # ---------------------------------------------------------------------------
 # Test parameters
