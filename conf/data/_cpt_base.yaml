@@ -1,6 +1,5 @@
 # Base CPT data config — tokenizer-specific configs inherit via `defaults: [_cpt_base]`
 # Child configs MUST override `source` and `interleave_kwargs` for each split (train/dev).
-
 train:
   dataset:
     source: ???
@@ -8,6 +7,7 @@ train:
     sequence_type: interleaved
     interleave_kwargs:
       sampling_rate: ???
+      # yamllint disable-line rule:line-length
       downsampling_ratio: ???  # TODO verify per tokenizer — see plans/Bugfix - CPT Interleave Config Sampling Parameters.md
       mean_seq_len_tokens: 39.43  # mean seq len in tokens of the MLS en trainset stratified sample (25%)
       binom_prob: 0.1  # fraction of sequence to make up subspans; binomial expectation = np
