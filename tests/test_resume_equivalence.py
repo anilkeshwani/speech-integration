@@ -16,9 +16,9 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 import shutil
 import tempfile
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from omegaconf import DictConfig, OmegaConf
@@ -27,15 +27,11 @@ import torch
 
 from ssi.constants import SEED
 from ssi.trainer import Trainer
+from tests.conftest import EXTENDED_MODEL_DIR, _has_extended_model
 
 
 LOGGER = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Paths
-# ---------------------------------------------------------------------------
-
-EXTENDED_MODEL_DIR = Path.home() / "models" / "extended" / "Llama-3.2-1B-5000-dsus"
 CONF_DIR = Path(__file__).resolve().parent.parent / "conf"
 
 # ---------------------------------------------------------------------------
@@ -44,10 +40,7 @@ CONF_DIR = Path(__file__).resolve().parent.parent / "conf"
 
 pytestmark = [
     pytest.mark.skipif(not torch.cuda.is_available(), reason="No GPU"),
-    pytest.mark.skipif(
-        not EXTENDED_MODEL_DIR.exists(),
-        reason=f"Extended model not found at {EXTENDED_MODEL_DIR}",
-    ),
+    pytest.mark.skipif(not _has_extended_model(), reason=f"Extended model not found at {EXTENDED_MODEL_DIR}"),
 ]
 
 # ---------------------------------------------------------------------------
@@ -92,51 +85,53 @@ def _compose_cfg(output_dir: Path, max_steps: int, save_steps: int, eval_steps: 
     data_cfg = OmegaConf.merge(data_base, data_override)
     cfg = OmegaConf.merge(common, training_cfg, sft, {"data": data_cfg})
 
-    overrides = OmegaConf.create({
-        "speech": {"n_dsus": 5000, "use_modality_tokens": True, "deduplicate": True},
-        "config_name": "sft",
-        "checkpointer": {
-            "checkpoint_dir": str(EXTENDED_MODEL_DIR),
-            "checkpoint_files": ["ft-model-00001-of-00001.safetensors"],
-            "output_dir": str(output_dir / "checkpoints"),
-            "config_json": None,
-            "training_state_checkpoint": None,
-            "safe_serialization": True,
-        },
-        "tokenizer": {
-            "path": str(EXTENDED_MODEL_DIR / "original" / "tokenizer.model"),
-            "max_seq_len": 2048,
-            "prompt_template": None,
-            "verbose": False,
-        },
-        "max_steps": max_steps,
-        "eval_steps": eval_steps,
-        "save_steps": save_steps,
-        "gradient_accumulation_steps": _GRAD_ACCUM,
-        "optimizer": {"lr": 5e-5, "fused": False},
-        "lr_scheduler": None,  # constant LR — avoids schedule divergence from different max_steps
-        "clip_grad_norm": None,
-        "data": {
-            "train": {
-                "dataset": {"n_samples": _N_TRAIN_SAMPLES},
-                "dataloader": {"batch_size": _BATCH_SIZE},
+    overrides = OmegaConf.create(
+        {
+            "speech": {"n_dsus": 5000, "use_modality_tokens": True, "deduplicate": True},
+            "config_name": "sft",
+            "checkpointer": {
+                "checkpoint_dir": str(EXTENDED_MODEL_DIR),
+                "checkpoint_files": ["ft-model-00001-of-00001.safetensors"],
+                "output_dir": str(output_dir / "checkpoints"),
+                "config_json": None,
+                "training_state_checkpoint": None,
+                "safe_serialization": True,
             },
-            "dev": {
-                "dataset": {"n_samples": _N_DEV_SAMPLES},
-                "dataloader": {"batch_size": _BATCH_SIZE},
+            "tokenizer": {
+                "path": str(EXTENDED_MODEL_DIR / "original" / "tokenizer.model"),
+                "max_seq_len": 2048,
+                "prompt_template": None,
+                "verbose": False,
             },
-        },
-        "log_interval": 1,
-        "wandb": {
-            "project": "test-resume",
-            "entity": None,
-            "log_dir": str(output_dir / "wandb"),
-        },
-        "compile": False,
-        "debug_mode": None,
-        "device": "cuda",
-        "dtype": "bf16",
-    })
+            "max_steps": max_steps,
+            "eval_steps": eval_steps,
+            "save_steps": save_steps,
+            "gradient_accumulation_steps": _GRAD_ACCUM,
+            "optimizer": {"lr": 5e-5, "fused": False},
+            "lr_scheduler": None,  # constant LR — avoids schedule divergence from different max_steps
+            "clip_grad_norm": None,
+            "data": {
+                "train": {
+                    "dataset": {"n_samples": _N_TRAIN_SAMPLES},
+                    "dataloader": {"batch_size": _BATCH_SIZE},
+                },
+                "dev": {
+                    "dataset": {"n_samples": _N_DEV_SAMPLES},
+                    "dataloader": {"batch_size": _BATCH_SIZE},
+                },
+            },
+            "log_interval": 1,
+            "wandb": {
+                "project": "test-resume",
+                "entity": None,
+                "log_dir": str(output_dir / "wandb"),
+            },
+            "compile": False,
+            "debug_mode": None,
+            "device": "cuda",
+            "dtype": "bf16",
+        }
+    )
     cfg = OmegaConf.merge(cfg, overrides)
     OmegaConf.resolve(cfg)
 
@@ -183,15 +178,16 @@ class WandBCapture:
 
 def _run_trainer(cfg: DictConfig, wandb_capture: WandBCapture) -> list[float]:
     """Run Trainer.setup() + train() with captured W&B, return loss list."""
-    with patch("ssi.trainer.WandBLogger", return_value=wandb_capture):
-        with patch("ssi.trainer.resolve_checkpointer_output_dir",
-                   return_value=Path(cfg.checkpointer.output_dir)):
-            trainer = Trainer(cfg)
-            trainer.setup()
-            trainer._loss_log = []
-            trainer.train()
-            losses = list(trainer._loss_log)
-            trainer.cleanup()
+    with (
+        patch("ssi.trainer.WandBLogger", return_value=wandb_capture),
+        patch("ssi.trainer.resolve_checkpointer_output_dir", return_value=Path(cfg.checkpointer.output_dir)),
+    ):
+        trainer = Trainer(cfg)
+        trainer.setup()
+        trainer._loss_log = []
+        trainer.train()
+        losses = list(trainer._loss_log)
+        trainer.cleanup()
     return losses
 
 
@@ -240,8 +236,7 @@ class TestResumeEquivalence:
         # Verify first half matches
         for i in range(_SAVE_AT_STEP):
             assert losses_full[i] == losses_b1[i], (
-                f"Pre-resume loss mismatch at step {i}: "
-                f"full={losses_full[i]}, b1={losses_b1[i]}"
+                f"Pre-resume loss mismatch at step {i}: full={losses_full[i]}, b1={losses_b1[i]}"
             )
 
         # --- Run B2: resume from checkpoint, finish remaining steps ---
@@ -264,10 +259,8 @@ class TestResumeEquivalence:
         )
         # Point at the checkpoint from B1
         OmegaConf.update(cfg_b2, "checkpointer.checkpoint_dir", str(model_ckpt_dir))
-        OmegaConf.update(cfg_b2, "checkpointer.checkpoint_files",
-                         [f.name for f in st_files])
-        OmegaConf.update(cfg_b2, "checkpointer.training_state_checkpoint",
-                         str(training_state_path))
+        OmegaConf.update(cfg_b2, "checkpointer.checkpoint_files", [f.name for f in st_files])
+        OmegaConf.update(cfg_b2, "checkpointer.training_state_checkpoint", str(training_state_path))
 
         wandb_b2 = WandBCapture()
         losses_b2 = _run_trainer(cfg_b2, wandb_b2)
@@ -279,9 +272,7 @@ class TestResumeEquivalence:
         )
 
         # Compare resumed losses against uninterrupted run
-        for i, (l_full, l_resumed) in enumerate(
-            zip(losses_full[_SAVE_AT_STEP:], losses_b2)
-        ):
+        for i, (l_full, l_resumed) in enumerate(zip(losses_full[_SAVE_AT_STEP:], losses_b2, strict=True)):
             step = _SAVE_AT_STEP + i + 1
             assert l_full == l_resumed, (
                 f"Resume loss mismatch at step {step}: "
@@ -324,10 +315,8 @@ class TestResumeEquivalence:
             save_steps=9996,
         )
         OmegaConf.update(cfg_b2, "checkpointer.checkpoint_dir", str(model_ckpt_dir))
-        OmegaConf.update(cfg_b2, "checkpointer.checkpoint_files",
-                         [f.name for f in st_files])
-        OmegaConf.update(cfg_b2, "checkpointer.training_state_checkpoint",
-                         str(ckpt_dir / "training_state.pt"))
+        OmegaConf.update(cfg_b2, "checkpointer.checkpoint_files", [f.name for f in st_files])
+        OmegaConf.update(cfg_b2, "checkpointer.training_state_checkpoint", str(ckpt_dir / "training_state.pt"))
 
         wandb_b2 = WandBCapture()
         _run_trainer(cfg_b2, wandb_b2)
@@ -337,18 +326,12 @@ class TestResumeEquivalence:
         full_second_half = wandb_full.logged[_SAVE_AT_STEP:]
 
         assert len(full_second_half) == len(wandb_b2.logged), (
-            f"Log count mismatch: full_second_half={len(full_second_half)}, "
-            f"resumed={len(wandb_b2.logged)}"
+            f"Log count mismatch: full_second_half={len(full_second_half)}, resumed={len(wandb_b2.logged)}"
         )
 
-        for i, ((pf, sf), (pr, sr)) in enumerate(
-            zip(full_second_half, wandb_b2.logged)
-        ):
+        for i, ((pf, sf), (pr, sr)) in enumerate(zip(full_second_half, wandb_b2.logged, strict=True)):
             assert sf == sr, f"Step mismatch at log {i}: {sf} vs {sr}"
             for key in pf:
                 if key in timing_keys:
                     continue
-                assert pf[key] == pr[key], (
-                    f"Metric '{key}' mismatch at step {sf}: "
-                    f"full={pf[key]}, resumed={pr[key]}"
-                )
+                assert pf[key] == pr[key], f"Metric '{key}' mismatch at step {sf}: full={pf[key]}, resumed={pr[key]}"
