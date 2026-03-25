@@ -67,6 +67,7 @@ def extend_tiktoken(n_new_dsus: int, use_modality_tokens: bool, tokenizer_model:
         modality_tokenizer_lines = _create_token_list(modality_tokens)
         LOGGER.info(f"Adding {len(modality_tokenizer_lines)} modality tokens to {tokenizer_model!s}")
     else:
+        modality_tokenizer_lines = []
         LOGGER.info(f"No Modality Tokens added to {tokenizer_model}")
 
     # Write the extended tokenizer.model file to disk
