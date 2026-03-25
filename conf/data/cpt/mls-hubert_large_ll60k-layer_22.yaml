@@ -1,6 +1,8 @@
 defaults:
   - _cpt_base
 
+n_dsus: 5000  # HuBERT k-means codebook size
+
 train:
   dataset:
     source: anilkeshwani/mls-hubert_large_ll60k-layer_22

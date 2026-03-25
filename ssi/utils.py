@@ -63,12 +63,12 @@ def _parse_model_path(model_dir: Path, experiments_root_dir: Path) -> dict[str, 
     *wandb_run_name_parts, wandb_run_id_prefixed = wandb_dir.split("-")
     wandb_run_name = "-".join(wandb_run_name_parts)
     wandb_run_id = wandb_run_id_prefixed.removeprefix("id_")
-    *base_model_parts, training_type = model_training.split("-")
-    base_model_name = "-".join(base_model_parts)
+    *extended_model_parts, training_type = model_training.split("-")
+    extended_model_name = "-".join(extended_model_parts)
     epoch = int(epoch_dir.removeprefix("epoch_"))
     global_step = int(global_step_dir.removeprefix("global_step_"))
     return {
-        "base_model_name": base_model_name,
+        "extended_model_name": extended_model_name,
         "training_type": training_type,
         "wandb_run_id": wandb_run_id,
         "wandb_run_name": wandb_run_name,

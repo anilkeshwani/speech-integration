@@ -129,7 +129,7 @@ Each decision records what we chose, what we rejected, and why.
 **Current layout:**
 ```
 experiments/
-  {base_model_name}-{config_name}/
+  {extended_model_name}-{config_name}/
     {wandb_run_name}-id_{wandb_run_id}/
       checkpoints/
         step_N/

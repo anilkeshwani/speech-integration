@@ -1,6 +1,8 @@
 defaults:
   - _sft_base
 
+n_dsus: 1024  # SpeechTokenizer RVQ-0 codebook size (Zhang et al., ICLR 2024)
+
 train:
   dataset:
     source: anilkeshwani/mls-speechtokenizer-rvq_0

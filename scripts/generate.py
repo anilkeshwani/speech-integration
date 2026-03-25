@@ -158,13 +158,18 @@ def main(cfg):
                 f"No training config specified and no config at inferred fallback path: {train_yaml_rundir!s}"
             )
 
-    # Set speech-related config params from training config if unset; raise if still unset
+    # Set speech-related config params from training config or data config if unset
     if cfg.speech.n_dsus is None:
         if "speech" in train_cfg and train_cfg.speech.n_dsus is not None:
             cfg.speech.n_dsus = train_cfg.speech.n_dsus
             LOGGER.info(f"Auto-setting cfg.speech.n_dsus to {cfg.speech.n_dsus} from training config.")
+        elif cfg.get("data") is not None and cfg.data.get("n_dsus") is not None:
+            cfg.speech.n_dsus = cfg.data.n_dsus
+            LOGGER.info(f"Auto-setting cfg.speech.n_dsus to {cfg.speech.n_dsus} from data config.")
         else:
-            raise ValueError("cfg.speech.n_dsus must be specified in either training or generation config.")
+            raise ValueError(
+                "cfg.speech.n_dsus must be specified via CLI, training config, or data config."
+            )
     # NOTE cfg.speech options must be resolved before cfg.data due to interpolation in cfg.data fields
     if cfg.get("data") is None:
         config_sources = HydraConfig.get().runtime.config_sources  # calls HydraConfig.instance

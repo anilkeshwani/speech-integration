@@ -30,7 +30,7 @@ save_steps: 10000
 force_resume: false  # downgrade hparam mismatch errors to warnings on resume (expert override)
 # Checkpointer initialization
 checkpointer:
-  checkpoint_dir: ${extended_models_dir}/${base_model_name}
+  checkpoint_dir: ${extended_models_dir}/${extended_model_name}
   checkpoint_files: null  # null -> auto-discover safetensors files in checkpoint_dir
   config_json: null  # null -> resolved to ${checkpointer.checkpoint_dir}/config.json
   output_dir: null  # null -> resolved to ${output_dir}/${wandb_run_name}-id_{wandb_run_id}/checkpoints
