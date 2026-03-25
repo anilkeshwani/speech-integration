@@ -17,32 +17,14 @@ T-I6: Functional equivalence (stateful vs functional train())
 """
 
 import os
-from pathlib import Path
 
 from hydra import compose, initialize_config_dir
 from hydra.core.global_hydra import GlobalHydra
 import pytest
 import torch
 
-from ssi.constants import TORCHTUNE_EXTENDED_MODELS_DIR
 from ssi.trainer import Trainer
-
-
-# ---------------------------------------------------------------------------
-# Ensure HF_HOME is set for streaming downloads
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-# Extended model path discovery (mirrors conftest.py logic)
-# ---------------------------------------------------------------------------
-
-EXTENDED_MODEL_DIR = TORCHTUNE_EXTENDED_MODELS_DIR / "Llama-3.2-1B-5000-dsus"
-_LOCAL_EXTENDED = Path.home() / "models" / "extended" / "Llama-3.2-1B-5000-dsus"
-if _LOCAL_EXTENDED.exists():
-    EXTENDED_MODEL_DIR = _LOCAL_EXTENDED
-
-
-def _has_extended_model() -> bool:
-    return EXTENDED_MODEL_DIR.exists() and (EXTENDED_MODEL_DIR / "model.safetensors.index.json").exists()
+from tests.conftest import EXTENDED_MODEL_DIR, _has_extended_model
 
 
 def _get_checkpoint_files() -> list[str]:
@@ -66,7 +48,6 @@ _CONF_DIR = os.path.join(os.path.dirname(__file__), "..", "conf")
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
 
 
 def _compose_sft_cfg(
@@ -183,6 +164,7 @@ def test_optimizer_step_increments(tmp_path):
     cfg = _compose_sft_cfg(tmp_path, grad_accum=2)
     trainer = _setup_trainer(cfg)
     import time
+
     trainer._reset_step_accumulators()
     trainer.optimizer.zero_grad()
     trainer.t_train_start = time.perf_counter()
