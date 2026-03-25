@@ -347,6 +347,7 @@ class Trainer:
         if self._resume_state:
             restore_rng_states(self._resume_state["rng_state"])
             LOGGER.info("Restored framework RNG states from checkpoint.")
+            self._resume_state = None  # free optimizer/RNG state references
 
         LOGGER.info(OmegaConf.to_yaml(self.cfg, resolve=True, sort_keys=False))
         self.wandb_logger.log_config(self.cfg)
