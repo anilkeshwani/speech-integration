@@ -2,8 +2,8 @@
 
 import hydra
 
-from ssi.trainer import Trainer
 from ssi.train_utils import resolve_n_dsus
+from ssi.trainer import Trainer
 
 
 @hydra.main(config_path="../conf", config_name="cpt", version_base=None)

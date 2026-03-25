@@ -74,10 +74,7 @@ def discover_safetensor_files(checkpoint_dir: Path) -> list[str]:
     st_files = sorted(f.name for f in checkpoint_dir.glob("*.safetensors"))
     if not st_files:
         contents = sorted(f.name for f in checkpoint_dir.iterdir())
-        raise ValueError(
-            f"No safetensors files found in {checkpoint_dir}. "
-            f"Directory contents: {contents}"
-        )
+        raise ValueError(f"No safetensors files found in {checkpoint_dir}. Directory contents: {contents}")
 
     # Check for ambiguous naming: both model-* and ft-model-* present
     model_files = [f for f in st_files if f.startswith("model-")]
@@ -267,9 +264,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             config_json = self.checkpoint_dir / LLAMA_3_2_CONFIG_RELPATH
         config_json = Path(config_json)
         if not config_json.exists():
-            raise FileNotFoundError(
-                f"No config.json found at {config_json} — expected an HF-format model directory."
-            )
+            raise FileNotFoundError(f"No config.json found at {config_json} — expected an HF-format model directory.")
         self._config = json.loads(config_json.read_text())
 
         # Auto-discover checkpoint files if not provided

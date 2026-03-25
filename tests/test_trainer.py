@@ -87,11 +87,13 @@ def _make_mock_dataloader(length: int) -> MagicMock:
 
 def test_geometry_basic():
     """Standard case: 100 batches, grad_accum=4 -> 25 steps/epoch."""
-    cfg = OmegaConf.create({
-        "data": {"train": {"dataloader": {"batch_size": 16}}},
-        "gradient_accumulation_steps": 4,
-        "max_steps": 100,
-    })
+    cfg = OmegaConf.create(
+        {
+            "data": {"train": {"dataloader": {"batch_size": 16}}},
+            "gradient_accumulation_steps": 4,
+            "max_steps": 100,
+        }
+    )
     dl = _make_mock_dataloader(100)
     geo = TrainingGeometry.from_config(cfg, dl, world_size=1)
     assert geo.batch_size == 16
@@ -105,11 +107,13 @@ def test_geometry_basic():
 
 def test_geometry_partial_epoch():
     """max_steps not a multiple of steps_per_epoch -> n_epochs rounds up."""
-    cfg = OmegaConf.create({
-        "data": {"train": {"dataloader": {"batch_size": 8}}},
-        "gradient_accumulation_steps": 2,
-        "max_steps": 30,
-    })
+    cfg = OmegaConf.create(
+        {
+            "data": {"train": {"dataloader": {"batch_size": 8}}},
+            "gradient_accumulation_steps": 2,
+            "max_steps": 30,
+        }
+    )
     dl = _make_mock_dataloader(50)
     geo = TrainingGeometry.from_config(cfg, dl, world_size=1)
     assert geo.steps_per_epoch == 25
@@ -118,11 +122,13 @@ def test_geometry_partial_epoch():
 
 def test_geometry_single_step_epoch():
     """Edge case: exactly 1 step per epoch."""
-    cfg = OmegaConf.create({
-        "data": {"train": {"dataloader": {"batch_size": 1}}},
-        "gradient_accumulation_steps": 10,
-        "max_steps": 5,
-    })
+    cfg = OmegaConf.create(
+        {
+            "data": {"train": {"dataloader": {"batch_size": 1}}},
+            "gradient_accumulation_steps": 10,
+            "max_steps": 5,
+        }
+    )
     dl = _make_mock_dataloader(10)
     geo = TrainingGeometry.from_config(cfg, dl, world_size=1)
     assert geo.steps_per_epoch == 1
@@ -132,11 +138,13 @@ def test_geometry_single_step_epoch():
 
 def test_geometry_multi_gpu():
     """world_size is stored correctly."""
-    cfg = OmegaConf.create({
-        "data": {"train": {"dataloader": {"batch_size": 4}}},
-        "gradient_accumulation_steps": 1,
-        "max_steps": 10,
-    })
+    cfg = OmegaConf.create(
+        {
+            "data": {"train": {"dataloader": {"batch_size": 4}}},
+            "gradient_accumulation_steps": 1,
+            "max_steps": 10,
+        }
+    )
     dl = _make_mock_dataloader(20)
     geo = TrainingGeometry.from_config(cfg, dl, world_size=4)
     assert geo.world_size == 4
@@ -150,11 +158,13 @@ def test_geometry_multi_gpu():
 
 def test_geometry_remainder_warning(caplog):
     """When batches_per_epoch % grad_accum != 0, a warning is logged."""
-    cfg = OmegaConf.create({
-        "data": {"train": {"dataloader": {"batch_size": 8}}},
-        "gradient_accumulation_steps": 3,
-        "max_steps": 10,
-    })
+    cfg = OmegaConf.create(
+        {
+            "data": {"train": {"dataloader": {"batch_size": 8}}},
+            "gradient_accumulation_steps": 3,
+            "max_steps": 10,
+        }
+    )
     dl = _make_mock_dataloader(10)  # 10 % 3 = 1 remainder
     geo = TrainingGeometry.from_config(cfg, dl, world_size=1)
     assert geo.steps_per_epoch == 3  # 10 // 3
@@ -164,11 +174,13 @@ def test_geometry_remainder_warning(caplog):
 
 def test_geometry_no_remainder_no_warning(caplog):
     """When batches_per_epoch % grad_accum == 0, no warning."""
-    cfg = OmegaConf.create({
-        "data": {"train": {"dataloader": {"batch_size": 8}}},
-        "gradient_accumulation_steps": 5,
-        "max_steps": 10,
-    })
+    cfg = OmegaConf.create(
+        {
+            "data": {"train": {"dataloader": {"batch_size": 8}}},
+            "gradient_accumulation_steps": 5,
+            "max_steps": 10,
+        }
+    )
     dl = _make_mock_dataloader(20)  # 20 % 5 = 0
     TrainingGeometry.from_config(cfg, dl, world_size=1)
     assert not any("remainder" in record.message for record in caplog.records)
@@ -181,11 +193,13 @@ def test_geometry_no_remainder_no_warning(caplog):
 
 def test_geometry_insufficient_batches_raises():
     """batches_per_epoch < gradient_accumulation_steps should raise."""
-    cfg = OmegaConf.create({
-        "data": {"train": {"dataloader": {"batch_size": 8}}},
-        "gradient_accumulation_steps": 10,
-        "max_steps": 5,
-    })
+    cfg = OmegaConf.create(
+        {
+            "data": {"train": {"dataloader": {"batch_size": 8}}},
+            "gradient_accumulation_steps": 10,
+            "max_steps": 5,
+        }
+    )
     dl = _make_mock_dataloader(5)  # 5 < 10
     with pytest.raises(ValueError, match=r"batches_per_epoch.*gradient_accumulation_steps"):
         TrainingGeometry.from_config(cfg, dl, world_size=1)
@@ -242,13 +256,15 @@ def test_reset_step_accumulators():
 
 def _make_trainer_for_optimizer_step():
     """Create a Trainer with mocked components ready for _optimizer_step."""
-    cfg = OmegaConf.create({
-        "gradient_accumulation_steps": 2,
-        "clip_grad_norm": None,
-        "eval_steps": 100,
-        "log_interval": 1,
-        "save_steps": 100,
-    })
+    cfg = OmegaConf.create(
+        {
+            "gradient_accumulation_steps": 2,
+            "clip_grad_norm": None,
+            "eval_steps": 100,
+            "log_interval": 1,
+            "save_steps": 100,
+        }
+    )
     trainer = Trainer(cfg)
     trainer.world_size = 1
     trainer.device = torch.device("cpu")
@@ -268,8 +284,13 @@ def _make_trainer_for_optimizer_step():
 
     # Set geometry
     trainer.geometry = TrainingGeometry(
-        batch_size=2, batches_per_epoch=20, steps_per_epoch=10,
-        usable_batches=20, n_epochs=1, gradient_accumulation_steps=2, world_size=1,
+        batch_size=2,
+        batches_per_epoch=20,
+        steps_per_epoch=10,
+        usable_batches=20,
+        n_epochs=1,
+        gradient_accumulation_steps=2,
+        world_size=1,
     )
 
     # Set accumulators to simulate 2 micro-batches of work
@@ -332,8 +353,13 @@ def test_maybe_save_checkpoint_at_boundary():
     trainer.optimizer = MagicMock()
     trainer.lr_scheduler = MagicMock()
     trainer.geometry = TrainingGeometry(
-        batch_size=2, batches_per_epoch=20, steps_per_epoch=10,
-        usable_batches=20, n_epochs=1, gradient_accumulation_steps=2, world_size=1,
+        batch_size=2,
+        batches_per_epoch=20,
+        steps_per_epoch=10,
+        usable_batches=20,
+        n_epochs=1,
+        gradient_accumulation_steps=2,
+        world_size=1,
     )
     trainer.world_size = 1
     trainer.t_train_start = time.perf_counter()
@@ -395,8 +421,13 @@ def test_save_checkpoint_passes_correct_args():
     trainer.lr_scheduler.state_dict.return_value = {"last_epoch": 50}
     trainer.checkpointer = MagicMock()
     trainer.geometry = TrainingGeometry(
-        batch_size=2, batches_per_epoch=100, steps_per_epoch=25,
-        usable_batches=100, n_epochs=2, gradient_accumulation_steps=4, world_size=1,
+        batch_size=2,
+        batches_per_epoch=100,
+        steps_per_epoch=25,
+        usable_batches=100,
+        n_epochs=2,
+        gradient_accumulation_steps=4,
+        world_size=1,
     )
 
     trainer.save_checkpoint()

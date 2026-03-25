@@ -167,9 +167,7 @@ def main(cfg):
             cfg.speech.n_dsus = cfg.data.n_dsus
             LOGGER.info(f"Auto-setting cfg.speech.n_dsus to {cfg.speech.n_dsus} from data config.")
         else:
-            raise ValueError(
-                "cfg.speech.n_dsus must be specified via CLI, training config, or data config."
-            )
+            raise ValueError("cfg.speech.n_dsus must be specified via CLI, training config, or data config.")
     # NOTE cfg.speech options must be resolved before cfg.data due to interpolation in cfg.data fields
     if cfg.get("data") is None:
         config_sources = HydraConfig.get().runtime.config_sources  # calls HydraConfig.instance
