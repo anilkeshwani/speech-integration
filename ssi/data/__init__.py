@@ -76,7 +76,7 @@ def setup_text_completion_data(
             additional_keys=cfg_dataset.dataset.get("additional_keys", []),
         )
     world_size, rank = get_world_size_and_rank()
-    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=cfg_dataset["shuffle"], seed=0)
+    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=cfg_dataset["shuffle"], seed=SEED)
     # NOTE dropping last avoids shape issues w/ compile + flex attention
     dataloader = DataLoader(
         dataset=dataset,
@@ -113,7 +113,7 @@ def setup_sft_data(
             additional_keys=cfg_dataset.dataset.get("additional_keys", []),
         )
     world_size, rank = get_world_size_and_rank()  # more general
-    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=cfg_dataset["shuffle"], seed=0)
+    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=cfg_dataset["shuffle"], seed=SEED)
     # NOTE dropping last avoids shape issues w/ compile + flex attention
     dataloader = DataLoader(
         dataset=dataset,
