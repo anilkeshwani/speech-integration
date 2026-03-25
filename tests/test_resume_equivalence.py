@@ -37,7 +37,6 @@ LOGGER = logging.getLogger(__name__)
 
 EXTENDED_MODEL_DIR = Path.home() / "models" / "extended" / "Llama-3.2-1B-5000-dsus"
 CONF_DIR = Path(__file__).resolve().parent.parent / "conf"
-_HF_SOURCE = "anilkeshwani/mls-hubert_large_ll60k-layer_22"
 
 # ---------------------------------------------------------------------------
 # Skip conditions
@@ -64,24 +63,6 @@ def _enable_deterministic_cuda():
 
 
 _enable_deterministic_cuda()
-
-# Patch safe_torch_load in ssi.checkpoint to accept OmegaConf types in
-# training_state.pt. The checkpoint contains OmegaConf ListConfig objects
-# in the optimizer state, which torch.load(weights_only=True) rejects.
-import ssi.checkpoint as _ssi_ckpt
-_original_safe_torch_load = _ssi_ckpt.safe_torch_load
-
-
-def _safe_torch_load_permissive(checkpoint_path, **kwargs):
-    """safe_torch_load that falls back to weights_only=False for .pt files."""
-    try:
-        return _original_safe_torch_load(checkpoint_path, **kwargs)
-    except ValueError:
-        kwargs.pop("mmap", None)
-        return torch.load(checkpoint_path, weights_only=False, **kwargs)
-
-
-_ssi_ckpt.safe_torch_load = _safe_torch_load_permissive
 
 # ---------------------------------------------------------------------------
 # Test parameters
