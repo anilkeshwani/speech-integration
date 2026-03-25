@@ -359,4 +359,4 @@ Build and store an extended Llama 3.2 1B per tokenizer in the `{tokenizer}/base_
 | ID | Description | Status |
 |----|-------------|--------|
 | T17 | GPU smoke test: end-to-end save/resume roundtrip on GPU (few steps → save → resume → verify step continuity, LR continuity, no duplicate batches) | Pending |
-| R1 | Directory structure simplification (§4.1 + §5 of this document). Blocked on deciding `n_dsus` per tokenizer and building extended base models (F7). | Pending |
+| R1 | Directory structure simplification (§4.1 + §5 of this document). `n_dsus` per tokenizer now decided (HuBERT=5000, SpeechTokenizer=1024, Mimi=2048, FocalCodec=8192) and auto-resolved from data configs. Blocked on building extended base models per tokenizer (F7). | Partially unblocked |
