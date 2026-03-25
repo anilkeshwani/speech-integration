@@ -91,8 +91,8 @@ class ConfigLlama3_2:
         """In-place update of speech-specific hyperparameters from DictConfig"""
         if not isinstance(cfg_speech, DictConfig):
             raise TypeError("cfg_speech must be a DictConfig object")
-        configllama3_2_1b.n_dsus = cfg_speech.n_dsus
-        configllama3_2_1b.modality_tokens = cfg_speech.use_modality_tokens
+        self.n_dsus = cfg_speech.n_dsus
+        self.modality_tokens = cfg_speech.use_modality_tokens
 
     @property
     def vocab_size(self) -> int:
