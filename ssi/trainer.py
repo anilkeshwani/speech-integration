@@ -1,9 +1,8 @@
 """Stateful Trainer class for speech-integration training.
 
 Encapsulates all training state (model, optimizer, scheduler, dataloaders,
-step counters, cumulative metrics) as instance attributes. Provides the same
-training logic as the functional ``train()`` in ``ssi.train``, but organized
-into composable methods that can be tested and extended independently.
+step counters, cumulative metrics) as instance attributes, organized into
+composable methods that can be tested and extended independently.
 
 Design reference: torchtune's FTRecipeInterface — class-based for state
 encapsulation, self-contained, composition over inheritance.
@@ -332,8 +331,7 @@ class Trainer:
         """Run the full training loop.
 
         Iterates over epochs and batches, performing gradient accumulation,
-        periodic evaluation, logging, and checkpointing. Mirrors the logic
-        of ``ssi.train.train()`` exactly.
+        periodic evaluation, logging, and checkpointing.
         """
         self.optimizer.zero_grad()
         self.t_train_start = time.perf_counter()
