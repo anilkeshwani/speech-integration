@@ -1,8 +1,6 @@
 defaults:
   - _cpt_base
-
 n_dsus: 8192  # FocalCodec BSQ codebook size, 2^13 (Della Libera et al., arXiv:2502.04465)
-
 train:
   dataset:
     source: anilkeshwani/mls-focalcodec  # TODO confirm HF repo ID
