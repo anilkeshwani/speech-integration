@@ -37,7 +37,7 @@ def _resolve_gen_output_dir(cfg) -> str:
     experiments_root_dir = Path(cfg.experiments_root_dir).resolve(strict=True)
     if not model_dir.is_relative_to(experiments_root_dir):
         raise ValueError(
-            "Could not resolve null generation output directory. Model {cfg.model} not in {cfg.experiments_root_dir}"
+            f"Could not resolve null generation output directory. Model {cfg.model} not in {cfg.experiments_root_dir}. "
             "Specify a generation output directory in the config or check your model path."
         )
     if model_dir.parts[-3] != "checkpoints":
