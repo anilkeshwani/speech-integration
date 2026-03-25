@@ -65,8 +65,7 @@ jobs:
         run: uv python install
       - name: Install dev dependencies
         run: uv sync --extra dev
-      - name: Format check (yamlfix --check)
-        # yamllint disable-line rule:line-length
-        run: uv run yamlfix --check --exclude '.venv' --exclude 'conf/data/sft' --exclude 'conf/data/_sft_base.yaml' conf/
-      - name: Lint (yamllint)
-        run: uv run yamllint .
+      - name: Format check (yamlfix via pre-commit)
+        run: uv run pre-commit run yamlfix --all-files
+      - name: Lint (yamllint via pre-commit)
+        run: uv run pre-commit run yamllint --all-files
