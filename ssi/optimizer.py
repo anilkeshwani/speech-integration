@@ -1,19 +1,17 @@
 from typing import Any
 
-from omegaconf import DictConfig
-from torch.optim import AdamW, Optimizer
+from omegaconf import DictConfig, OmegaConf
+from torch.optim import AdamW
 from torchtune.modules import TransformerDecoder
 
 
 def setup_optimizer(
     cfg: DictConfig,
     model: TransformerDecoder,
-    optimzer_state_dict: dict[str, Any] | None = None,
+    optimizer_state_dict: dict[str, Any] | None = None,
 ) -> AdamW:
-    if cfg.optimizer_in_bwd:
-        raise NotImplementedError
-    else: # if...else... retained for skeleton when adding optimizer_in_bwd support
-        optimizer = AdamW(model.parameters(), **cfg.optimizer)
-        if optimzer_state_dict is not None:
-            optimizer.load_state_dict(optimzer_state_dict)
-        return optimizer
+    optimizer_kwargs = OmegaConf.to_container(cfg.optimizer, resolve=True)
+    optimizer = AdamW(model.parameters(), **optimizer_kwargs)
+    if optimizer_state_dict is not None:
+        optimizer.load_state_dict(optimizer_state_dict)
+    return optimizer

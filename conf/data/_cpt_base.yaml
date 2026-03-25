@@ -1,0 +1,53 @@
+# Base CPT data config — tokenizer-specific configs inherit via `defaults: [_cpt_base]`
+# Child configs MUST override `source` and `interleave_kwargs` for each split (train/dev).
+train:
+  dataset:
+    source: ???
+    split: train
+    sequence_type: interleaved
+    interleave_kwargs:
+      sampling_rate: ???
+      # yamllint disable-line rule:line-length
+      downsampling_ratio: ???  # TODO verify per tokenizer — see plans/Bugfix - CPT Interleave Config Sampling Parameters.md
+      mean_seq_len_tokens: 39.43  # mean seq len in tokens of the MLS en trainset stratified sample (25%)
+      binom_prob: 0.1  # fraction of sequence to make up subspans; binomial expectation = np
+    deduplicate: ${speech.deduplicate}
+    use_modality_tokens: ${speech.use_modality_tokens}
+    add_eos: true
+    n_samples: null  # if set, stream only the first N samples (avoids full dataset download)
+    tokenized_key: null  # null -> fall back to default key in sardalign.constants
+    alignment_start_time_key: null
+    alignment_end_time_key: null
+    speech_tokens_key: null
+  dataloader:
+    batch_size: 16
+    drop_last: true
+    num_workers: 0
+    persistent_workers: false
+  shuffle: true
+  packed: false  # TODO packing causes CPU RAM overflow for large datasets (e.g. MLS)
+dev:
+  dataset:
+    source: ???
+    split: validation
+    sequence_type: interleaved
+    interleave_kwargs:
+      sampling_rate: ???
+      downsampling_ratio: ???
+      mean_seq_len_tokens: 39.43
+      binom_prob: 0.1
+    deduplicate: ${speech.deduplicate}
+    use_modality_tokens: ${speech.use_modality_tokens}
+    add_eos: true
+    n_samples: null
+    tokenized_key: null
+    alignment_start_time_key: null
+    alignment_end_time_key: null
+    speech_tokens_key: null
+  dataloader:
+    batch_size: 16
+    drop_last: false
+    num_workers: 0
+    persistent_workers: false
+  shuffle: false
+  packed: false

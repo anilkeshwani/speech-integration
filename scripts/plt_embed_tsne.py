@@ -8,21 +8,20 @@ Visualizes different token types (text, DSU, modality, special) in the embedding
 import atexit
 import logging
 import os
+from pathlib import Path
 import shutil
 import sys
 import tempfile
-from pathlib import Path
-from typing import Dict, Tuple
 
 import hydra
 import matplotlib.pyplot as plt
 import numpy as np
-import seaborn as sns
-import torch
 from omegaconf import DictConfig
 from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
+import seaborn as sns
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
+import torch
 from torchtune import training
 from torchtune.training import get_dtype
 from torchtune.utils import get_device
@@ -31,8 +30,7 @@ from ssi.checkpoint import FullModelHFCheckpointer
 from ssi.constants import MODEL_KEY, SEED
 from ssi.llama_configs import configllama3_2_1b
 from ssi.model import setup_llama3_2_1b
-from ssi.tokenizer import setup_llama3_tokenizer
-from ssi.train import get_token_type_ranges, validate_train_cfg
+from ssi.train_utils import get_token_type_ranges, validate_train_cfg
 
 
 logging.basicConfig(
@@ -63,7 +61,7 @@ def extract_llama3_2_embeddings(model: torch.nn.Module) -> np.ndarray:
     return embeddings.to(torch.float32).cpu().numpy()
 
 
-def create_token_type_labels(ranges: Dict[str, Tuple[int, int]], vocab_size: int) -> Tuple[np.ndarray, list]:
+def create_token_type_labels(ranges: dict[str, tuple[int, int]], vocab_size: int) -> tuple[np.ndarray, list]:
     """Create labels for each token based on its type."""
     labels = np.full(vocab_size, -1, dtype=int)
     label_names = []
@@ -139,9 +137,9 @@ def plot_embeddings(
     plt.close()
 
 
-def plot_embeddings_by_token_type(embeddings: np.ndarray, ranges: Dict[str, Tuple[int, int]], output_dir: Path):
+def plot_embeddings_by_token_type(embeddings: np.ndarray, ranges: dict[str, tuple[int, int]], output_dir: Path):
     """Create separate plots for each token type."""
-    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+    _fig, axes = plt.subplots(2, 2, figsize=(15, 12))
     axes = axes.flatten()
 
     for i, (token_type, (start, end)) in enumerate(ranges.items()):
@@ -226,14 +224,14 @@ def main(cfg: DictConfig) -> None:
     ranges = get_token_type_ranges(configllama3_2_1b)
     LOGGER.info("Token type ranges:")
     for token_type, (start, end) in ranges.items():
-        LOGGER.info(f"  {token_type}: {start}-{end} ({end-start+1} tokens)")
+        LOGGER.info(f"  {token_type}: {start}-{end} ({end - start + 1} tokens)")
     labels, label_names = create_token_type_labels(ranges, embeddings.shape[0])
 
     # Generate t-SNE plots with different perplexity values
     for perplexity in cfg.tsne.perplexities:
         try:
             plot_embeddings(embeddings, labels, label_names, output_dir, perplexity)
-        except Exception as e:
+        except Exception as e:  # noqa: PERF203
             LOGGER.error(f"Failed to create t-SNE plot with perplexity {perplexity}: {e}")
 
     # Generate plots by token type

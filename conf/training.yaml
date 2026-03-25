@@ -1,24 +1,21 @@
 # Optimization
 optimizer:
   lr: 2e-4
-  betas: [0.9, 0.999]
+  betas:
+    - 0.9
+    - 0.999
   eps: 1e-8
   weight_decay: 0.01
-  amsgrad: False
-  fused: True
+  amsgrad: false
+  fused: true
 gradient_accumulation_steps: 4
 clip_grad_norm: null
-
-# Fuse optimizer step into backward pass
-optimizer_in_bwd: False # https://pytorch.org/tutorials/intermediate/optimizer_step_in_backward_tutorial.html
-
 # Learning rate scheduler
 lr_scheduler:
   num_warmup_steps: 1000
   num_cycles: 0.5
-
 # Training duration in **steps** (not iterations; i.e. factoring in grad. accum.)
-max_steps: 100000 # -> Set very high; typically higher than Slurm time limit (3 days == 72 hours)
+max_steps: 100000  # -> Set very high; typically higher than Slurm time limit (3 days == 72 hours)
 
 # Logging interval
 log_interval: 1
@@ -29,13 +26,13 @@ eval_steps: 1000
 # Checkpointing period - should be multiple of eval_steps
 save_steps: 10000
 
+# Resume behaviour
+force_resume: false  # downgrade hparam mismatch errors to warnings on resume (expert override)
 # Checkpointer initialization
 checkpointer:
-  checkpoint_dir: ???
-  checkpoint_files: ???
-  config_json: null # if null -> resolved to ${checkpointer.checkpoint_dir}  / LLAMA_3_2_CONFIG_RELPATH
-  output_dir: null # if null -> resolved to ${output_dir}/${wandb_run_name}-id_{wandb_run_id}/checkpoints
-  recipe_checkpoint: null
-  adapter_checkpoint: null
-  model_type: "llama3_2"
-  safe_serialization: True
+  checkpoint_dir: ${extended_models_dir}/${extended_model_name}
+  checkpoint_files: null  # null -> auto-discover safetensors files in checkpoint_dir
+  config_json: null  # null -> resolved to ${checkpointer.checkpoint_dir}/config.json
+  output_dir: null  # null -> resolved to ${output_dir}/${wandb_run_name}-id_{wandb_run_id}/checkpoints
+  training_state_checkpoint: null
+  safe_serialization: true

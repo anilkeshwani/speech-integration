@@ -1,0 +1,14 @@
+extends: default
+ignore: |
+  .venv/
+rules:
+  line-length:
+    max: 120
+  document-start: disable  # Hydra configs don't use --- document start markers
+  truthy:
+    allowed-values:
+      - 'true'
+      - 'false'
+      - 'True'
+      - 'False'
+    check-keys: false  # don't enforce on mapping keys (e.g. Hydra defaults lists)

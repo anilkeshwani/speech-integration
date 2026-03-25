@@ -1,7 +1,6 @@
-defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
+defaults:  # inherit parameter values (Hydra inheritance syntax/functionality)
   - common
   - training
   - data: ???
-
 tokenizer:
-  max_seq_len: 2048 # increased max sequence length for SFT (vs CPT)
+  max_seq_len: 2048  # increased max sequence length for SFT (vs CPT)

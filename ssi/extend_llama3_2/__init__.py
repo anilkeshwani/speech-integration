@@ -4,14 +4,14 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import torch
-import torchtune.training
 from sardalign.constants import MODALITY_TOKEN_SPEECH, MODALITY_TOKEN_TEXT
 from sardalign.utils import dsu2pua, multivariate_normal_from_weights
+import torch
 from torch import nn
 from torchtune import utils
 from torchtune.models.llama3_2 import llama3_2_1b
 from torchtune.modules import TiedLinear, TransformerDecoder
+import torchtune.training
 
 from ssi.llama_configs import ConfigLlama3_2
 
@@ -31,7 +31,7 @@ def extend_tiktoken(n_new_dsus: int, use_modality_tokens: bool, tokenizer_model:
     if not is_inplace and output_path.exists():
         raise FileExistsError(f"Extended tokenizer output already exists at: {output_path}")
 
-    with open(tokenizer_model, "r") as file:
+    with open(tokenizer_model) as file:
         base_tokenizer_lines: list[str] = file.readlines()
 
     # Create a dict[bytes, int] dictionary of the current vocabulary - to test for duplicates
@@ -67,6 +67,7 @@ def extend_tiktoken(n_new_dsus: int, use_modality_tokens: bool, tokenizer_model:
         modality_tokenizer_lines = _create_token_list(modality_tokens)
         LOGGER.info(f"Adding {len(modality_tokenizer_lines)} modality tokens to {tokenizer_model!s}")
     else:
+        modality_tokenizer_lines = []
         LOGGER.info(f"No Modality Tokens added to {tokenizer_model}")
 
     # Write the extended tokenizer.model file to disk
@@ -119,7 +120,7 @@ def extend_config(
 ) -> None:
     base_vocab_size: int = llama_config._base_vocab_size_txt
     special_tokens_size: int = llama_config._n_special_txt
-    with open(config_json, "r") as f:
+    with open(config_json) as f:
         config = json.load(f)
     assert config.pop("bos_token_id") == 128_000
     assert config.pop("eos_token_id") == 128_001
@@ -137,7 +138,7 @@ def extend_generation_config(
     bos_token_id: int,
     eos_token_id: int,
 ) -> None:
-    with open(generation_config_json, "r") as f:
+    with open(generation_config_json) as f:
         config = json.load(f)
     assert config.pop("bos_token_id") == 128_000
     assert config.pop("eos_token_id") == 128_001
@@ -151,7 +152,7 @@ def extend_generation_config(
 def extend_params(params_json: Path, vocab_size: int, llama_config: ConfigLlama3_2) -> None:
     base_vocab_size: int = llama_config._base_vocab_size_txt
     special_tokens_size: int = llama_config._n_special_txt
-    with open(params_json, "r") as f:
+    with open(params_json) as f:
         config = json.load(f)
     assert config.pop("vocab_size") == base_vocab_size + special_tokens_size
     config["vocab_size"] = vocab_size

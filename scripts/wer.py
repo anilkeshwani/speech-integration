@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 
+from argparse import ArgumentParser, Namespace
 import json
 import logging
 import os
-import sys
-from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from pprint import pformat
+import sys
 
 from evaluate import load
 from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
@@ -45,7 +45,7 @@ def parse_args() -> Namespace:
 def main(args: Namespace) -> None:
     wer_json = args.generations_jsonl.parent / "wer.json"
     if wer_json.exists():
-        with open(wer_json, "r") as f:
+        with open(wer_json) as f:
             _wer_json_contents = pformat(json.load(f))
         raise FileExistsError(f"Output WER JSON already exists: {wer_json} with contents: " + _wer_json_contents)
     wer_metric = load("wer")
@@ -66,6 +66,7 @@ def main(args: Namespace) -> None:
         LOGGER.info("No normalizer specified, skipping text normalization.")
     else:
         raise NotImplementedError(f"Unsupported normalizer: {args.normalizer}. Supported: 'whisper' or None (null).")
+    # TODO Any merit of using jiwer.process_words(reference=reference, hypothesis=generated)?
     wer = wer_metric.compute(predictions=generated, references=reference)
     with open(wer_json, "x") as f:
         json.dump({"wer": wer}, f, indent=4)

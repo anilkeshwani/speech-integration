@@ -15,13 +15,13 @@ import argparse
 import json
 import logging
 import os
-import sys
 from pathlib import Path
+import sys
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-import wandb
 from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
+import wandb
 
 from ssi.constants import WANDB_ENTITY_DEFAULT, WANDB_PROJECT_DEFAULT
 
@@ -64,12 +64,12 @@ def extract_wer_data(generations_dir: Path, dataset: str, split: str = "dev") ->
             step_num = int(step_dir.name.removeprefix("global_step_"))
             wer_file = step_dir / dataset / split / "wer.json"
             if wer_file.exists():
-                with open(wer_file, "r") as f:
+                with open(wer_file) as f:
                     wer_json = json.load(f)
                     wer_value = wer_json.get("wer")
                     if wer_value is not None:
                         wer_data.append((step_num, wer_value))
-        except (ValueError, json.JSONDecodeError, KeyError) as e:
+        except (ValueError, json.JSONDecodeError, KeyError) as e:  # noqa: PERF203
             LOGGER.warning(f"Could not parse WER data from {step_dir}: {e}")
 
     # Sort by step number
@@ -102,17 +102,17 @@ def plot_losses(run: wandb.apis.public.Run, output_dir: str, generations_dir: Pa
 
     # Extract metadata
     lr, warmup_steps, dataset = extract_run_metadata(run)
-    ds_owner, ds_name = dataset.split("/")
+    _ds_owner, ds_name = dataset.split("/")
 
     # Extract WER data
     wer_data = extract_wer_data(generations_dir, dataset=ds_name)
-    wer_steps, wer_values = zip(*wer_data) if wer_data else ([], [])
+    wer_steps, wer_values = zip(*wer_data, strict=True) if wer_data else ([], [])
     # Convert WER to percentage
     wer_values_pct = [v * 100 for v in wer_values] if wer_values else []
 
     # Create both linear and log scale plots
     for scale_type in ["linear", "log"]:
-        fig, ax1 = plt.subplots(figsize=(12, 8))
+        _fig, ax1 = plt.subplots(figsize=(12, 8))
 
         # Plot losses on primary y-axis
         lines = []
@@ -147,7 +147,7 @@ def plot_losses(run: wandb.apis.public.Run, output_dir: str, generations_dir: Pa
                     ticker.FuncFormatter(lambda x, p: f"{x:.3g}")
                 )  # Combine all legend elements
             labels = [line.get_label() for line in lines] + ["WER"]
-            ax1.legend(lines + [scat], labels, loc="upper right")
+            ax1.legend([*lines, scat], labels, loc="upper right")
         else:
             ax1.legend(loc="upper right")
 
@@ -161,7 +161,7 @@ def plot_losses(run: wandb.apis.public.Run, output_dir: str, generations_dir: Pa
             0.85,
             metadata_text,
             transform=ax1.transAxes,
-            bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.8),
+            bbox={"boxstyle": "round,pad=0.3", "facecolor": "lightgray", "alpha": 0.8},
             verticalalignment="top",
             horizontalalignment="right",
             fontsize=10,

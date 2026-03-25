@@ -26,10 +26,9 @@ def setup_llama3_tokenizer(
     mergeable_ranks = load_tiktoken_bpe(str(path), expected_hash)  # load BPE merges from tokenizer.model
     base_vocab_size = len(mergeable_ranks)
     assert base_vocab_size == max(mergeable_ranks.values()) + 1, "Requirement: base vocab to contiguous and 0-indexed"
-    special_tokens_dynamic = {
-        k: v
-        for k, v in zip(LLAMA3_SPECIAL_TOKENS, range(base_vocab_size, base_vocab_size + len(LLAMA3_SPECIAL_TOKENS)))
-    }
+    special_tokens_dynamic = dict(
+        zip(LLAMA3_SPECIAL_TOKENS, range(base_vocab_size, base_vocab_size + len(LLAMA3_SPECIAL_TOKENS)), strict=True)
+    )
     tokenizer = Llama3Tokenizer(
         path=str(path),
         special_tokens=special_tokens_dynamic,

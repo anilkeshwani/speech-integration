@@ -1,7 +1,6 @@
-defaults: # inherit parameter values (Hydra inheritance syntax/functionality)
+defaults:  # inherit parameter values (Hydra inheritance syntax/functionality)
   - common
   - training
   - data: ???
-
 tokenizer:
-  max_seq_len: 768 # max sequence length for the tokenizer; with bs 16 keeping it under 800 is good; 768 = 512 + 256
+  max_seq_len: 768  # max sequence length for the tokenizer; with bs 16 keeping it under 800 is good; 768 = 512 + 256

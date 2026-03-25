@@ -31,7 +31,6 @@ WANDB_PROJECT_DEFAULT: str = "speech-integration"
 
 # Defaults used before these became experimentation parameters
 N_DSUS_DEFAULT: int = 5_000  # Default number of DSUs
-SPEECH_DEDUPLICATE_DEFAULT: bool = False  # Default for speech deduplication
 
 ####################################################################################################
 # Constants - Checkpoints and Artefacts
@@ -63,9 +62,6 @@ TORCHTUNE_CONFIG_FILENAME = "torchtune_config.yaml"  # used by WandBLoggerPatche
 
 from torchtune import training  # isort: skip # noqa: E402
 
-ADAPTER_KEY: str = training.ADAPTER_KEY  # adapter weights such as LoRA weights
-assert ADAPTER_KEY == "adapter"
-
 EPOCHS_KEY: str = training.EPOCHS_KEY  # number of epochs completed thus far
 assert EPOCHS_KEY == "epochs_run"
 
@@ -79,15 +75,18 @@ assert SEED_KEY == "seed"
 TOTAL_EPOCHS_KEY: str = training.TOTAL_EPOCHS_KEY  # total number of epochs
 assert TOTAL_EPOCHS_KEY == "total_epochs"
 
-# NOTE torchtune.training exports STEPS_KEY = "steps_run" # number of steps completed thus far - for PPO
-STEPS_KEY: str = training.STEPS_KEY  # number of steps completed thus far
-assert STEPS_KEY == "steps_run"
-
-# NOTE entirely different meaning cf STEPS_KEY exported by torchtune (used in PPO stage)
-GLOBAL_STEP_KEY: str = "global_step"
+GLOBAL_STEP_KEY: str = "global_step"  # canonical key for global step in training state checkpoints
 
 RNG_KEY: str = training.RNG_KEY  # rng state for ensuring correct training resuming (original use in PPO impl.)
 assert RNG_KEY == "rng_state"
+
+# Checkpoint schema v1 keys
+TRAINING_HPARAMS_KEY: str = "training_hparams"
+LR_SCHEDULER_KEY: str = "lr_scheduler"
+CONSUMED_SAMPLES_KEY: str = "consumed_samples"
+CUMULATIVE_METRICS_KEY: str = "cumulative_metrics"
+CHECKPOINT_VERSION_KEY: str = "checkpoint_version"
+CHECKPOINT_VERSION: int = 1
 
 # TODO remove this - strongly dislike this from torchtune - included as a reminder of functionality conflict
 # MAX_STEPS_KEY: str = training.MAX_STEPS_KEY

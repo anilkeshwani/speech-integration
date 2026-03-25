@@ -1,0 +1,42 @@
+repos:
+  # Python: linter (with safe auto-fixes) then formatter
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.7
+    hooks:
+      - id: ruff-check
+        args:
+          - --fix
+      - id: ruff-format
+
+  # Shell: formatter then linter
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: v3.12.0-2
+    hooks:
+      - id: shfmt
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      - id: shellcheck
+
+  # TOML: formatter
+  - repo: https://github.com/ComPWA/mirrors-taplo
+    rev: v0.9.3
+    hooks:
+      - id: taplo-format
+
+  # YAML: auto-fixer then linter
+  - repo: https://github.com/lyz-code/yamlfix/
+    rev: 1.19.1
+    hooks:
+      - id: yamlfix
+        exclude: ^conf/data/(_sft_base\.yaml|sft/)  # SFT configs contain prompt templates that must not be reformatted
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.38.0
+    hooks:
+      - id: yamllint
+
+  # uv: keep lockfile in sync with pyproject.toml
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.10.12
+    hooks:
+      - id: uv-lock

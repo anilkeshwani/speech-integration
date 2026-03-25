@@ -1,15 +1,15 @@
+from hashlib import sha256
 import json
 import os
+from pathlib import Path
 import pdb
 import sys
 import traceback
-from hashlib import sha256
-from pathlib import Path
 from typing import Any
 
-import torch
 from datasets import load_dataset
 from omegaconf import DictConfig, OmegaConf
+import torch
 from torchtune.utils._import_guard import _SUPPORTS_FLEX_ATTENTION
 from wandb.apis.public.runs import Run
 
@@ -28,7 +28,7 @@ else:
 
 def extract_texts_from_generations_jsonl(generations_jsonl: Path) -> list[str]:
     texts = []
-    with open(generations_jsonl, "r") as f:
+    with open(generations_jsonl) as f:
         for line in f:
             data = json.loads(line)
             is_single_generation = len(data["outputs"]) == 1
@@ -63,12 +63,12 @@ def _parse_model_path(model_dir: Path, experiments_root_dir: Path) -> dict[str, 
     *wandb_run_name_parts, wandb_run_id_prefixed = wandb_dir.split("-")
     wandb_run_name = "-".join(wandb_run_name_parts)
     wandb_run_id = wandb_run_id_prefixed.removeprefix("id_")
-    *base_model_parts, training_type = model_training.split("-")
-    base_model_name = "-".join(base_model_parts)
+    *extended_model_parts, training_type = model_training.split("-")
+    extended_model_name = "-".join(extended_model_parts)
     epoch = int(epoch_dir.removeprefix("epoch_"))
     global_step = int(global_step_dir.removeprefix("global_step_"))
     return {
-        "base_model_name": base_model_name,
+        "extended_model_name": extended_model_name,
         "training_type": training_type,
         "wandb_run_id": wandb_run_id,
         "wandb_run_name": wandb_run_name,
@@ -127,7 +127,7 @@ def get_terminal_width(default_width: int = 120) -> int:
     return TERMINAL_WIDTH
 
 
-def batch_to_device(batch: dict, device: torch.device, exclude_keys: list[str] = []) -> None:
+def batch_to_device(batch: dict, device: torch.device, exclude_keys: list[str] | None = None) -> None:
     """Function that takes a dictionary (or nested dictionary) of tensors and sets them
     all to the same device. This utility is intended to be used for batches of data to be
     moved to device, the update is inplace.
@@ -140,15 +140,15 @@ def batch_to_device(batch: dict, device: torch.device, exclude_keys: list[str] =
     Raises:
         AttributeError: if batch dict contains anything other than tensors
     """
+    if exclude_keys is None:
+        exclude_keys = []
     for k, v in batch.items():
         if k in exclude_keys:
             continue  # skip this key
 
         if isinstance(v, dict):
             batch_to_device(v, device, [])  # NOTE explicit - we only exclude keys at the *top* level
-        elif isinstance(v, torch.Tensor):
-            batch[k] = v.to(device)
-        elif _SUPPORTS_FLEX_ATTENTION and isinstance(v, BlockMask):
+        elif isinstance(v, torch.Tensor) or (_SUPPORTS_FLEX_ATTENTION and isinstance(v, BlockMask)):
             batch[k] = v.to(device)
         else:
             raise ValueError(

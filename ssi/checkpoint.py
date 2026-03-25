@@ -1,42 +1,175 @@
+from datetime import datetime, timezone
 import gc
 import json
 import logging
 import os
-from ast import Not
 from pathlib import Path
-from typing import Any, Dict
+import random
+from typing import Any
 
-import torch
+import numpy as np
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from safetensors.torch import save_file
+import torch
 from torchtune import training
 from torchtune.models import convert_weights
 from torchtune.training.checkpointing._checkpointer import _CheckpointerInterface
 from torchtune.training.checkpointing._utils import (
-    ADAPTER_CONFIG_FNAME,
-    ADAPTER_MODEL_FNAME,
-    check_outdir_not_in_ckptdir,
-    copy_files,
-    FormattedCheckpointFiles,
-    get_path,
-    ModelType,
-    REPO_ID_FNAME,
-    safe_torch_load,
     SAFETENSOR_INDEX_FNAME,
     SHARD_FNAME,
     SUFFIXES_TO_NOT_COPY,
     TORCH_INDEX_FNAME,
+    FormattedCheckpointFiles,
+    check_outdir_not_in_ckptdir,
+    copy_files,
+    get_path,
+    safe_torch_load,
 )
 from torchtune.training.metric_logging import WandBLogger
 
-from ssi.constants import EPOCHS_KEY, GLOBAL_STEP_KEY, LLAMA_3_2_CONFIG_RELPATH, MODEL_KEY, SEED_KEY
+from ssi._version import __version__
+from ssi.constants import (
+    CHECKPOINT_VERSION,
+    CHECKPOINT_VERSION_KEY,
+    CONSUMED_SAMPLES_KEY,
+    CUMULATIVE_METRICS_KEY,
+    GLOBAL_STEP_KEY,
+    LLAMA_3_2_CONFIG_RELPATH,
+    LR_SCHEDULER_KEY,
+    RNG_KEY,
+    SEED_KEY,
+    TRAINING_HPARAMS_KEY,
+)
 
 
 LOGGER = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Checkpoint auto-discovery and validation
+# ---------------------------------------------------------------------------
+
+
+def discover_safetensor_files(checkpoint_dir: Path) -> list[str]:
+    """Auto-discover safetensors model shard files in a checkpoint directory.
+
+    Finds ``*.safetensors`` files, excluding index files
+    (``model.safetensors.index.json`` is not a shard). Raises if no files
+    are found or if the directory contains ambiguous shard naming (e.g.
+    both ``model-*`` and ``ft-model-*`` files).
+
+    Args:
+        checkpoint_dir: Directory to search.
+
+    Returns:
+        Sorted list of shard filenames (not full paths).
+
+    Raises:
+        FileNotFoundError: If the directory does not exist or is empty.
+        ValueError: If no safetensors files found, or ambiguous naming.
+    """
+    if not checkpoint_dir.exists():
+        raise FileNotFoundError(f"Checkpoint directory does not exist: {checkpoint_dir}")
+
+    st_files = sorted(f.name for f in checkpoint_dir.glob("*.safetensors"))
+    if not st_files:
+        contents = sorted(f.name for f in checkpoint_dir.iterdir())
+        raise ValueError(f"No safetensors files found in {checkpoint_dir}. Directory contents: {contents}")
+
+    # Check for ambiguous naming: both model-* and ft-model-* present
+    model_files = [f for f in st_files if f.startswith("model-")]
+    ft_files = [f for f in st_files if f.startswith("ft-model-")]
+    if model_files and ft_files:
+        raise ValueError(
+            f"Ambiguous checkpoint files in {checkpoint_dir}: "
+            f"found both base shards {model_files} and fine-tuned shards {ft_files}. "
+            f"Specify checkpoint_files explicitly to disambiguate."
+        )
+
+    LOGGER.info(f"Auto-discovered checkpoint file(s): {st_files}")
+    return st_files
+
+
+def validate_checkpoint_dir(checkpoint_dir: Path, config: dict[str, Any], expectations: Any | None = None) -> None:
+    """Validate checkpoint directory contents against config.json and model expectations.
+
+    Runs non-destructive checks before any weights are loaded. Failures
+    are ``ValueError`` with actionable error messages.
+
+    Args:
+        checkpoint_dir: Directory containing the checkpoint.
+        config: Parsed ``config.json`` dict from the checkpoint directory.
+        expectations: A ``ModelCheckpointExpectations`` (or any object with
+            ``model_name``, ``n_shards``, ``num_layers``, ``hidden_size``,
+            ``vocab_size`` attributes). If ``None``, model-specific checks
+            are skipped.
+
+    Raises:
+        ValueError: If any check fails.
+    """
+    # Layer 1: config.json existence (already loaded by caller, but check it's non-empty)
+    if not config:
+        raise ValueError(f"config.json in {checkpoint_dir} is empty or could not be parsed.")
+
+    # Layer 2: index file vs shard consistency
+    index_path = checkpoint_dir / SAFETENSOR_INDEX_FNAME
+    if index_path.exists():
+        index_data = json.loads(index_path.read_text())
+        expected_shards = set(index_data.get("weight_map", {}).values())
+        actual_shards = {f.name for f in checkpoint_dir.glob("*.safetensors")}
+        missing = expected_shards - actual_shards
+        if missing:
+            raise ValueError(
+                f"Shard mismatch in {checkpoint_dir}: index file lists shards "
+                f"{sorted(expected_shards)} but directory is missing {sorted(missing)}."
+            )
+
+    # Layer 3: model-specific structural checks
+    if expectations is None:
+        return
+
+    # Shard count
+    st_files = sorted(checkpoint_dir.glob("*.safetensors"))
+    n_shards = len(st_files)
+    if n_shards != expectations.n_shards:
+        raise ValueError(
+            f"Expected {expectations.n_shards} model shard(s) for "
+            f"{expectations.model_name} but found {n_shards} in {checkpoint_dir}. "
+            f"Check that checkpoint_dir points to the correct model."
+        )
+
+    # Architecture fields from config.json
+    config_layers = config.get("num_hidden_layers")
+    if config_layers is not None and config_layers != expectations.num_layers:
+        raise ValueError(
+            f"config.json reports num_hidden_layers={config_layers} but "
+            f"{expectations.model_name} has {expectations.num_layers}. Wrong model?"
+        )
+
+    config_hidden = config.get("hidden_size")
+    if config_hidden is not None and config_hidden != expectations.hidden_size:
+        raise ValueError(
+            f"config.json reports hidden_size={config_hidden} but "
+            f"{expectations.model_name} has {expectations.hidden_size}. Wrong model?"
+        )
+
+    config_vocab = config.get("vocab_size")
+    if config_vocab is not None and config_vocab != expectations.vocab_size:
+        raise ValueError(
+            f"Vocab size mismatch: config.json has vocab_size={config_vocab}, "
+            f"expected {expectations.vocab_size} for {expectations.model_name} "
+            f"with current speech config. Was the model extended with different "
+            f"n_dsus or modality token settings?"
+        )
+
+    LOGGER.info(
+        f"Checkpoint validation passed for {expectations.model_name} "
+        f"({n_shards} shard(s), {config_layers} layers, vocab_size={config_vocab})"
+    )
+
+
 def validate_checkpoint_files(checkpoint_files: list[str], input_dir: Path, missing_ok=False) -> list[Path]:
-    """Validates that the checkpoint files exist and sorts based on ID"""
+    """Validate that checkpoint files exist in input_dir and return paths sorted by name."""
     checkpoint_paths: list[Path] = []
     for f in checkpoint_files:
         checkpoint_path = get_path(input_dir, f, missing_ok)
@@ -45,85 +178,101 @@ def validate_checkpoint_files(checkpoint_files: list[str], input_dir: Path, miss
 
 
 def get_model_checkpoint_paths(checkpoint_files: list[str] | dict[str, str], checkpoint_dir: Path) -> list[Path]:
+    """Resolve checkpoint file names to sorted, validated paths under checkpoint_dir."""
     if not isinstance(checkpoint_files, list):
         formatted_checkpoint_files = FormattedCheckpointFiles.from_dict(checkpoint_files)
         checkpoint_files = formatted_checkpoint_files.build_checkpoint_filenames()
     return validate_checkpoint_files(checkpoint_files, input_dir=checkpoint_dir, missing_ok=False)
 
 
+def save_rng_states() -> dict[str, Any]:
+    """Capture Python, NumPy, and PyTorch RNG states including CUDA if available."""
+    rng_state: dict[str, Any] = {
+        "python": random.getstate(),
+        "numpy_global": np.random.get_state(),
+        "torch_cpu": torch.get_rng_state(),
+    }
+    if torch.cuda.is_available():
+        rng_state["torch_cuda"] = torch.cuda.get_rng_state_all()
+    return rng_state
+
+
+def restore_rng_states(rng_state: dict[str, Any]) -> None:
+    """Restore Python, NumPy, and PyTorch RNG states from a dict produced by save_rng_states."""
+    random.setstate(rng_state["python"])
+    np.random.set_state(rng_state["numpy_global"])
+    torch.set_rng_state(rng_state["torch_cpu"])
+    if "torch_cuda" in rng_state and torch.cuda.is_available():
+        torch.cuda.set_rng_state_all(rng_state["torch_cuda"])
+
+
 class FullModelHFCheckpointer(_CheckpointerInterface):
-    """
-    Checkpointer which reads and writes checkpoints in HF's format. For LoRA models this includes
-    saving checkpoints in a format that can be loaded into PEFT via e.g. ``from_pretrained``. Examples include
-    the Llama-2-7b-hf model from the meta-llama repo (https://huggingface.co/meta-llama/Llama-2-7b-hf).
+    """Reads and writes HF-format checkpoints with torchtune key conversion for Llama 3.2.
 
-    Note:
-        HF checkpoint names are usually ordered by ID (eg: 0001_of_0003, 0002_of_0003, etc.) To ensure \
-        we read the files in the right order, we sort the checkpoint file names before reading.
-
-    Note:
-        Checkpoint conversion to and from HF's format requires access to model params which are \
-        read directly from the ``config.json`` file. This helps ensure we either load the weights \
-        correctly or error out in case of discrepancy between the HF checkpoint file and torchtune's \
-        model implementations.
+    Checkpoint files are sorted by shard ID before reading. Conversion between HF and
+    torchtune key formats uses model params read from ``config.json``.
 
     Args:
-        checkpoint_dir (Path): Directory containing the checkpoint files
-        checkpoint_files (list[str] | dict[str, str]): List of checkpoint files to load or a dictionary
-            containing the keys keys ["filename_format", "max_filename"]. Since the checkpointer takes care
-            of sorting by file ID, the order in this list does not matter.
-        config_json (Path): Path to the model config JSON file. Required for state dict conversion.
-        output_dir (str): Directory to save the checkpoint files
-        adapter_checkpoint (Path | None): Path to the adapter weights. Default is None.
-        recipe_checkpoint (Path | None): Path to the recipe state checkpoint file. Default is None.
-        model_type (ModelType): Model type. Default is ModelType.LLAMA3_2
-        safe_serialization (bool): If True, the checkpointer will save the checkpoint file using `safetensors`.
-            Default is True.
+        checkpoint_dir: Directory containing the source checkpoint files.
+        checkpoint_files: Checkpoint file names (list), a dict with keys
+            ``filename_format`` and ``max_filename``, or ``None`` to
+            auto-discover safetensors files in ``checkpoint_dir``.
+        config_json: Path to the model ``config.json``. Defaults to the Llama 3.2
+            config relative path under checkpoint_dir.
+        output_dir: Root directory for saved checkpoints and training state.
+        training_state_checkpoint: Path to a ``training_state.pt`` file for resuming training.
+            None when starting from scratch.
+        safe_serialization: If True (default), save weights as safetensors; otherwise
+            save as ``.bin`` via ``torch.save``.
+        model_expectations: Optional ``ModelCheckpointExpectations`` (or duck-typed
+            equivalent) for model-specific validation. When provided, the
+            checkpoint directory is validated against expected shard count,
+            layer count, hidden size, and vocab size before loading.
     """
 
     def __init__(
         self,
         checkpoint_dir: Path | str,
-        checkpoint_files: list[str] | dict[str, str],
+        checkpoint_files: list[str] | dict[str, str] | None = None,
         *,
         config_json: Path | str | None = None,
         output_dir: Path | str,
-        recipe_checkpoint: Path | str | None = None,
-        adapter_checkpoint: Path | str | None = None,
-        model_type: str = "llama3_2",
+        training_state_checkpoint: Path | str | None = None,
         safe_serialization: bool = True,
+        model_expectations: Any | None = None,
     ) -> None:
         self.checkpoint_dir = Path(checkpoint_dir)
         self.safe_serialization = safe_serialization
-        self.model_type: ModelType = ModelType(model_type)
         self.output_dir = Path(output_dir)  # idempotent
-        self.recipe_checkpoint = Path(recipe_checkpoint) if recipe_checkpoint is not None else None
-        self.adapter_checkpoint = Path(adapter_checkpoint) if adapter_checkpoint else None
+        self.training_state_checkpoint = (
+            Path(training_state_checkpoint) if training_state_checkpoint is not None else None
+        )
         if isinstance(checkpoint_files, ListConfig):
             checkpoint_files = OmegaConf.to_object(checkpoint_files)
 
         check_outdir_not_in_ckptdir(ckpt_dir=self.checkpoint_dir, out_dir=self.output_dir)
 
-        if self.recipe_checkpoint is not None and not self.recipe_checkpoint.is_file():
-            raise FileNotFoundError(f"Recipe checkpoint file {self.recipe_checkpoint} not found.")
+        if self.training_state_checkpoint is not None and not self.training_state_checkpoint.is_file():
+            raise FileNotFoundError(f"Recipe checkpoint file {self.training_state_checkpoint} not found.")
 
-        self.output_dir.mkdir(parents=True, exist_ok=True)  # TODO
+        self.output_dir.mkdir(parents=True, exist_ok=True)
 
         # weight_map: state_dict key -> checkpoint mapping to partition state dict into output checkpoint files
         self._weight_map: dict[str, str] | None = None  # NOTE initialised to None; updated during checkpoint loading
 
         if config_json is None:
             config_json = self.checkpoint_dir / LLAMA_3_2_CONFIG_RELPATH
-        self._config = json.loads(Path(config_json).read_text())  # gives model params needed for state dict conversion
+        config_json = Path(config_json)
+        if not config_json.exists():
+            raise FileNotFoundError(f"No config.json found at {config_json} — expected an HF-format model directory.")
+        self._config = json.loads(config_json.read_text())
 
-        # repo_id necessary to save adapter config for HF compatibility. JSON produced and saved at download step.
-        # contents are {"repo_id": "some_model/some_model_version"}
-        repo_id_path = Path.joinpath(self.checkpoint_dir, REPO_ID_FNAME).with_suffix(".json")
-        self.repo_id = None
-        if repo_id_path.exists():
-            with open(repo_id_path, "r") as json_file:
-                data = json.load(json_file)
-                self.repo_id = data.get("repo_id")
+        # Auto-discover checkpoint files if not provided
+        if checkpoint_files is None:
+            checkpoint_files = discover_safetensor_files(self.checkpoint_dir)
+
+        # Validate checkpoint directory against model expectations
+        validate_checkpoint_dir(self.checkpoint_dir, self._config, model_expectations)
 
         self._checkpoint_paths = get_model_checkpoint_paths(
             checkpoint_files=checkpoint_files,
@@ -131,49 +280,39 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         )
 
         LOGGER.info(f"Resuming from checkpoint(s): {[str(path) for path in self._checkpoint_paths]}")
-        if self.recipe_checkpoint is not None:
-            LOGGER.info(f"Resuming optimizer and recipe state from: {self.recipe_checkpoint}")
+        if self.training_state_checkpoint is not None:
+            LOGGER.info(f"Resuming optimizer and training state from: {self.training_state_checkpoint}")
         else:
-            LOGGER.info("No recipe state checkpoint passed. Will initialize optimizer state from scratch.")
-        if self.adapter_checkpoint:
-            LOGGER.info(f"Resuming adapter from checkpoint: {self.adapter_checkpoint}")
+            LOGGER.info("No training state checkpoint passed. Will initialize optimizer state from scratch.")
 
-    def load_checkpoint(self) -> Dict[str, Any]:
-        """
-        Load HF checkpoint from file.
+    def load_checkpoint(self) -> dict[str, Any]:
+        """Load and merge HF checkpoint shards, converting to torchtune key format.
 
-        The keys and weights from across all checkpoint files are merged into a single state_dict.
-        We preserve the "state_dict key" <-> "checkpoint file" mapping in weight_map so we can
-        write the state dict correctly in ``save_checkpoint``.
-
-        Before returning, the model state dict is converted to a torchtune-compatible format using
-        the appropriate convert_weights function (depending on ``self.model_type``).
-
-        Returns:
-            state_dict (Dict[str, Any]): torchtune checkpoint state dict
+        Populates ``_weight_map`` (key -> shard ID) so that ``save_model_checkpoint``
+        can partition weights back into the same shard layout. If ``training_state_checkpoint``
+        was provided at init, the training state is merged into the returned dict.
 
         Raises:
-            ValueError: If the values in the input state_dict are not Tensors
+            ValueError: If any value in a checkpoint file is not a ``torch.Tensor``.
         """
         self._weight_map = {}
 
         # merged state_dict contains keys and weights from all the checkpoint files
-        merged_state_dict: Dict[str, torch.Tensor] = {}
+        merged_state_dict: dict[str, torch.Tensor] = {}
 
-        # converted_state_dict is the final state_dict passed to the recipe after the
-        # keys are converted into the torchtune format. This optionally also contains
-        # the recipe state and adapter weights
-        converted_state_dict: Dict[str, Dict[str, torch.Tensor]] = {}
+        # converted_state_dict is the final state_dict after keys are converted into
+        # the torchtune format. This optionally also contains the training state.
+        converted_state_dict: dict[str, Any] = {}
 
         # _checkpoint_paths are already sorted so simply enumerate to generate the right id
         for cpt_idx, cpt_path in enumerate(self._checkpoint_paths):
             state_dict = safe_torch_load(cpt_path)
             for key, value in state_dict.items():
                 # Ensure that the state dict is a flat dict of keys and tensors. Breaking this assumption
-                # will break recipe code
+                # will break downstream code
                 if not isinstance(value, torch.Tensor):
                     raise ValueError(
-                        f"Expected all values in the state dict to be torch.Tensor. " f"Found {type(value)} instead."
+                        f"Expected all values in the state dict to be torch.Tensor. Found {type(value)} instead."
                     )
                 # idx is written in the 4 digit format (eg: 0001, 0002, etc.)
                 self._weight_map[key] = f"{cpt_idx + 1:04}"
@@ -183,202 +322,45 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             del state_dict
             gc.collect()
 
-        match self.model_type:
-            case ModelType.PHI3_MINI:
-                self.phi3_hf_to_tune(merged_state_dict, converted_state_dict)
-            case ModelType.REWARD:
-                self.reward_hf_to_tune(merged_state_dict, converted_state_dict)
-            case ModelType.QWEN2:
-                self.qwen2_hf_to_tune(merged_state_dict, converted_state_dict)
-            case ModelType.LLAMA3_VISION:
-                self.llama3_vision_hf_to_tune(merged_state_dict, converted_state_dict)
-            case ModelType.CLIP_TEXT:
-                self.clip_text_hf_to_tune(merged_state_dict, converted_state_dict)
-            case ModelType.GEMMA2:
-                self.gemma2_hf_to_tune(merged_state_dict, converted_state_dict)
-            case ModelType.LLAMA2 | ModelType.LLAMA3 | ModelType.LLAMA3_2:
-                converted_state_dict[training.MODEL_KEY] = convert_weights.hf_to_tune(
-                    merged_state_dict,
-                    num_heads=self._config["num_attention_heads"],
-                    num_kv_heads=self._config["num_key_value_heads"],
-                    dim=self._config["hidden_size"],
-                    head_dim=self._config.get("head_dim", None),
-                )
-            case _:
-                raise ValueError(f"Unsupported model type: {self.model_type}")
-
-        if self.adapter_checkpoint:
-            adapter_state_dict = safe_torch_load(self.adapter_checkpoint)
-            converted_state_dict[training.ADAPTER_KEY] = adapter_state_dict
-
-        if self.recipe_checkpoint is not None:
-            recipe_state = safe_torch_load(self.recipe_checkpoint, mmap=False)
-            converted_state_dict.update(recipe_state)
-
-        return converted_state_dict
-
-    def phi3_hf_to_tune(self, merged_state_dict, converted_state_dict):
-        LOGGER.info(
-            "Converting Phi-3 Mini weights from HF format."
-            "Note that conversion of adapter weights into PEFT format is not supported."
-        )
-        from torchtune.models.phi3._convert_weights import phi3_hf_to_tune
-
-        converted_state_dict[training.MODEL_KEY] = phi3_hf_to_tune(merged_state_dict)
-        return converted_state_dict
-
-    def phi3_tune_to_hf(self, state_dict):
-        from torchtune.models.phi3._convert_weights import phi3_tune_to_hf
-
-        state_dict[training.MODEL_KEY] = phi3_tune_to_hf(state_dict[training.MODEL_KEY])
-
-    def reward_hf_to_tune(self, merged_state_dict, converted_state_dict):
-        from torchtune.rlhf.utils import reward_hf_to_tune
-
-        converted_state_dict[training.MODEL_KEY] = reward_hf_to_tune(
-            merged_state_dict,
-            num_heads=self._config["num_attention_heads"],
-            num_kv_heads=self._config["num_key_value_heads"],
-            dim=self._config["hidden_size"],
-        )
-        return converted_state_dict
-
-    def reward_tune_to_hf(self, state_dict):
-        from torchtune.rlhf.utils import reward_tune_to_hf
-
-        state_dict[training.MODEL_KEY] = reward_tune_to_hf(
-            state_dict[training.MODEL_KEY],
-            num_heads=self._config["num_attention_heads"],
-            num_kv_heads=self._config["num_key_value_heads"],
-            dim=self._config["hidden_size"],
-        )
-
-    def qwen2_hf_to_tune(self, merged_state_dict, converted_state_dict):
-        from torchtune.models.qwen2._convert_weights import qwen2_hf_to_tune
-
-        converted_state_dict[training.MODEL_KEY] = qwen2_hf_to_tune(
-            merged_state_dict,
-            num_heads=self._config["num_attention_heads"],
-            num_kv_heads=self._config["num_key_value_heads"],
-            dim=self._config["hidden_size"],
-            tie_word_embeddings=self._config["tie_word_embeddings"],
-        )
-        return converted_state_dict
-
-    def qwen2_tune_to_hf(self, state_dict):
-        from torchtune.models.qwen2._convert_weights import qwen2_tune_to_hf
-
-        state_dict[training.MODEL_KEY] = qwen2_tune_to_hf(
-            state_dict[training.MODEL_KEY],
-            num_heads=self._config["num_attention_heads"],
-            num_kv_heads=self._config["num_key_value_heads"],
-            dim=self._config["hidden_size"],
-            tie_word_embeddings=self._config["tie_word_embeddings"],
-        )
-
-    def llama3_vision_hf_to_tune(self, merged_state_dict, converted_state_dict):
-        from torchtune.models.llama3_2_vision._convert_weights import llama3_vision_hf_to_tune
-
-        text_config = self._config.get("text_config", {})
-        vision_config = self._config.get("vision_config", {})
-        converted_state_dict[training.MODEL_KEY] = llama3_vision_hf_to_tune(
-            merged_state_dict,
-            num_heads=text_config["num_attention_heads"],
-            num_kv_heads=text_config["num_key_value_heads"],
-            dim=text_config["hidden_size"],
-            head_dim=text_config.get("head_dim", None),
-            vocab_size=text_config["vocab_size"],
-            cross_attention_layers=text_config.get("cross_attention_layers", None),
-            encoder_dim=vision_config["hidden_size"],
-            tile_size=vision_config["image_size"],
-            num_tiles=vision_config["max_num_tiles"],
-            supported_aspect_ratios=vision_config.get("supported_aspect_ratios", None),
-        )
-        return converted_state_dict
-
-    def llama3_vision_tune_to_hf(self, state_dict):
-        from torchtune.models.llama3_2_vision._convert_weights import llama3_vision_tune_to_hf
-
-        text_config = self._config.get("text_config", {})
-        vision_config = self._config.get("vision_config", {})
-        state_dict[training.MODEL_KEY] = llama3_vision_tune_to_hf(
-            state_dict[training.MODEL_KEY],
-            num_heads=text_config["num_attention_heads"],
-            num_kv_heads=text_config["num_key_value_heads"],
-            dim=text_config["hidden_size"],
-            head_dim=text_config.get("head_dim", None),
-            vocab_size=text_config["vocab_size"],
-            cross_attention_layers=text_config.get("cross_attention_layers", None),
-            encoder_dim=vision_config["hidden_size"],
-            tile_size=vision_config["image_size"],
-            num_tiles=vision_config["max_num_tiles"],
-            supported_aspect_ratios=vision_config.get("supported_aspect_ratios", None),
-        )
-
-    def clip_text_hf_to_tune(self, merged_state_dict, converted_state_dict):
-        from torchtune.models.clip._convert_weights import clip_text_hf_to_tune
-
-        converted_state_dict[training.MODEL_KEY] = clip_text_hf_to_tune(merged_state_dict)
-        return converted_state_dict
-
-    def clip_text_tune_to_hf(self, state_dict):
-        raise NotImplementedError
-
-    def gemma2_hf_to_tune(self, merged_state_dict, converted_state_dict):
-        from torchtune.models.gemma2._convert_weights import gemma2_hf_to_tune
-
-        converted_state_dict[training.MODEL_KEY] = gemma2_hf_to_tune(
+        converted_state_dict[training.MODEL_KEY] = convert_weights.hf_to_tune(
             merged_state_dict,
             num_heads=self._config["num_attention_heads"],
             num_kv_heads=self._config["num_key_value_heads"],
             dim=self._config["hidden_size"],
             head_dim=self._config.get("head_dim", None),
         )
+
+        if self.training_state_checkpoint is not None:
+            training_state = safe_torch_load(self.training_state_checkpoint, mmap=False)
+            converted_state_dict.update(training_state)
+
         return converted_state_dict
-
-    def gemma2_tune_to_hf(self, state_dict):
-        from torchtune.models.gemma2._convert_weights import gemma2_tune_to_hf
-
-        state_dict[training.MODEL_KEY] = gemma2_tune_to_hf(
-            state_dict[training.MODEL_KEY],
-            num_heads=self._config["num_attention_heads"],
-            num_kv_heads=self._config["num_key_value_heads"],
-            dim=self._config["hidden_size"],
-            head_dim=self._config.get("head_dim", None),
-        )
 
     def save_full_model(self, state_dict: dict[str, Any], output_dir: Path) -> None:
+        """Convert torchtune weights to HF format and write sharded checkpoint files.
+
+        Uses ``_weight_map`` (populated by ``load_checkpoint``) to partition weights
+        across shards. Format (safetensors vs .bin) is controlled by
+        ``self.safe_serialization``. Does not modify ``state_dict``.
+
+        Raises:
+            ValueError: If ``_weight_map`` has not been initialised by a prior load.
+        """
         if self._weight_map is None:
             raise ValueError("Weight map is not initialized. Please load a checkpoint before saving.")
 
-        match self.model_type:
-            case ModelType.PHI3_MINI:
-                self.phi3_tune_to_hf(state_dict)
-            case ModelType.REWARD:
-                self.reward_tune_to_hf(state_dict)
-            case ModelType.QWEN2:
-                self.qwen2_tune_to_hf(state_dict)
-            case ModelType.LLAMA3_VISION:
-                self.llama3_vision_tune_to_hf(state_dict)
-            case ModelType.GEMMA2:
-                self.gemma2_tune_to_hf(state_dict)
-            case ModelType.CLIP_TEXT:
-                raise NotImplementedError("Clip text conversion is not supported yet")  # strangely
-            case ModelType.LLAMA2 | ModelType.LLAMA3 | ModelType.LLAMA3_2:
-                state_dict[training.MODEL_KEY] = convert_weights.tune_to_hf(
-                    state_dict[training.MODEL_KEY],
-                    num_heads=self._config["num_attention_heads"],
-                    num_kv_heads=self._config["num_key_value_heads"],
-                    dim=self._config["hidden_size"],
-                    head_dim=self._config.get("head_dim", None),
-                )
-            case _:
-                raise ValueError(f"Unsupported model type: {self.model_type}")
+        hf_model_state_dict = convert_weights.tune_to_hf(
+            state_dict[training.MODEL_KEY],
+            num_heads=self._config["num_attention_heads"],
+            num_kv_heads=self._config["num_key_value_heads"],
+            dim=self._config["hidden_size"],
+            head_dim=self._config.get("head_dim", None),
+        )
 
         # split the state_dict into separate dicts, one for each output checkpoint file, by _weight_map
-        split_state_dicts: Dict[str, Dict[str, torch.Tensor]] = {}
+        split_state_dicts: dict[str, dict[str, torch.Tensor]] = {}
         total_size = 0
-        for key, weight in state_dict[training.MODEL_KEY].items():
+        for key, weight in hf_model_state_dict.items():
             cpt_idx = self._weight_map[key]
             # initialize dict
             if cpt_idx not in split_state_dicts:
@@ -427,135 +409,67 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
 
         LOGGER.info(f"The full model checkpoint has been saved to {output_dir}")
 
-    def save_adapter_weights(self, state_dict: dict[str, Any], output_dir: Path) -> None:
-        # TODO [Meta] saving it "as is" is a requirement because, if we only save with
-        # convert_weights.tune_to_peft_adapter_weights, we do NOT have a fn
-        # convert_weights.peft_to_tune. The .pt format is not needed, but
-        # it is an easy way to distinguish the adapters. Ideally we should save only one.
-        output_path = (output_dir / ADAPTER_MODEL_FNAME).with_suffix(".pt")
-        output_dir.mkdir(parents=True, exist_ok=True)
-        torch.save(state_dict[training.ADAPTER_KEY], output_path)
-        _ckpt_sz = os.path.getsize(output_path) / 1024**3
-        LOGGER.info(f"Adapter checkpoint of size {_ckpt_sz:.2f} GiB saved to {output_path}")
-
-        if self.model_type == ModelType.PHI3_MINI:
-            LOGGER.warning("Phi-3 Mini adapter to PEFT conversion unsupported. Saved in torchtune format")
-        elif self.model_type == ModelType.LLAMA3_VISION:
-            LOGGER.warning("Llama3.2 Vision adapter to PEFT conversion unsupported. Saved in torchtune format")
-        else:
-            state_dict[training.ADAPTER_KEY] = convert_weights.tune_to_peft_adapter_weights(
-                state_dict[training.ADAPTER_KEY],
-                num_heads=self._config["num_attention_heads"],
-                num_kv_heads=self._config["num_key_value_heads"],
-                dim=self._config["hidden_size"],
-                head_dim=self._config.get("head_dim", None),
-            )
-            output_path = output_dir / ADAPTER_MODEL_FNAME
-            output_dir.mkdir(parents=True, exist_ok=True)
-            if not self.safe_serialization:
-                output_path = output_path.with_suffix(".bin")
-                torch.save(state_dict[training.ADAPTER_KEY], output_path)
-            else:
-                output_path = output_path.with_suffix(".safetensors")
-                save_file(state_dict[training.ADAPTER_KEY], output_path, metadata={"format": "pt"})
-            _ckpt_sz = os.path.getsize(output_path) / 1024**3
-            LOGGER.info(f"Adapter checkpoint of size {_ckpt_sz:.2f} GiB saved to {output_path}")
-
-    def save_adapter_config(self, state_dict: dict[str, Any], output_dir: Path) -> None:
-        if self.model_type == ModelType.PHI3_MINI:
-            LOGGER.warning("PEFT integration for Phi-3 Mini is not supported. Skipping adapter config save")
-        elif self.model_type == ModelType.LLAMA3_VISION:
-            LOGGER.warning("PEFT integration for Llama3.2 Vision is not supported. Skipping adapter config save")
-        else:
-            state_dict[training.ADAPTER_CONFIG] = convert_weights.tune_to_peft_adapter_config(
-                adapter_config=state_dict[training.ADAPTER_CONFIG],
-                base_model_name_or_path=self.repo_id,
-            )
-            output_path = (output_dir / ADAPTER_CONFIG_FNAME).with_suffix(".json")
-            with open(output_path, "w") as f:
-                json.dump(state_dict[training.ADAPTER_CONFIG], f)
-            LOGGER.info(f"Adapter config saved to {output_path}")
-
-    def save_recipe_state(self, state_dict: dict[str, Any]) -> None:
-        output_path = self.output_dir / "recipe_state.pt"  # NOTE dropped added subdir resp. Meta code
-        exclude_keys = (training.MODEL_KEY, training.ADAPTER_KEY, training.ADAPTER_CONFIG)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-        torch.save({k: v for k, v in state_dict.items() if k not in exclude_keys}, output_path)
-        LOGGER.info(f"Recipe checkpoint ({os.path.getsize(output_path) / 1024**3:.2f} GiB) saved to {output_path}")
-
-    def _save_checkpoint(
-        self,
-        state_dict: dict[str, Any],
-        output_dir: Path,
-        save_training_state: bool,
-        adapter_only: bool,
-        ignore_suffixes: list[str],
-    ) -> None:
-        # convert the state_dict back to hf format; do this in place
-        if adapter_only:
-            if training.ADAPTER_KEY not in state_dict:
-                raise ValueError("Adapter checkpoint not in state_dict. Ensure the state_dict contains adapter weights")
-            LOGGER.info("Note: Set adapter_only=True so only adapter weights will be saved.")
-        else:
-            self.save_full_model(state_dict, output_dir)
-
-        # NOTE not used currently; Save the adapter weights if present (even when adapter_only is False)
-        if training.ADAPTER_KEY in state_dict:
-            self.save_adapter_weights(state_dict, output_dir)
-
-        # NOTE not used currently
-        if training.ADAPTER_CONFIG in state_dict:
-            self.save_adapter_config(state_dict, output_dir)
-
-        # Save all files in ckpt_dir except model weights and mapping -> facilitate inference
-        copy_files(self.checkpoint_dir, output_dir, ignore_suffixes=ignore_suffixes)
-
-        if save_training_state:
-            self.save_recipe_state(state_dict)
-        else:
-            LOGGER.info("No training state saved.")
-
-    def save_checkpoint(
+    def save_model_checkpoint(
         self,
         model_state_dict: dict[str, Any],
-        optimizer_state_dict: dict[str, Any] | None,
-        epoch: int,
         global_step: int,
-        seed: int,
-        save_training_state: bool = True,
-        adapter_only: bool = False,
-        optimizer_in_bwd: bool = False,  # TODO not implemented
-        optim_ckpt_wrapper=None,  # TODO typing if/when implemented; not implemented
+        *,
         output_dir: Path | None = None,
         ignore_suffixes: list[str] | None = None,
-    ) -> tuple[dict[str, Any], Path]:
+    ) -> Path:
+        """Save model weights to a self-contained ``step_N/`` directory.
+
+        Writes sharded HF-format weights (safetensors or .bin per
+        ``self.safe_serialization``) and copies config, tokenizer, and other
+        non-weight files so the directory is directly usable by HF tooling.
+        """
+        if output_dir is None:
+            output_dir = self.output_dir / f"step_{global_step}"
         if ignore_suffixes is None:
-            ignore_suffixes = SUFFIXES_TO_NOT_COPY + ["torchtune_config.yaml"]
-        ckpt_dict: dict = {
-            MODEL_KEY: model_state_dict,
-            EPOCHS_KEY: epoch,
+            ignore_suffixes = [*SUFFIXES_TO_NOT_COPY, "torchtune_config.yaml"]
+        state_dict = {training.MODEL_KEY: model_state_dict}
+        self.save_full_model(state_dict, output_dir)
+        copy_files(self.checkpoint_dir, output_dir, ignore_suffixes=ignore_suffixes)
+        return output_dir
+
+    def save_training_state(
+        self,
+        *,
+        optimizer_state_dict: dict[str, Any],
+        lr_scheduler_state_dict: dict[str, Any] | None,
+        global_step: int,
+        seed: int,
+        training_hparams: dict[str, Any],
+        consumed_samples: int,
+        cumulative_metrics: dict[str, Any],
+    ) -> Path:
+        """Save training resume state to ``training_state.pt`` at ``self.output_dir``.
+
+        Always overwrites the previous file. All fields except
+        ``lr_scheduler_state_dict`` are mandatory — a checkpoint written by this
+        method is guaranteed to be resumable.
+        """
+        state_dict = {
+            CHECKPOINT_VERSION_KEY: CHECKPOINT_VERSION,
             GLOBAL_STEP_KEY: global_step,
             SEED_KEY: seed,
+            training.OPT_KEY: optimizer_state_dict,
+            LR_SCHEDULER_KEY: lr_scheduler_state_dict,
+            RNG_KEY: save_rng_states(),
+            TRAINING_HPARAMS_KEY: training_hparams,
+            CONSUMED_SAMPLES_KEY: consumed_samples,
+            CUMULATIVE_METRICS_KEY: cumulative_metrics,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "ssi_version": __version__,
         }
-        if optimizer_state_dict is not None:
-            if optimizer_in_bwd:
-                raise NotImplementedError("optimizer_in_bwd=True not implemented yet")
-                ckpt_dict[training.OPT_KEY] = optim_ckpt_wrapper.state_dict()  # type: ignore # TODO
-            else:
-                ckpt_dict[training.OPT_KEY] = optimizer_state_dict
-        if output_dir is None:
-            output_dir = self.output_dir / f"epoch_{epoch}" / f"global_step_{global_step}"
-        self._save_checkpoint(
-            ckpt_dict,
-            output_dir=output_dir,
-            save_training_state=save_training_state,
-            adapter_only=adapter_only,
-            ignore_suffixes=ignore_suffixes,
-        )
-        return ckpt_dict, output_dir
+        output_path = self.output_dir / "training_state.pt"
+        torch.save(state_dict, output_path)
+        LOGGER.info(f"Training state ({os.path.getsize(output_path) / 1024**3:.2f} GiB) saved to {output_path}")
+        return output_path
 
 
 def resolve_checkpointer_output_dir(cfg: DictConfig, wandb_logger: WandBLogger) -> Path:
+    """Build the checkpoint output path as ``{cfg.output_dir}/{run_name}-id_{run_id}/checkpoints``."""
     if wandb_logger._wandb.run is None:
         raise RuntimeError("wandb run not initialized")
     run_name = wandb_logger._wandb.run.name

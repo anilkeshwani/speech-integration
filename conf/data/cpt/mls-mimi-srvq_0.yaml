@@ -1,0 +1,15 @@
+defaults:
+  - _cpt_base
+n_dsus: 2048  # Mimi SRVQ-0 codebook size (Défossez et al., arXiv:2410.00037)
+train:
+  dataset:
+    source: anilkeshwani/mls-mimi-srvq_0
+    interleave_kwargs:
+      sampling_rate: ???  # TODO verify — see plans/Bugfix - CPT Interleave Config Sampling Parameters.md
+      downsampling_ratio: ???  # TODO verify
+dev:
+  dataset:
+    source: anilkeshwani/mls-mimi-srvq_0
+    interleave_kwargs:
+      sampling_rate: ???
+      downsampling_ratio: ???

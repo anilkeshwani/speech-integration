@@ -1,15 +1,17 @@
+from collections.abc import Callable
+from functools import partial
 import logging
 import sys
-from functools import partial
-from typing import Any, Callable
+from typing import Any
 
-import torch
-import torch.nn.functional as F
-import torchtune.data
+import datasets as hf_datasets
 from omegaconf import DictConfig, ListConfig
+import torch
 from torch import Tensor
+import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset, DistributedSampler
+import torchtune.data
 from torchtune.data import padded_collate_packed
 from torchtune.data._common import CROSS_ENTROPY_IGNORE_IDX
 from torchtune.datasets import PackedDataset
@@ -23,6 +25,35 @@ from ssi.data.sft import SFTDataset
 
 
 LOGGER = logging.getLogger(__name__)
+
+
+def load_dataset_subset(
+    source: str,
+    n_samples: int,
+    **load_dataset_kwargs,
+) -> hf_datasets.Dataset:
+    """Load the first ``n_samples`` from a HuggingFace dataset via streaming.
+
+    Uses ``streaming=True`` so that only the requested rows are fetched over
+    the network — the full dataset is never downloaded to disk.
+
+    Args:
+        source: HuggingFace dataset identifier (e.g. ``"anilkeshwani/mls-hubert_large_ll60k-layer_22"``).
+        n_samples: Number of samples to materialize.
+        **load_dataset_kwargs: Forwarded to ``datasets.load_dataset``
+            (e.g. ``split="train"``).
+
+    Returns:
+        A standard ``datasets.Dataset`` containing the first *n_samples* rows.
+    """
+    if "split" not in load_dataset_kwargs:
+        raise ValueError("load_dataset_subset requires a 'split' kwarg (e.g. split='train')")
+    iterable = hf_datasets.load_dataset(source, streaming=True, **load_dataset_kwargs)
+    rows = list(iterable.take(n_samples))
+    LOGGER.info(
+        f"Streamed {len(rows)}/{n_samples} samples from {source} (split={load_dataset_kwargs.get('split', '?')})"
+    )
+    return hf_datasets.Dataset.from_list(rows)
 
 
 def setup_text_completion_data(
@@ -41,8 +72,6 @@ def setup_text_completion_data(
         dataset = pack_dataset(dataset, model_tokenizer, split_across_pack=cfg_dataset.get("split_across_pack", False))
         collate_fn = padded_collate_packed
     else:
-        if loss_fn is None:
-            ignore_idx = CROSS_ENTROPY_IGNORE_IDX
         ignore_idx = CROSS_ENTROPY_IGNORE_IDX if loss_fn is None else loss_fn.ignore_index
         collate_fn = partial(
             padded_collate_sft,
@@ -51,7 +80,7 @@ def setup_text_completion_data(
             additional_keys=cfg_dataset.dataset.get("additional_keys", []),
         )
     world_size, rank = get_world_size_and_rank()
-    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=cfg_dataset["shuffle"], seed=0)
+    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=cfg_dataset["shuffle"], seed=SEED)
     # NOTE dropping last avoids shape issues w/ compile + flex attention
     dataloader = DataLoader(
         dataset=dataset,
@@ -59,6 +88,8 @@ def setup_text_completion_data(
         sampler=sampler,
         drop_last=cfg_dataset.dataloader.drop_last,
         collate_fn=collate_fn,
+        num_workers=cfg_dataset.dataloader.get("num_workers", 0),
+        persistent_workers=cfg_dataset.dataloader.get("persistent_workers", False),
     )
     LOGGER.info(f"Dataset and Sampler initialized from {cfg_dataset.dataset.source}.")
     return dataloader, sampler
@@ -78,8 +109,6 @@ def setup_sft_data(
         dataset = pack_dataset(dataset, model_tokenizer, split_across_pack=False)
         collate_fn = padded_collate_packed
     else:
-        if loss_fn is None:
-            ignore_idx = CROSS_ENTROPY_IGNORE_IDX
         ignore_idx = CROSS_ENTROPY_IGNORE_IDX if loss_fn is None else loss_fn.ignore_index
         collate_fn = partial(
             padded_collate_sft,
@@ -88,7 +117,7 @@ def setup_sft_data(
             additional_keys=cfg_dataset.dataset.get("additional_keys", []),
         )
     world_size, rank = get_world_size_and_rank()  # more general
-    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=cfg_dataset["shuffle"], seed=0)
+    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=cfg_dataset["shuffle"], seed=SEED)
     # NOTE dropping last avoids shape issues w/ compile + flex attention
     dataloader = DataLoader(
         dataset=dataset,
@@ -96,6 +125,8 @@ def setup_sft_data(
         sampler=sampler,
         drop_last=cfg_dataset.dataloader.drop_last,
         collate_fn=collate_fn,
+        num_workers=cfg_dataset.dataloader.get("num_workers", 0),
+        persistent_workers=cfg_dataset.dataloader.get("persistent_workers", False),
     )
     return dataloader, sampler
 
@@ -109,7 +140,7 @@ def padded_collate_sft(
     batch: list[dict[str, Any]],  # NOTE list[dict[str, list[int]]] in torchtune.data._collate.padded_collate_sft
     padding_idx: int = 0,
     ignore_idx: int = CROSS_ENTROPY_IGNORE_IDX,
-    additional_keys: list[str] = [],
+    additional_keys: list[str] | None = None,
 ) -> dict[str, Tensor] | dict[str, Any]:
     """Pad a batch of sequences to the longest sequence length in the batch, and
     convert integer lists to tensors.
@@ -138,6 +169,8 @@ def padded_collate_sft(
         >>> collated["labels"]
         >>> tensor([[4, 5, 6], [10, -100, -100]])
     """
+    if additional_keys is None:
+        additional_keys = []
     input_ids = pad_sequence(
         [torch.tensor(x["tokens"]) for x in batch],
         batch_first=True,

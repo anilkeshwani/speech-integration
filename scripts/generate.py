@@ -11,15 +11,12 @@ from omegaconf import DictConfig, OmegaConf, open_dict
 from torch.utils.data import DataLoader
 from torchtune import training
 from tqdm import tqdm
-from vllm import CompletionOutput, LLM, RequestOutput, SamplingParams
+from vllm import LLM, CompletionOutput, RequestOutput, SamplingParams
 from vllm.inputs.data import TokensPrompt
 from vllm.sequence import RequestMetrics
 
-from ssi._version import __version__
 from ssi.constants import (
-    N_DSUS_DEFAULT,
     SEED,
-    SPEECH_DEDUPLICATE_DEFAULT,
     SUPPORTED_DATASETS,
     TORCHTUNE_CONFIG_FILENAME,
 )
@@ -40,7 +37,7 @@ def _resolve_gen_output_dir(cfg) -> str:
     experiments_root_dir = Path(cfg.experiments_root_dir).resolve(strict=True)
     if not model_dir.is_relative_to(experiments_root_dir):
         raise ValueError(
-            "Could not resolve null generation output directory. Model {cfg.model} not in {cfg.experiments_root_dir}"
+            f"Could not resolve null generation output directory. Model {cfg.model} not in {cfg.experiments_root_dir}. "
             "Specify a generation output directory in the config or check your model path."
         )
     if model_dir.parts[-3] != "checkpoints":
@@ -117,12 +114,14 @@ def generate(cfg: DictConfig) -> Path:
     # Generate
     with open(gen_output_dir / cfg.gen.output_filename, "x") as f:
         # TODO optionally refactor this to delegate batching to vLLM per their docs (generate all prompts upfront)
-        for i, prompt_token_ids in enumerate(tqdm(data)):
+        for _i, prompt_token_ids in enumerate(tqdm(data)):
             outputs: list[RequestOutput] = llm.generate(prompt_token_ids, sampling_params, use_tqdm=False)
             model_generations_s: list[list[CompletionOutput]] = [output.outputs for output in outputs]
             observability_metrics: list[RequestMetrics | None] = [output.metrics for output in outputs]
             outputs_json_serialisable = []
-            for output, generations, observability in zip(outputs, model_generations_s, observability_metrics):
+            for output, generations, observability in zip(
+                outputs, model_generations_s, observability_metrics, strict=True
+            ):
                 output_d = {k: v for k, v in vars(output).items() if k not in ("outputs", "metrics")}
                 # Manually add decoded prompt text
                 output_d["prompt"] = tokenizer.decode(output_d["prompt_token_ids"], **cfg.tokenizer_decoding)
@@ -159,27 +158,23 @@ def main(cfg):
                 f"No training config specified and no config at inferred fallback path: {train_yaml_rundir!s}"
             )
 
-    # Set speech-related config params from training config if unset; raise if still unset
+    # Set speech-related config params from training config or data config if unset
     if cfg.speech.n_dsus is None:
         if "speech" in train_cfg and train_cfg.speech.n_dsus is not None:
             cfg.speech.n_dsus = train_cfg.speech.n_dsus
             LOGGER.info(f"Auto-setting cfg.speech.n_dsus to {cfg.speech.n_dsus} from training config.")
+        elif cfg.get("data") is not None and cfg.data.get("n_dsus") is not None:
+            cfg.speech.n_dsus = cfg.data.n_dsus
+            LOGGER.info(f"Auto-setting cfg.speech.n_dsus to {cfg.speech.n_dsus} from data config.")
         else:
-            raise ValueError("cfg.speech.n_dsus must be specified in either training or generation config.")
-    if cfg.speech.deduplicate is None:
-        if "speech" in train_cfg and train_cfg.speech.deduplicate is not None:
-            cfg.speech.deduplicate = train_cfg.speech.deduplicate
-            LOGGER.info(f"Auto-setting cfg.speech.deduplicate to {cfg.speech.deduplicate} from training config.")
-        else:
-            raise ValueError("cfg.speech.deduplicate must be specified in either training or generation config.")
-
+            raise ValueError("cfg.speech.n_dsus must be specified via CLI, training config, or data config.")
     # NOTE cfg.speech options must be resolved before cfg.data due to interpolation in cfg.data fields
     if cfg.get("data") is None:
         config_sources = HydraConfig.get().runtime.config_sources  # calls HydraConfig.instance
         config_source_main = Path([s.path for s in config_sources if s.provider == "main"].pop())
         _owner, train_dataset = (train_cfg.data.train.dataset.source).split("/")  # HF repo ID
         if train_dataset == "MLS_english_train_strat_sample_aligned_hubert":
-            raise NotImplementedError("Legacy MLS dataset deprecated. Supported datasets: " f"{SUPPORTED_DATASETS}")
+            raise NotImplementedError(f"Legacy MLS dataset deprecated. Supported datasets: {SUPPORTED_DATASETS}")
         if train_dataset.split("-")[0] not in SUPPORTED_DATASETS:
             raise RuntimeError(f"Unsupported dataset for generation: {train_dataset}")
         test_config_groups = global_hydra.config_loader().get_group_options(TEST_CONFIG_GROUPS_SUBDIR)

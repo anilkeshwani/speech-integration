@@ -2,10 +2,11 @@
 version: 1
 formatters:
   simple:
-    format: "[%(asctime)s][%(name)s][%(levelname)s] - %(message)s"
+    format: '[%(asctime)s][%(name)s][%(levelname)s] - %(message)s'
   colorlog:
-    "()": "colorlog.ColoredFormatter"
-    format: "[%(cyan)s%(asctime)s%(reset)s][%(blue)s%(name)s%(reset)s][%(log_color)s%(levelname)s%(reset)s] - %(message)s"
+    (): colorlog.ColoredFormatter
+    # yamllint disable-line rule:line-length
+    format: '[%(cyan)s%(asctime)s%(reset)s][%(blue)s%(name)s%(reset)s][%(log_color)s%(levelname)s%(reset)s] - %(message)s'
     log_colors:
       DEBUG: purple
       INFO: green
@@ -23,6 +24,7 @@ handlers:
     filename: ${hydra.runtime.output_dir}/${hydra.job.name}.log
 root:
   level: INFO
-  handlers: [console, file]
-
+  handlers:
+    - console
+    - file
 disable_existing_loggers: false

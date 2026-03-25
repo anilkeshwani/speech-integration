@@ -1,15 +1,15 @@
 #!/usr/bin/env python
 
+from argparse import ArgumentParser, Namespace
 import logging
 import os
-import sys
-from argparse import ArgumentParser, Namespace
 from pathlib import Path
+import sys
 from typing import Any
 
-import torchtune.training
 from sardalign.config import LOG_DATEFMT, LOG_FORMAT, LOG_LEVEL
 from sardalign.utils import seed_everything
+import torchtune.training
 from torchtune.training.checkpointing._utils import SUFFIXES_TO_NOT_COPY
 
 from ssi.checkpoint import FullModelHFCheckpointer
@@ -54,14 +54,14 @@ def parse_args() -> Namespace:
         "--input_dir",
         type=Path,
         default=LLAMA_3_2_1B_BASE_DIR,
-        help="Input Llama 3.2 directory from tune download." f" Default: {LLAMA_3_2_1B_BASE_DIR}",
+        help=f"Input Llama 3.2 directory from tune download. Default: {LLAMA_3_2_1B_BASE_DIR}",
     )
     parser.add_argument("--output_dir", type=Path, default=None, help="Output directory to save the extended files")
     parser.add_argument(
         "--no-modality-tokens",
         action="store_false",
         dest="use_modality_tokens",
-        help="Do no prepend special modality tokens to spans of text/speech tokens",
+        help="Do not prepend special modality tokens to spans of text/speech tokens",
     )
     args = parser.parse_args()
     if args.output_dir is None:
@@ -90,14 +90,10 @@ def main(args: Namespace) -> None:
     extend_model(args.n_new_dsus, args.use_modality_tokens, model, llama_config=LLAMA_CFG)
     # Save extended model
     HF_TOKENIZER_CONFIGS = ["tokenizer_config.json", "tokenizer.json"]
-    ignore_suffixes: list[str] = SUFFIXES_TO_NOT_COPY + [".txt", ".md"] + HF_TOKENIZER_CONFIGS
-    checkpointer.save_checkpoint(
+    ignore_suffixes: list[str] = [*SUFFIXES_TO_NOT_COPY, ".txt", ".md", *HF_TOKENIZER_CONFIGS]
+    checkpointer.save_model_checkpoint(
         model.state_dict(),
-        optimizer_state_dict=None,
-        epoch=0,
         global_step=0,
-        seed=SEED,
-        save_training_state=False,
         output_dir=args.output_dir,
         ignore_suffixes=ignore_suffixes,
     )

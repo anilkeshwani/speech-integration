@@ -1,46 +1,15 @@
+defaults:
+  - _cpt_base
+n_dsus: 1024  # SpeechTokenizer RVQ-0 codebook size (Zhang et al., ICLR 2024)
 train:
   dataset:
     source: anilkeshwani/mls-speechtokenizer-rvq_0
-    split: train
-    sequence_type: interleaved
     interleave_kwargs:
-      sampling_rate: 24000 # *model* sampling rate: sampling rate of audio input data to SpeechTokenizer model
-      downsampling_ratio: 320 # downsampling ratio for SpeechTokenizer i.e. 320 samples -> 1 token
-      mean_seq_len_tokens: 39.43 # mean sequence length in tokens of the MLS en trainset stratified sample (25%)
-      binom_prob: 0.1 # fraction of sequence to make up subspans -> recall: binomial expectation = np
-    deduplicate: ${speech.deduplicate}
-    use_modality_tokens: ${speech.use_modality_tokens}
-    add_eos: True
-    # Optional parameters passed to TextCompletionDataset to specify non-standard dataset keys (i.e. columns HF dataset)
-    tokenized_key: null # if null -> fall back to default key in sardalign.constants
-    alignment_start_time_key: null # if null -> fall back to default key in sardalign.constants
-    alignment_end_time_key: null # if null -> fall back to default key in sardalign.constants
-    speech_tokens_key: null # if null -> fall back to default key in sardalign.constants
-  dataloader:
-    batch_size: 16
-    drop_last: True
-  shuffle: True
-  packed: False # TODO packing performed a priori at training time and leads to CPU RAM overflow for e.g. MLS interleaved
+      sampling_rate: ???  # TODO verify — see plans/Bugfix - CPT Interleave Config Sampling Parameters.md
+      downsampling_ratio: ???  # TODO verify
 dev:
   dataset:
     source: anilkeshwani/mls-speechtokenizer-rvq_0
-    split: validation
-    sequence_type: interleaved
     interleave_kwargs:
-      sampling_rate: 24000 # *model* sampling rate: sampling rate of audio input data to SpeechTokenizer model
-      downsampling_ratio: 320 # downsampling ratio for SpeechTokenizer i.e. 320 samples -> 1 token
-      mean_seq_len_tokens: 39.43 # mean sequence length in tokens of the MLS en trainset stratified sample (25%)
-      binom_prob: 0.1 # fraction of sequence to make up subspans -> recall: binomial expectation = np
-    deduplicate: ${speech.deduplicate}
-    use_modality_tokens: ${speech.use_modality_tokens}
-    add_eos: True
-    # Optional parameters passed to TextCompletionDataset to specify non-standard dataset keys (i.e. columns HF dataset)
-    tokenized_key: null # if null -> fall back to default key in sardalign.constants
-    alignment_start_time_key: null # if null -> fall back to default key in sardalign.constants
-    alignment_end_time_key: null # if null -> fall back to default key in sardalign.constants
-    speech_tokens_key: null # if null -> fall back to default key in sardalign.constants
-  dataloader:
-    batch_size: 16
-    drop_last: False
-  shuffle: False
-  packed: False
+      sampling_rate: ???
+      downsampling_ratio: ???

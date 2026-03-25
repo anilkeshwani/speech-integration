@@ -1,0 +1,71 @@
+# Base SFT data config — tokenizer-specific configs inherit via `defaults: [_sft_base]`
+# Child configs MUST override `source` for each split (train/dev/test).
+
+train:
+  dataset:  # SFTDataset
+    source: ???
+    inference: false
+    deduplicate: ${speech.deduplicate}
+    filter_fn: null
+    train_on_input: true  # set to true to prevent forgetting; will hyperparam. search over this
+    column_map:
+      input: speech_tokens
+      output: transcript
+    # yamllint disable-line rule:line-length
+    new_system_prompt: 'You will act as an automatic speech recognition (ASR) system. Transcribe the speech tokens into English text. '
+    image_dir: null
+    use_modality_tokens: ${speech.use_modality_tokens}
+    n_samples: null  # if set, stream only the first N samples (avoids full dataset download)
+    split: train
+  dataloader:
+    batch_size: 2
+    drop_last: true
+    num_workers: 0
+    persistent_workers: false
+  shuffle: true
+  packed: false
+
+dev:
+  dataset:  # SFTDataset
+    source: ???
+    inference: false
+    deduplicate: ${speech.deduplicate}
+    filter_fn: null
+    train_on_input: true
+    column_map:
+      input: speech_tokens
+      output: transcript
+    # yamllint disable-line rule:line-length
+    new_system_prompt: 'You will act as an automatic speech recognition (ASR) system. Transcribe the speech tokens into English text. '
+    image_dir: null
+    use_modality_tokens: ${speech.use_modality_tokens}
+    n_samples: null
+    split: validation
+  dataloader:
+    batch_size: 2
+    drop_last: false
+    num_workers: 0
+    persistent_workers: false
+  shuffle: false
+  packed: false
+
+test:
+  dataset:  # SFTDataset
+    source: ???
+    inference: true  # no GT transcript + no EOS token appended
+    deduplicate: ${speech.deduplicate}
+    filter_fn: null
+    train_on_input: true
+    column_map:
+      input: speech_tokens
+      output: transcript
+    # yamllint disable-line rule:line-length
+    new_system_prompt: 'You will act as an automatic speech recognition (ASR) system. Transcribe the speech tokens into English text. '
+    image_dir: null
+    use_modality_tokens: ${speech.use_modality_tokens}
+    split: test
+  dataloader:
+    batch_size: 2
+    num_workers: 0
+    persistent_workers: false
+  packed: false

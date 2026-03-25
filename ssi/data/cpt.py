@@ -1,11 +1,12 @@
-import logging
+from collections.abc import Callable, Mapping
 from enum import Enum
 from functools import partial
 from itertools import groupby, zip_longest
-from typing import Any, Callable, Mapping
+import logging
+from typing import Any
 
-import numpy as np
 from datasets import load_dataset
+import numpy as np
 from sardalign.constants import (
     ALIGNMENT_END_TIME_KEY,
     ALIGNMENT_START_TIME_KEY,
@@ -37,28 +38,34 @@ class CompletionSequenceType(Enum):
     ALTERNATING = "alternating"  # alternating between text-only and DSU-only sequences
 
 
-# Module-level pseudo-random number generator
-PRNG = np.random.default_rng(SEED)
-
-
 class TextCompletionDataset(Dataset):
-    """
-    Freeform dataset for any unstructured text corpus. Quickly load any dataset
-    from Hugging Face or local disk and tokenize it for your model.
+    """Completion-style dataset for text and speech token sequences.
+
+    Loads a dataset from Hugging Face or local disk and constructs sequences
+    according to the specified ``sequence_type`` (interleaved, concatenated, etc.).
 
     Args:
-        tokenizer (Llama3Tokenizer): Tokenizer used by the model that implements the ``tokenize_messages`` method.
-        source (str): path to dataset repository on Hugging Face. For local datasets,
-            define source as the data file type (e.g. "json", "csv", "text") and pass
-            in the filepath in ``data_files``. See Hugging Face's ``load_dataset``
-            (https://huggingface.co/docs/datasets/en/package_reference/loading_methods#datasets.load_dataset.path)
-            for more details.
-        add_eos (bool): Whether to add an EOS token to the end of the sequence. Default is True.
-        filter_fn (Callable | None): callable used to filter the dataset prior to any pre-processing. See
-            the Hugging Face `docs <https://huggingface.co/docs/datasets/v2.20.0/process#select-and-filter>`_ for more
-            details.
-        split (str): split of the dataset to load. Default is "train". See Hugging Face's
-            `load_dataset <https://huggingface.co/docs/datasets/en/package_reference/loading_methods#datasets.load_dataset>`_
+        tokenizer: Tokenizer used to encode the constructed prompt string.
+        source: Path to dataset repository on Hugging Face, or a data file type
+            (e.g. "json", "csv") for local datasets.
+        split: Dataset split to load (e.g. "train").
+        sequence_type: How text and speech tokens are arranged. One of the values
+            in ``CompletionSequenceType`` (e.g. "interleaved", "concatenated_txt_dsu").
+        deduplicate: Whether to deduplicate consecutive duplicate speech tokens.
+        use_modality_tokens: Whether to wrap spans with modality boundary tokens.
+        add_eos: Whether to append an EOS token. Default is True.
+        tokenized_key: Dataset column for pre-tokenized text. Defaults to
+            ``sardalign.constants.TOKENIZED_KEY``.
+        alignment_start_time_key: Dataset column for word-level alignment start
+            times. Defaults to ``sardalign.constants.ALIGNMENT_START_TIME_KEY``.
+        alignment_end_time_key: Dataset column for word-level alignment end times.
+            Defaults to ``sardalign.constants.ALIGNMENT_END_TIME_KEY``.
+        speech_tokens_key: Dataset column for discrete speech unit token IDs.
+            Defaults to ``sardalign.constants.SPEECH_TOKENS_KEY``.
+        filter_fn: Callable used to filter the dataset prior to any pre-processing.
+            Default is None.
+        interleave_kwargs: Additional keyword arguments passed to the ``interleave``
+            prompt function. Required when ``sequence_type`` is "interleaved".
     """
 
     def __init__(
@@ -70,26 +77,22 @@ class TextCompletionDataset(Dataset):
         deduplicate: bool,
         use_modality_tokens: bool,
         add_eos: bool = True,
-        tokenized_key: str | None = None,
-        alignment_start_time_key: str | None = None,
-        alignment_end_time_key: str | None = None,
-        speech_tokens_key: str | None = None,
+        n_samples: int | None = None,
+        tokenized_key: str = TOKENIZED_KEY,
+        alignment_start_time_key: str = ALIGNMENT_START_TIME_KEY,
+        alignment_end_time_key: str = ALIGNMENT_END_TIME_KEY,
+        speech_tokens_key: str = SPEECH_TOKENS_KEY,
         filter_fn: Callable | None = None,
         interleave_kwargs: dict[str, Any] | None = None,
     ) -> None:
         self._tokenizer = tokenizer
-        self._data = load_dataset(source, split=split)
-        self.add_eos = add_eos
+        if n_samples is not None:
+            from ssi.data import load_dataset_subset
 
-        # dataset columns
-        if tokenized_key is None:
-            tokenized_key = TOKENIZED_KEY
-        if alignment_start_time_key is None:
-            alignment_start_time_key = ALIGNMENT_START_TIME_KEY
-        if alignment_end_time_key is None:
-            alignment_end_time_key = ALIGNMENT_END_TIME_KEY
-        if speech_tokens_key is None:
-            speech_tokens_key = SPEECH_TOKENS_KEY
+            self._data = load_dataset_subset(source, n_samples, split=split)
+        else:
+            self._data = load_dataset(source, split=split)
+        self.add_eos = add_eos
 
         self.sequence_type = CompletionSequenceType(sequence_type)
         match self.sequence_type:
@@ -106,23 +109,30 @@ class TextCompletionDataset(Dataset):
 
         self.deduplicate = deduplicate
         self.use_modality_tokens = use_modality_tokens
+        self._seed = SEED
+        self._epoch = 0
 
         if filter_fn is not None:
             self._data = self._data.filter(filter_fn)
+
+    def set_epoch(self, epoch: int) -> None:
+        self._epoch = epoch
 
     def __len__(self):
         return len(self._data)
 
     def __getitem__(self, index: int) -> dict[str, list[int]]:
         sample = self._data[index]
-        return self._prepare_sample(sample)
+        rng = np.random.default_rng((self._seed, self._epoch, index))
+        return self._prepare_sample(sample, rng)
 
-    def _prepare_sample(self, sample: Mapping[str, Any]) -> dict[str, list[int]]:
+    def _prepare_sample(self, sample: Mapping[str, Any], rng: np.random.Generator) -> dict[str, list[int]]:
         # Construct the prompt
         prompt = self.prompt_fn(
             sample=sample,
             deduplicate=self.deduplicate,
             use_modality_tokens=self.use_modality_tokens,
+            rng=rng,
         )
 
         # Tokenize
@@ -138,15 +148,16 @@ class TextCompletionDataset(Dataset):
             # TODO -1 is odd and does not match the tokenize_messages method NOTE this is original torchtune code
             tokens = truncate(tokens, self._tokenizer.max_seq_len - 1)
 
-        # No need to offset labels by 1 - happens in the recipe
+        # TODO find where this is done and update this comment
+        # No need to offset labels by 1 - happens in the training loop
         labels = tokens.copy()
 
         return {"tokens": tokens, "labels": labels}
 
 
-def get_span_idxs_binomial(n: int, p: float, seq_len: int) -> list[int]:
-    subspan_idxs = np.maximum(PRNG.binomial(n, p, size=seq_len), 1).cumsum()  # NOTE sample lower bounded to 1
-    return [0] + subspan_idxs[subspan_idxs < seq_len].tolist() + [seq_len]
+def get_span_idxs_binomial(n: int, p: float, seq_len: int, rng: np.random.Generator) -> list[int]:
+    subspan_idxs = np.maximum(rng.binomial(n, p, size=seq_len), 1).cumsum()  # NOTE sample lower bounded to 1
+    return [0, *subspan_idxs[subspan_idxs < seq_len].tolist(), seq_len]
 
 
 def interleave(
@@ -154,19 +165,21 @@ def interleave(
     deduplicate: bool,
     use_modality_tokens: bool,
     *,
+    rng: np.random.Generator,
     sampling_rate: int,
     downsampling_ratio: int,
     mean_seq_len_tokens: float,
     binom_prob: float,
 ) -> str:
-    start_with_text = PRNG.choice([True, False], p=[0.5, 0.5])
+    start_with_text = rng.choice([True, False], p=[0.5, 0.5])
     tokens = sample[TOKENIZED_KEY]
     align_t_starts = sample[ALIGNMENT_START_TIME_KEY]
     align_t_ends = sample[ALIGNMENT_END_TIME_KEY]
     speech_tokens: list[int] = sample[SPEECH_TOKENS_KEY]
-    span_idxs = get_span_idxs_binomial(int(mean_seq_len_tokens), binom_prob, len(tokens))
+    span_idxs = get_span_idxs_binomial(int(mean_seq_len_tokens), binom_prob, len(tokens), rng=rng)
     # idxs: list of 2-tuples of start and end indices of subspans e.g. [(0, 4), (11, 16), (21, 25), (28, 31)]
-    idxs1, idxs2 = zip(span_idxs[:-1:2], span_idxs[1::2]), zip(span_idxs[1:-1:2], span_idxs[2::2])
+    idxs1 = zip(span_idxs[:-1:2], span_idxs[1::2], strict=True)
+    idxs2 = zip(span_idxs[1:-1:2], span_idxs[2::2], strict=True)
     text_idxs, dsu_idxs = (idxs1, idxs2) if start_with_text else (idxs2, idxs1)
     text_spans: list[str] = [" ".join(tokens[start_idx:end_idx]) for start_idx, end_idx in text_idxs]
     dsu_spans: list[str] = []
@@ -195,6 +208,7 @@ def concatenate_speech_text(
     deduplicate: bool,
     use_modality_tokens: bool,
     *,
+    rng: np.random.Generator,  # unused; uniform prompt_fn(…, rng=rng) interface
     start_with_text: bool,
 ) -> str:
     speech_tokens: list[int] = sample[SPEECH_TOKENS_KEY]

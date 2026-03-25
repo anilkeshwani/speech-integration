@@ -14,31 +14,20 @@ def setup_lr_scheduler(
     optimizer: Optimizer,
     global_step: int,
     num_training_steps: int,
-    # arguments for future implementation of optimizer_in_bwd
-    optimizer_in_bwd: bool = False,
-    optim_ckpt_wrapper=None,
 ) -> LambdaLR | None:
     if cfg.get("lr_scheduler") is None:
         LOGGER.info("No learning rate scheduler configured. Using constant learning rate.")
         return None
 
-    if optimizer_in_bwd:
-        raise NotImplementedError
-        optimizer = next(iter(optim_ckpt_wrapper.optim_map.values()))  # get lr from first optimizer in wrapper
-    else:
-        optimizer = optimizer  # standard case: use the single optimizer
-
-    # NOTE PyTorch LR schedulers have the extremely misleadingly name `last_epoch` parameter, which is in fact the
-    # global step in the cosine annealing with warmup regime, where we require step-level granularity
+    # PyTorch's LambdaLR calls step() once during __init__, which increments last_epoch by 1 before
+    # any training begins. Passing global_step - 1 therefore applies lr_lambda(global_step) to the
+    # first batch, keeping the schedule consistent between fresh starts and resumes.
+    # (PyTorch misleadingly calls this parameter `last_epoch`; it is a step counter here.)
     lr_scheduler = get_cosine_schedule_with_warmup(
         optimizer,
         num_training_steps=num_training_steps,
         last_epoch=global_step,
         **cfg.lr_scheduler,
     )
-
-    if optimizer_in_bwd:
-        # Modify the scheduler for optimizer_in_bwd case
-        optim_ckpt_wrapper.set_lr_scheduler(lr_scheduler)
 
     return lr_scheduler

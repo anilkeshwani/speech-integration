@@ -1,11 +1,12 @@
-import logging
+from collections.abc import Callable, Mapping
 from itertools import groupby
+import logging
 from pathlib import Path
-from typing import Any, Callable, Mapping, Optional
+from typing import Any
 
 import datasets
-import numpy as np
 from datasets import load_dataset
+import numpy as np
 from sardalign.constants import MODALITY_TOKEN_SPEECH, MODALITY_TOKEN_TEXT
 from sardalign.utils import dsu2pua
 from torch.utils.data import Dataset
@@ -82,27 +83,33 @@ class SFTDataset(Dataset):
     Tokenization is handled by the ``model_tokenizer``. All :class:`~torchtune.modules.tokenizers.ModelTokenizer`
     can be treated as a ``model_tokenizer`` since it uses the model-specific tokenizer to
     transform the list of messages outputted from the ``message_transform`` into tokens
-    used by the model for training. Text-only datasets will simply pass the :class:`~torchtune.modules.tokenizers.ModelTokenizer`
+    used by the model for training. Text-only datasets will simply pass the
+    :class:`~torchtune.modules.tokenizers.ModelTokenizer`
     into ``model_tokenizer``. Tokenizers handle prompt templating, if configured.
 
     Args:
-        source (str): path to dataset repository on Hugging Face. For local datasets,
+        source: Path to dataset repository on Hugging Face. For local datasets,
             define source as the data file type (e.g. "json", "csv", "text") and pass
-            in the filepath in ``data_files``. See `Hugging Face's
-            <https://huggingface.co/docs/datasets/en/package_reference/loading_methods#datasets.load_dataset.path>`_
-            ``load_dataset`` for more details.
-        message_transform (Transform): callable that keys into the desired fields in the sample
-            and converts text content to a list of :class:`~torchtune.data.Message`. It is expected that the final list
-            of messages are stored in the ``"messages"`` key.
-        model_tokenizer (Transform): callable that applies model-specific pre-processing to the sample after the list of
-            messages is created from ``message_transform``. This includes tokenization and any modality-specific
-            transforms. It is expected to return at minimum ``"tokens"`` and ``"mask"`` keys.
-        filter_fn (Optional[Callable]): callable used to filter the dataset prior to any pre-processing. See
-            the Hugging Face `docs <https://huggingface.co/docs/datasets/v2.20.0/process#select-and-filter>`_ for more
-            details.
-        **load_dataset_kwargs (dict[str, Any]): additional keyword arguments to pass to ``load_dataset``. See Hugging
-            Face's `API ref <https://huggingface.co/docs/datasets/en/package_reference/loading_methods#datasets.load_dataset>`_
-            for more details.
+            in the filepath in ``data_files``. See Hugging Face's ``load_dataset`` for
+            more details.
+        model_tokenizer: Tokenizer that converts messages to token IDs. Must return
+            at minimum ``"tokens"`` and ``"mask"`` keys.
+        inference: If True, assistant message content is left empty for generation.
+            Default is False.
+        deduplicate: Whether to deduplicate consecutive duplicate speech tokens.
+        use_modality_tokens: Whether to wrap speech spans with modality boundary tokens.
+        filter_fn: Callable used to filter the dataset prior to any pre-processing.
+            Default is None.
+        train_on_input: Whether to compute loss on user prompt tokens.
+        column_map: Mapping from expected column names (``"input"``, ``"output"``) to
+            actual column names in the dataset. Default is None.
+        new_system_prompt: If specified, prepend a system message. Default is None.
+        image_dir: Directory prepended to image paths in the dataset for multimodal
+            samples. Default is None.
+        additional_keys: Extra dataset columns to pass through to each sample dict.
+            Default is ``[]``.
+        **load_dataset_kwargs: Additional keyword arguments passed to
+            ``datasets.load_dataset``.
     """
 
     def __init__(
@@ -113,14 +120,17 @@ class SFTDataset(Dataset):
         inference: bool = False,
         deduplicate: bool,
         use_modality_tokens: bool,
-        filter_fn: Optional[Callable] = None,
+        n_samples: int | None = None,
+        filter_fn: Callable | None = None,
         train_on_input: bool,
-        column_map: Optional[dict[str, str]] = None,
-        new_system_prompt: Optional[str] = None,
-        image_dir: Optional[Path] = None,
-        additional_keys: list[str] = [],
+        column_map: dict[str, str] | None = None,
+        new_system_prompt: str | None = None,
+        image_dir: Path | None = None,
+        additional_keys: list[str] | None = None,
         **load_dataset_kwargs: dict[str, Any],
     ) -> None:
+        if additional_keys is None:
+            additional_keys = []
         self._message_transform = InputOutputToMessages(
             train_on_input=train_on_input,
             column_map=column_map,
@@ -128,7 +138,12 @@ class SFTDataset(Dataset):
             image_dir=image_dir,
         )
         self._model_tokenizer = model_tokenizer
-        self._data = load_dataset(source, **load_dataset_kwargs)
+        if n_samples is not None:
+            from ssi.data import load_dataset_subset
+
+            self._data = load_dataset_subset(source, n_samples, **load_dataset_kwargs)
+        else:
+            self._data = load_dataset(source, **load_dataset_kwargs)
         if not isinstance(self._data, datasets.Dataset):
             raise TypeError(f"Expected a datasets.Dataset object but found {type(self._data)}")
         if any((k in self._data.features) for k in RESERVED_BATCH_KEYS):
@@ -199,7 +214,7 @@ class SFTDataset(Dataset):
         if not ("tokens" in tokenized_dict and "mask" in tokenized_dict):
             keys_str = ", ".join(tokenized_dict.keys())
             error_message = (
-                "model_tokenizer returned the following keys: " f"{keys_str}. Must return 'tokens' and 'mask' as keys."
+                f"model_tokenizer returned the following keys: {keys_str}. Must return 'tokens' and 'mask' as keys."
             )
             raise ValueError(error_message)
 
@@ -251,9 +266,9 @@ class InputOutputToMessages:
     def __init__(
         self,
         train_on_input: bool,
-        column_map: Optional[dict[str, str]] = None,
-        new_system_prompt: Optional[str] = None,
-        image_dir: Optional[Path] = None,
+        column_map: dict[str, str] | None = None,
+        new_system_prompt: str | None = None,
+        image_dir: Path | None = None,
     ):
         self.train_on_input = train_on_input
         self.new_system_prompt = new_system_prompt
@@ -266,7 +281,7 @@ class InputOutputToMessages:
         else:
             self.column_map = {"input": "input", "output": "output", "image": "image"}
         # Ensure that if a user seems to want to construct a multimodal transform, they provide a proper column_mapping
-        if "image" not in self.column_map.keys() and image_dir is not None:
+        if "image" not in self.column_map and image_dir is not None:
             raise ValueError(
                 f"image_dir is specified as {image_dir} but 'image' is not in column_map. "
                 "Please specify an 'image' key in column_map."
@@ -326,5 +341,5 @@ class InputOutputToMessages:
             ),
         ]
         if self.new_system_prompt is not None:
-            messages = [Message(role="system", content=self.new_system_prompt, masked=True, eot=True)] + messages
+            messages = [Message(role="system", content=self.new_system_prompt, masked=True, eot=True), *messages]
         return {"messages": messages}
