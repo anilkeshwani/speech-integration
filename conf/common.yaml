@@ -3,20 +3,22 @@ defaults:  # inherit parameter values (Hydra inheritance syntax/functionality)
   - override hydra/job_logging: custom
 # Speech-specific parameters - DSUs & Modality Tokens
 speech:
-  n_dsus: ???
+  n_dsus: null  # auto-resolved from data config; override via CLI: speech.n_dsus=5000
   use_modality_tokens: true
   deduplicate: true
-# Base models directory
+# Model identity
+base_model_name: Llama-3.2-1B
+extended_model_name: ${base_model_name}-${speech.n_dsus}-dsus  # derived: base + DSU extension
+# Models directory
 extended_models_dir: /mnt/scratch-artemis/anilkeshwani/models/extended/
-base_model_name: Llama-3.2-1B-${speech.n_dsus}-dsus
 
 # Experiment management
 experiments_root_dir: /mnt/scratch-artemis/anilkeshwani/experiments
 config_name: ${hydra:job.config_name}  # name of the config file -> used to identify job type: {cpt, sft, etc.}
-output_dir: ${experiments_root_dir}/${base_model_name}-${config_name}
+output_dir: ${experiments_root_dir}/${extended_model_name}-${config_name}
 # Tokenizer - config for setup_llama3_tokenizer -> Llama3Tokenizer
 tokenizer:
-  path: ${extended_models_dir}/${base_model_name}/original/tokenizer.model
+  path: ${extended_models_dir}/${extended_model_name}/original/tokenizer.model
   max_seq_len: ???
   prompt_template: null
   verbose: true

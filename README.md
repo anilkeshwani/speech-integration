@@ -53,9 +53,7 @@ All training scripts use [Hydra](https://hydra.cc/) for configuration. Data conf
 ### Continued Pre-Training (CPT)
 
 ```bash
-uv run scripts/train_cpt.py \
-    speech.n_dsus=5000 \
-    data=cpt/mls-hubert_large_ll60k-layer_22
+uv run scripts/train_cpt.py data=cpt/mls-hubert_large_ll60k-layer_22
 ```
 
 Available CPT data configs: `cpt/mls-hubert_large_ll60k-layer_22`, `cpt/mls-speechtokenizer-rvq_0`, `cpt/mls-mimi-srvq_0`, `cpt/mls-focalcodec`.
@@ -63,12 +61,13 @@ Available CPT data configs: `cpt/mls-hubert_large_ll60k-layer_22`, `cpt/mls-spee
 ### Supervised Fine-Tuning (SFT)
 
 ```bash
-uv run scripts/train_sft.py \
-    speech.n_dsus=5000 \
-    data=sft/mls-hubert_large_ll60k-layer_22
+uv run scripts/train_sft.py data=sft/mls-hubert_large_ll60k-layer_22
 ```
 
 Available SFT data configs: `sft/mls-hubert_large_ll60k-layer_22`, `sft/mls-speechtokenizer-rvq_0`, `sft/mls-mimi-srvq_0`, `sft/mls-focalcodec`.
+
+> [!NOTE]
+> `speech.n_dsus` (the number of discrete speech unit tokens) is automatically resolved from the data config. Each tokenizer has a fixed codebook size: HuBERT=5000, SpeechTokenizer=1024, Mimi=2048, FocalCodec=8192. Override with `speech.n_dsus=<N>` if needed.
 
 ### Common overrides
 
@@ -88,7 +87,7 @@ checkpointer.training_state_checkpoint=/path/to/training_state.pt
 # Use only the first 2000 samples (streamed, no full dataset download)
 data.train.dataset.n_samples=2000 data.dev.dataset.n_samples=200
 
-# Override checkpoint directory (default: ${extended_models_dir}/${base_model_name})
+# Override checkpoint directory (default: ${extended_models_dir}/${extended_model_name})
 checkpointer.checkpoint_dir=/path/to/extended/Llama-3.2-1B-5000-dsus
 ```
 
@@ -97,7 +96,6 @@ checkpointer.checkpoint_dir=/path/to/extended/Llama-3.2-1B-5000-dsus
 ```bash
 srun --partition a6000 --time=48:00:00 --gres=gpu:1 --qos=gpu-medium \
     uv run scripts/train_sft.py \
-        speech.n_dsus=5000 \
         data=sft/mls-hubert_large_ll60k-layer_22
 ```
 

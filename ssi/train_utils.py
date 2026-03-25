@@ -34,6 +34,31 @@ from ssi.llama_configs import ConfigLlama3_2
 LOGGER = logging.getLogger(__name__)
 
 
+def resolve_n_dsus(cfg: DictConfig) -> None:
+    """Resolve ``speech.n_dsus`` from the data config if not set explicitly.
+
+    Each data config specifies the codebook size (``n_dsus``) for its speech
+    tokenizer. This function copies that value into ``speech.n_dsus`` so the
+    user doesn't need to pass it as a CLI override. An explicit CLI override
+    (``speech.n_dsus=<N>``) takes precedence.
+
+    Must be called before :func:`validate_train_cfg` so that OmegaConf
+    interpolations depending on ``speech.n_dsus`` (e.g. ``extended_model_name``)
+    resolve correctly.
+    """
+    if cfg.speech.n_dsus is not None:
+        return  # explicit CLI override takes precedence
+    data_n_dsus = cfg.data.get("n_dsus") if cfg.get("data") is not None else None
+    if data_n_dsus is not None:
+        cfg.speech.n_dsus = data_n_dsus
+        LOGGER.info(f"Auto-resolved speech.n_dsus={data_n_dsus} from data config")
+    else:
+        raise ValueError(
+            "speech.n_dsus must be set either via CLI (speech.n_dsus=5000) or "
+            "by using a data config that specifies n_dsus."
+        )
+
+
 def validate_train_cfg(cfg: DictConfig) -> None:
     if PRECISION_STR_TO_DTYPE.get(cfg.dtype) not in SUPPORTED_DTYPES:
         raise ValueError(f"Unsupported dtype: {cfg.dtype}. Supported dtypes: {SUPPORTED_DTYPES}")

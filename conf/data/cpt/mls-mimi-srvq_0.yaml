@@ -1,6 +1,8 @@
 defaults:
   - _cpt_base
 
+n_dsus: 2048  # Mimi SRVQ-0 codebook size (Défossez et al., arXiv:2410.00037)
+
 train:
   dataset:
     source: anilkeshwani/mls-mimi-srvq_0
