@@ -394,8 +394,8 @@ class Trainer:
         num_tokens_iter = int((batch["labels"] != self.loss_fn.ignore_index).sum().item())
         self.num_tokens_step += num_tokens_iter
         loss_batch = compute_loss(batch, self.model, self.loss_fn) * num_tokens_iter
-        self.loss_running += loss_batch
         loss_batch.backward()
+        self.loss_running += loss_batch.item()
 
     def _optimizer_step(self, epoch: int, iter_idx: int) -> None:
         """Gradient accumulation boundary: scale, clip, step, log, checkpoint."""
@@ -410,7 +410,7 @@ class Trainer:
             self.lr_scheduler.step()
         self.global_step += 1
         self.consumed_samples += self.cfg.gradient_accumulation_steps * self.geometry.batch_size * self.world_size
-        loss_to_log = self.loss_running.item() / self.num_tokens_step
+        loss_to_log = self.loss_running / self.num_tokens_step
         self.tokens_train_total += self.num_tokens_step
 
         # Record loss for equivalence testing

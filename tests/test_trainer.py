@@ -273,7 +273,7 @@ def _make_trainer_for_optimizer_step():
     )
 
     # Set accumulators to simulate 2 micro-batches of work
-    trainer.loss_running = torch.tensor(5.0)
+    trainer.loss_running = 5.0
     trainer.num_tokens_step = 100
     trainer.max_seq_len_step = 256
     trainer.t_train_start = time.perf_counter()
