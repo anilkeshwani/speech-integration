@@ -106,7 +106,7 @@ dev:
 
 ### Affected file
 
-`conf/data/cpt/mls-mimi-srvq_0.yaml` (inherits `downsampling_ratio: 320` from `conf/data/_cpt_base.yaml`)
+`conf/data/cpt/mls-mimi-srvq_0.yaml` (previously inherited `downsampling_ratio: 320` from `conf/data/_cpt_base.yaml`; the base config dev split has since been fixed to `???`)
 
 ### Config state
 
@@ -212,7 +212,7 @@ dev:
 
 ## Note on FocalCodec
 
-`conf/data/cpt/mls-focalcodec.yaml` has `sampling_rate: 16000` and inherits `downsampling_ratio: 320`, which gives 50 Hz. The config already has `# TODO confirm` comments on both the source and sampling rate. FocalCodec's 50 Hz variant uses a 320x downsampling factor on 16 kHz audio, so these values are likely correct but should be confirmed against the actual tokenization pipeline when FocalCodec experiments are run.
+`conf/data/cpt/mls-focalcodec.yaml` has `sampling_rate: ???` and `downsampling_ratio: ???`. FocalCodec's 50 Hz variant (used in this project, `lucadellalib/focalcodec_50hz`) operates at 16 kHz with a downsampling factor of 320 (16000/320 = 50 Hz). The correct values are `sampling_rate: 16000, downsampling_ratio: 320`. The HF repo ID still has a `# TODO confirm` comment.
 
 ---
 

@@ -93,17 +93,8 @@ If anyone sets a non-null value for these keys in the config, it will be silentl
 
 ---
 
-### 🐛 BUG 2 (dead code): Redundant `ignore_idx` assignment
-
-In both `setup_text_completion_data` and `setup_sft_data` (`__init__.py:44-46` and `81-83`):
-
-```python
-if loss_fn is None:
-    ignore_idx = CROSS_ENTROPY_IGNORE_IDX   # ← immediately overwritten; dead code
-ignore_idx = CROSS_ENTROPY_IGNORE_IDX if loss_fn is None else loss_fn.ignore_index
-```
-
-The first line is unconditionally overwritten by the ternary on the next line. No functional bug since the ternary is correct, but it's misleading.
+~~### 🐛 BUG 2 (dead code): Redundant `ignore_idx` assignment~~
+~~Removed. See D1 in Training Cleanup Tasks.md.~~
 
 ---
 
@@ -124,15 +115,11 @@ The second `if packed` block can never execute. The guard should be removed from
 
 ---
 
-### ⚠️ CONCERN: SpeechTokenizer `sampling_rate: 24000`
-
-The SpeechTokenizer config uses `sampling_rate: 24000` with `downsampling_ratio: 320`, giving **75 fps**. The original SpeechTokenizer paper describes a 16kHz model (50 fps). If MLS audio (16kHz) was *not* resampled to 24kHz before encoding, then this sampling rate is wrong and `times_to_dsu_idxs` will produce speech token indices that are **1.5× too large**, causing out-of-bounds access or incorrect speech token spans to be extracted during interleaving.
-
-You should verify: what sampling rate was used when generating `anilkeshwani/mls-speechtokenizer-rvq_0`? If it was 16kHz, `sampling_rate` in the CPT SpeechTokenizer config should be `16000`, not `24000`.
+~~### ⚠️ CONCERN: SpeechTokenizer `sampling_rate: 24000`~~
+~~Confirmed as a bug. SpeechTokenizer sampling_rate should be 16000 (not 24000). Both sampling_rate and downsampling_ratio replaced with `???` mandatory placeholders. Full analysis in `plans/Bugfix - CPT Interleave Config Sampling Parameters.md`.~~
 
 ---
 
-### ⚠️ Minor concern: Module-level shared PRNG
-
-`PRNG = np.random.default_rng(SEED)` in `cpt.py:41` is module-level and shared between the train and dev `TextCompletionDataset` instances. The dev set's interleaving patterns are influenced by however many samples the train set has drawn. This isn't a hard bug (the interleaving is random either way) but it means exact reproducibility of the dev evaluation depends on training history.
+~~### ⚠️ Minor concern: Module-level shared PRNG~~
+~~Fixed by per-sample deterministic RNG: module-level `PRNG` deleted, each sample's interleaving is a pure function of `(seed, epoch, sample_index)`. See C6 in Training Cleanup Tasks and D6 in Checkpointing - Consolidated Plan.~~
 

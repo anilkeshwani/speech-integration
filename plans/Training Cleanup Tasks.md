@@ -23,9 +23,8 @@ Cross-referenced with: `plans/claude-data-critique.md`.
 4. **Guard against zero-token windows**
    - Skip optimizer step when `num_tokens_step == 0`, or fail fast with a descriptive error.
 
-5. **Remove or gate `empty_cache`**
-   - At minimum `if DEVICE.type == "cuda" and cfg.debug_empty_cache`.
-   - Default off.
+5. ~~**Remove or gate `empty_cache`**~~
+   - ~~Removed unconditional `torch.cuda.empty_cache()` from the per-batch training loop. The preceding `del batch` is sufficient; the loss_running graph retention fix ensures intermediate activations are freed after `.backward()`.~~
 
 6. **Make metric semantics explicit**
    - Decide whether token-type counters are per-step or cumulative and ensure padding is excluded consistently.
@@ -33,8 +32,8 @@ Cross-referenced with: `plans/claude-data-critique.md`.
 7. **Fix eval numeric typing and distributed reduction**
    - Convert token counts to Python ints (`.item()`), and all-reduce `(dev_loss_sum, dev_token_count)` across ranks before division.
 
-8. **Avoid mutating batches in loss**
-   - Use `labels = batch["labels"]` and keep batch immutable in compute paths.
+8. ~~**Avoid mutating batches in loss**~~
+   - ~~Changed `batch.pop("labels")` to `batch["labels"]` in `compute_loss`. Batch is no longer mutated.~~
 
 9. **Add regression tests** → **T1–T4**
    - Resume from saved checkpoint roundtrip.
@@ -78,10 +77,8 @@ Cross-referenced with: `plans/claude-data-critique.md`.
 - ~~When `batches_per_epoch % gradient_accumulation_steps != 0`, the trailing incomplete accumulation window was never stepped, and leaked gradients across epoch boundaries broke resume correctness.~~
 - ~~Fixed by explicitly zeroing gradients and resetting step-level accumulators at epoch boundaries when remainder batches exist — analogous to `drop_last=True` on the DataLoader but applied one level up. A warning is logged at setup time and at each epoch boundary so researchers are aware. Enforcing divisibility was rejected because it couples an infrastructure concern (dataset cardinality) to scientific decisions (effective batch size). Long-term fix is Megatron-style `consumed_samples` indexing (F2 in Checkpointing - Consolidated Plan).~~
 
-**B7. `compute_loss` mutates input batch**
-- `labels = batch.pop("labels")` — `ssi/loss.py:15`
-- Fragile: any caller that needs labels after `compute_loss` will see an empty batch.
-- Fix: use `batch["labels"]` (read-only access).
+~~**B7. `compute_loss` mutates input batch**~~
+- ~~`labels = batch.pop("labels")` → changed to `batch["labels"]` (read-only access).~~
 
 **B8. Dev loss has wrong type and missing distributed aggregation**
 - `num_tokens_dev_batch = (...).sum()` yields a tensor — `ssi/eval.py:30`; `num_tokens_dev += num_tokens_dev_batch` makes `num_tokens_dev` a tensor.
@@ -93,11 +90,8 @@ Cross-referenced with: `plans/claude-data-critique.md`.
 - `tokenized_key`, `alignment_start_time_key`, `alignment_end_time_key`, `speech_tokens_key` resolved in `cpt.py:85-92` but never stored or passed to `interleave()` / `concatenate_speech_text()`.
 - Fix: thread keys through to prompt functions, or remove the parameters if intentionally unused.
 
-**B10. `update_from_speech_cfg` mutates global singleton instead of `self`**
-- `ssi/llama_configs.py:48-49` — `update_from_speech_cfg` is an instance method but hardcodes `configllama3_2_1b` instead of `self`.
-- Calling it on any instance other than `configllama3_2_1b` silently mutates the wrong object.
-- Currently harmless because `train.py:124` always calls it as `configllama3_2_1b.update_from_speech_cfg(...)`, but is a latent bug for tests or multi-config use.
-- Fix: replace `configllama3_2_1b.n_dsus = ...` and `configllama3_2_1b.modality_tokens = ...` with `self.n_dsus = ...` and `self.modality_tokens = ...`.
+~~**B10. `update_from_speech_cfg` mutates global singleton instead of `self`**~~
+- ~~Fixed: replaced `configllama3_2_1b.n_dsus = ...` and `configllama3_2_1b.modality_tokens = ...` with `self.n_dsus = ...` and `self.modality_tokens = ...`.~~
 
 **B11. `train_cfg` NameError in `generate.py` when `cfg.train_yaml` is not None**
 - `scripts/generate.py` only assigns `train_cfg` inside the `if cfg.train_yaml is None:` block (lines 152–160).
@@ -174,9 +168,8 @@ Cross-referenced with: `plans/claude-data-critique.md`.
 ~~**C6. Module-level PRNG shared between train and dev datasets**~~
 - ~~Fixed by per-sample deterministic RNG: module-level `PRNG` deleted, each sample's interleaving is a pure function of `(seed, epoch, sample_index)`. See `Checkpointing - Consolidated Plan.md` Step 1.~~
 
-**C7. Unconditional `torch.cuda.empty_cache()` every batch**
-- `ssi/train.py:254` — harms throughput on CUDA; a no-op or error on other devices.
-- Fix: remove (the preceding `del batch` is sufficient), or gate behind a dedicated `cfg.debug_empty_cache` flag (default off) — do not reuse `cfg.debug_mode` for this.
+~~**C7. Unconditional `torch.cuda.empty_cache()` every batch**~~
+- ~~Removed. The preceding `del batch` is sufficient; the loss_running graph retention fix ensures intermediate activations are freed after `.backward()`.~~
 
 **C8. Token-type accounting semantics unclear**
 - `token_type_counts_total` is cumulative but logged inline with per-step metrics (loss, num_tokens_step) — `train.py:206`.
@@ -199,10 +192,8 @@ Cross-referenced with: `plans/claude-data-critique.md`.
 - `scripts/train.py` (or equivalent) and generation are separate scripts; no unified entrypoint with `--mode cpt|sft|generate`.
 - Optional / aspirational: low priority relative to correctness fixes.
 
-**C12. Hydra configs are not minimal or modular**
-- Data configs (under `conf/data/`) repeat shared parameters across `train` and `dev` splits for the same dataset and training type (CPT vs SFT).
-- More broadly, configs across training types and datasets have not been audited for redundancy or factored into composable base configs + overrides.
-- Fix: extract shared parameters into a parent/base config; set only split-specific or dataset-specific parameters in child configs. Use Hydra's config group composition to assemble final configs from minimal, non-redundant parts.
+~~**C12. Hydra configs are not minimal or modular**~~
+- ~~Shared parameters extracted into `_sft_base.yaml` and `_cpt_base.yaml` base configs. Child configs override only tokenizer-specific fields (source, interleave_kwargs, n_dsus). `speech.n_dsus` auto-resolved from data configs via `resolve_n_dsus()`.~~
 
 ---
 
