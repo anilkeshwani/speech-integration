@@ -383,7 +383,6 @@ class Trainer:
                 if self.global_step >= self.cfg.max_steps:
                     return
             del batch
-            torch.cuda.empty_cache()
 
     def _train_step(self, batch: dict[str, Tensor]) -> None:
         """Single micro-batch forward + backward pass."""
