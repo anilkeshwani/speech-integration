@@ -25,12 +25,22 @@ from omegaconf import DictConfig, OmegaConf
 import pytest
 import torch
 
-from ssi.constants import SEED
+from ssi.constants import SEED, TORCHTUNE_EXTENDED_MODELS_DIR
 from ssi.trainer import Trainer
-from tests.conftest import EXTENDED_MODEL_DIR, _has_extended_model
 
 
 LOGGER = logging.getLogger(__name__)
+
+# Model path discovery — inlined to avoid cross-module test imports
+EXTENDED_MODEL_DIR = TORCHTUNE_EXTENDED_MODELS_DIR / "Llama-3.2-1B-5000-dsus"
+_LOCAL_EXTENDED = Path.home() / "models" / "extended" / "Llama-3.2-1B-5000-dsus"
+if _LOCAL_EXTENDED.exists():
+    EXTENDED_MODEL_DIR = _LOCAL_EXTENDED
+
+
+def _has_extended_model() -> bool:
+    return EXTENDED_MODEL_DIR.exists() and (EXTENDED_MODEL_DIR / "model.safetensors.index.json").exists()
+
 
 CONF_DIR = Path(__file__).resolve().parent.parent / "conf"
 
