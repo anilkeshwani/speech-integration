@@ -62,8 +62,7 @@ def resolve_n_dsus(cfg: DictConfig) -> None:
 def validate_train_cfg(cfg: DictConfig) -> None:
     if cfg.speech.n_dsus is None:
         raise ValueError(
-            "speech.n_dsus is still null at validation time. "
-            "Call resolve_n_dsus(cfg) before validate_train_cfg()."
+            "speech.n_dsus is still null at validation time. Call resolve_n_dsus(cfg) before validate_train_cfg()."
         )
 
     if PRECISION_STR_TO_DTYPE.get(cfg.dtype) not in SUPPORTED_DTYPES:
