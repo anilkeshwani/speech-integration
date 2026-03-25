@@ -12,6 +12,7 @@ encapsulation, self-contained, composition over inheritance.
 from __future__ import annotations
 
 from collections import defaultdict
+import copy
 from dataclasses import dataclass
 import itertools
 import logging
@@ -108,8 +109,7 @@ class TrainingGeometry:
         steps_per_epoch = batches_per_epoch // gradient_accumulation_steps
         if steps_per_epoch <= 0:
             raise ValueError(
-                f"batches_per_epoch ({batches_per_epoch}) < "
-                f"gradient_accumulation_steps ({gradient_accumulation_steps})"
+                f"batches_per_epoch ({batches_per_epoch}) < gradient_accumulation_steps ({gradient_accumulation_steps})"
             )
 
         usable_batches = steps_per_epoch * gradient_accumulation_steps
@@ -232,17 +232,18 @@ class Trainer:
             LOGGER.info(f"No checkpointer output dir provided. Resolved to: {self.cfg.checkpointer.output_dir!s}")
 
     def _setup_model(self) -> None:
-        # Update speech config before checkpointer creation so vocab_size
-        # is correct for checkpoint validation
-        configllama3_2_1b.update_from_speech_cfg(self.cfg.speech)
+        # Deep-copy the singleton so multiple Trainers with different n_dsus
+        # in the same process don't corrupt each other's config.
+        self._llama_config = copy.deepcopy(configllama3_2_1b)
+        self._llama_config.update_from_speech_cfg(self.cfg.speech)
         self.checkpointer = FullModelHFCheckpointer(
             **self.cfg.checkpointer,
-            model_expectations=configllama3_2_1b.checkpoint_expectations,
+            model_expectations=self._llama_config.checkpoint_expectations,
         )
         self._ckpt_dict = self.checkpointer.load_checkpoint()
         self.model = setup_llama3_2_1b(
             cfg=self.cfg,
-            llama_config=configllama3_2_1b,
+            llama_config=self._llama_config,
             model_state_dict=self._ckpt_dict[MODEL_KEY],
             dtype_default=self.dtype,
             device_default=self.device,
@@ -252,23 +253,17 @@ class Trainer:
 
     def _setup_tokenizer(self) -> None:
         self.tokenizer, _special_tokens = setup_llama3_tokenizer(**self.cfg.tokenizer)
-        self.token_type_ranges = get_token_type_ranges(llama_config=configllama3_2_1b)
+        self.token_type_ranges = get_token_type_ranges(llama_config=self._llama_config)
 
     def _setup_data(self) -> None:
         if self.cfg.config_name == "sft":
             self.data_train, self.sampler_train = setup_sft_data(
                 cfg_dataset=self.cfg.data.train, model_tokenizer=self.tokenizer
             )
-            self.data_dev, _sampler_dev = setup_sft_data(
-                cfg_dataset=self.cfg.data.dev, model_tokenizer=self.tokenizer
-            )
+            self.data_dev, _sampler_dev = setup_sft_data(cfg_dataset=self.cfg.data.dev, model_tokenizer=self.tokenizer)
         elif self.cfg.config_name == "cpt":
-            self.data_train, self.sampler_train = setup_text_completion_data(
-                self.cfg.data.train, self.tokenizer
-            )
-            self.data_dev, _sampler_dev = setup_text_completion_data(
-                self.cfg.data.dev, self.tokenizer
-            )
+            self.data_train, self.sampler_train = setup_text_completion_data(self.cfg.data.train, self.tokenizer)
+            self.data_dev, _sampler_dev = setup_text_completion_data(self.cfg.data.dev, self.tokenizer)
         else:
             raise NotImplementedError(f"Unsupported config_name: {self.cfg.config_name}")
 
@@ -423,7 +418,9 @@ class Trainer:
     def _evaluate(self) -> float:
         """Compute dev set loss."""
         return compute_dataset_loss(
-            self.model, self.data_dev, self.loss_fn,
+            self.model,
+            self.data_dev,
+            self.loss_fn,
             epoch=self.global_step // self.geometry.steps_per_epoch,
             global_step=self.global_step,
             steps_per_epoch=self.geometry.steps_per_epoch,
