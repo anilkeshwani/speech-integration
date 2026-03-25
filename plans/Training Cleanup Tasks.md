@@ -99,6 +99,12 @@ Cross-referenced with: `plans/claude-data-critique.md`.
 - `num_tokens_step` is already guarded non-zero by `_optimizer_step`, but `dur_step` has no guard.
 - Fix: add a floor on `dur_step` (e.g. `max(dur_step, 1e-9)`) or skip the metric when `dur_step` is below a threshold.
 
+**B13. Validation check dead from eager f-string evaluation**
+- `ssi/data/sft.py:211-212` — `LOGGER.debug(f"Tokens: {tokenized_dict['tokens']}")` eagerly evaluates `tokenized_dict['tokens']` regardless of log level.
+- If `tokens` or `mask` key is missing, a `KeyError` fires here before the explicit validation check on line 214 can run.
+- The descriptive `ValueError` on lines 214-219 is dead code — you get an opaque `KeyError` from the debug log instead.
+- Fix: move the validation check (`if not ("tokens" in tokenized_dict and "mask" in tokenized_dict)`) above the debug logging.
+
 **B11. `train_cfg` NameError in `generate.py` when `cfg.train_yaml` is not None**
 - `scripts/generate.py` only assigns `train_cfg` inside the `if cfg.train_yaml is None:` block (lines 152–160).
 - `train_cfg` is referenced unconditionally at lines 164, 170, 180 to resolve `cfg.speech.n_dsus`, `cfg.speech.deduplicate`, and `cfg.data`.
@@ -136,6 +142,16 @@ Cross-referenced with: `plans/claude-data-critique.md`.
 - ~~`ssi/model.py:41-42` warns if `enable_activation_checkpointing and not enable_activation_offloading`, but checkpointing raises `NotImplementedError` above — warning can never be reached.~~
 - ~~Fix: remove (belongs after the feature is implemented).~~
 
+**D6. Custom `batch_to_device` in `ssi/utils.py` never used**
+- `ssi/utils.py:130-157` defines a custom version with `exclude_keys` and `BlockMask` support.
+- Never imported anywhere — both `ssi/trainer.py` and `ssi/eval.py` import from `torchtune.utils` instead.
+- Fix: remove the function and its associated `BlockMask` / `_SUPPORTS_FLEX_ATTENTION` imports (lines 13, 19-22) if they're not used elsewhere in the file.
+
+**D7. Dead utility functions and debug imports in `ssi/utils.py`**
+- `info_excepthook` (line 112), `get_terminal_width` (line 122), `_parse_model_path` (line 55), `parse_hf_repo_id` (line 95) — none are imported or called anywhere in the codebase.
+- `import pdb` (line 5) and `import traceback` (line 7) are only used by `info_excepthook`, so they are also dead.
+- Fix: remove all five functions and the `pdb`/`traceback` imports. If any are needed for interactive use, move them to a scratch/debug module.
+
 ---
 
 ## Naming / Typos
@@ -151,6 +167,31 @@ Cross-referenced with: `plans/claude-data-critique.md`.
 ---
 
 ## Code Clarity / Style
+
+**C15. Unnecessary f-string prefixes (no interpolation)**
+- `ssi/utils.py:59` — `f"Model directory must be in the experiments root directory. "` has no `{}` expressions.
+- `ssi/train_utils.py:121` — `f"This breaks the step-to-data-position mapping."` has no `{}` expressions.
+- Both are part of implicit string concatenations where adjacent segments do have interpolation, which is why `F541` doesn't flag them.
+- Fix: remove the `f` prefix from these specific string segments.
+
+**C16. `f"{cpt_idx}".zfill(5)` — roundabout string conversion**
+- `ssi/checkpoint.py:379` — `f"{cpt_idx}".zfill(5)` where `cpt_idx` is already a string (dict key from `_weight_map`), making the f-string a no-op. Should be `cpt_idx.zfill(5)`.
+- `f"{num_shards}".zfill(5)` where `num_shards` is an int — should be `str(num_shards).zfill(5)`.
+- Also inconsistent with line 318 of the same file, which uses the idiomatic `f"{cpt_idx + 1:04}"` format spec.
+
+**C17. String concatenation instead of f-string**
+- `ssi/utils.py:45` — `HF_OWNER + "/" + dataset` → `f"{HF_OWNER}/{dataset}"`.
+
+**C18. Unnecessary `.keys()` in `.join()`**
+- `ssi/data/sft.py:215` — `", ".join(tokenized_dict.keys())` → `", ".join(tokenized_dict)`. Iterating a dict already yields its keys.
+
+**C19. Inconsistent `Path` construction**
+- `ssi/metric_logging.py:33` — `Path(config.checkpointer.output_dir, TORCHTUNE_CONFIG_FILENAME)` uses the `Path()` constructor for joining. Rest of codebase uses the `/` operator. Should be `Path(config.checkpointer.output_dir) / TORCHTUNE_CONFIG_FILENAME`.
+
+**C20. Broad `except Exception` in metric logging**
+- `ssi/metric_logging.py:38` — catches all exceptions when saving config to W&B and only logs them. Could silently mask real bugs (permission errors, disk full, etc.).
+- Not caught by ruff currently; adding `"BLE"` to the ruff `select` list would flag this via `BLE001`.
+- Fix: narrow to specific W&B or I/O exceptions, or add `"BLE"` to ruff config and address with a `# noqa: BLE001` if the broad catch is intentional.
 
 **C13. Undeclared instance attributes in `Trainer.__init__`**
 - `self._resume_state` is created in `_extract_resume_state()` (`ssi/trainer.py:280`), not in `__init__`.
