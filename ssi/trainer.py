@@ -394,6 +394,11 @@ class Trainer:
 
     def _optimizer_step(self, epoch: int, iter_idx: int) -> None:
         """Gradient accumulation boundary: scale, clip, step, log, checkpoint."""
+        if self.num_tokens_step == 0:
+            LOGGER.warning("No non-ignored tokens in accumulation window; skipping optimizer step.")
+            self.optimizer.zero_grad(set_to_none=True)
+            self._reset_step_accumulators()
+            return
         scale_grads(self.model, torch.tensor(1 / self.num_tokens_step))
         if self.cfg.clip_grad_norm is not None:
             self._grad_norm = torch.nn.utils.clip_grad_norm_(
