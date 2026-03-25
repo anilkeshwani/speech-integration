@@ -69,14 +69,6 @@ _CONF_DIR = os.path.join(os.path.dirname(__file__), "..", "conf")
 # ---------------------------------------------------------------------------
 
 
-def _load_streaming_subset(source: str, split: str, n: int):
-    """Load n samples via streaming — near-zero disk usage."""
-    from datasets import Dataset
-    from datasets import load_dataset as hf_load_dataset
-
-    iterable = hf_load_dataset(source, split=split, streaming=True)
-    return Dataset.from_list(list(iterable.take(n)))
-
 
 def _compose_sft_cfg(tmp_path, max_steps=10, eval_steps=5, save_steps=10, grad_accum=2, batch_size=2):
     """Compose an SFT config with Hydra, overriding for small test runs."""
